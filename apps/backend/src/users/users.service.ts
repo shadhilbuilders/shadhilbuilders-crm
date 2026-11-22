@@ -46,6 +46,8 @@ import type {
   CreateUserDto,
   ChangePasswordDto,
   ChangeRoleDto,
+  LoginIdentifierDto,
+  LoginIdentifierResult,
   UpdateProfileDto,
   UpdateUserDto,
   UserDetail,
@@ -53,6 +55,8 @@ import type {
   UserListResult,
 } from '@shadhil/api-types';
 import {
+  isPlaceholderEmail,
+  LOGIN_IDENTIFIER_CANDIDATE_CAP,
   normalizePhoneDigits,
   reportingTargetFor,
   reportsToTeamManager,
@@ -68,7 +72,14 @@ import {
   outranks,
   OWNER,
 } from './roles';
-import { hashPassword, upsertCredentialAccount, verifyPassword } from './credentials';
+import {
+  hashPassword,
+  TIMING_DUMMY_PASSWORD_HASH,
+  upsertCredentialAccount,
+  verifyPassword,
+  verifyPasswordAsync,
+} from './credentials';
+import { looksLikeEmail, normalisePhoneIdentifier, verifyWithSlot } from './login-identifier';
 
 /**
  * T-EMAIL-PER-ORG (2026-10-04): `User.email` uniqueness is scoped to the
@@ -218,6 +229,154 @@ export class UsersService {
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
+  }
+
+  /**
+   * Resolve "email or phone + password" into the address the browser should
+   * sign in with. PUBLIC path: no JWT, no RLS context.
+   *
+   * Two rules shape the whole method:
+   *
+   *   1. Every failure looks the same from outside. A malformed identifier, a
+   *      phone with no account and a wrong password all answer `invalid`, and
+   *      the controller returns 200 for all three (see `LoginIdentifierResult`).
+   *   2. A request with no candidate still pays for one full scrypt, against a
+   *      throwaway hash, so "no such account" cannot be told from "wrong
+   *      password" by timing.
+   *
+   * The password is checked against the stored credential hash rather than
+   * through better-auth: this route only answers "which address?", and the
+   * browser then calls the ordinary sign-in with it, so sessions, cookies and
+   * every better-auth hook stay on the path that already works.
+   *
+   * A number shared by two accounts is NOT an error. `Invite.phone` and
+   * `User.phone` are deliberately non-unique (a site phone is shared), so the
+   * picker exists: the password filters the candidates first, and only the ones
+   * it matched are ever named.
+   */
+  async resolveLoginIdentifier(dto: LoginIdentifierDto): Promise<LoginIdentifierResult> {
+    // User and Account are pre-RLS auth tables, so the bare client is correct.
+    const client = this.client;
+    const identifier = dto.identifier.trim();
+
+    if (looksLikeEmail(identifier)) {
+      const user = await client.user.findFirst({
+        where: {
+          email: identifier.toLowerCase(),
+          deletedAt: null,
+          // `banned` is NULLABLE, so `banned: false` alone would exclude every
+          // row that has never been touched - the same trap the assignee
+          // picker documents at :1781.
+          OR: [{ banned: false }, { banned: null }],
+        },
+        select: { id: true, email: true },
+      });
+      const hash = user === null ? null : await this.credentialHash(client, user.id);
+      const matches = await verifyWithSlot(dto.password, hash ?? TIMING_DUMMY_PASSWORD_HASH);
+      return user !== null && hash !== null && matches
+        ? { kind: 'ok', email: user.email }
+        : { kind: 'invalid' };
+    }
+
+    const phone = normalisePhoneIdentifier(identifier);
+    if (phone === null) {
+      await verifyWithSlot(dto.password, TIMING_DUMMY_PASSWORD_HASH);
+      return { kind: 'invalid' };
+    }
+
+    const candidates = await client.user.findMany({
+      where: {
+        phone,
+        deletedAt: null,
+        OR: [{ banned: false }, { banned: null }],
+      },
+      select: { id: true, email: true, name: true, role: true },
+      orderBy: { id: 'asc' },
+      take: LOGIN_IDENTIFIER_CANDIDATE_CAP,
+    });
+    if (candidates.length === 0) {
+      await verifyWithSlot(dto.password, TIMING_DUMMY_PASSWORD_HASH);
+      return { kind: 'invalid' };
+    }
+
+    // Sequential on purpose: the semaphore caps concurrent scrypt work anyway,
+    // and a phone shared by five accounts already costs five hashes.
+    const matched: typeof candidates = [];
+    for (const candidate of candidates) {
+      const hash = await this.credentialHash(client, candidate.id);
+      if (hash !== null && (await verifyWithSlot(dto.password, hash))) {
+        matched.push(candidate);
+      }
+    }
+    const first = matched[0];
+    if (first === undefined) return { kind: 'invalid' };
+    if (matched.length === 1) return { kind: 'ok', email: first.email };
+
+    const identities = await this.accountIdentities(
+      client,
+      matched.map((m) => m.id),
+      phone,
+    );
+
+    // Second attempt from the picker: the person chose a specific account. It
+    // must be one whose password already matched, so the handle cannot be used
+    // to point at somebody else's row.
+    if (dto.accountUserId !== undefined) {
+      const chosen = matched.find((m) => m.id === dto.accountUserId);
+      return chosen === undefined ? { kind: 'invalid' } : { kind: 'ok', email: chosen.email };
+    }
+
+    const accounts = matched.flatMap((m) => {
+      const identity = identities.get(m.id);
+      if (identity === undefined) return [];
+      return [
+        {
+          userId: m.id,
+          name: m.name,
+          organizationName: identity.organizationName,
+          organizationSlug: identity.organizationSlug,
+          role: m.role,
+        },
+      ];
+    });
+    if (accounts.length === 0) return { kind: 'invalid' };
+    if (accounts.length === 1) return { kind: 'ok', email: first.email };
+    return { kind: 'pick', accounts };
+  }
+
+  /** Stored password hash for a user's credential account, or null. */
+  private async credentialHash(client: PrismaClient, userId: string): Promise<string | null> {
+    const account = await client.account.findFirst({
+      where: { userId, providerId: 'credential', issuer: 'local:credential' },
+      select: { password: true },
+    });
+    return account?.password ?? null;
+  }
+
+  /**
+   * Organisation name and slug per candidate, through the SECURITY DEFINER
+   * helper `auth_account_identities`.
+   *
+   * `Organization` is row-level-security scoped to `app.user_org_id`, and this
+   * route runs before anyone is signed in, so a plain read returns nothing. The
+   * helper also requires the stored phone to equal the argument, which is what
+   * stops it from being an organisation lookup for arbitrary user ids.
+   */
+  private async accountIdentities(
+    client: PrismaClient,
+    userIds: string[],
+    phone: string,
+  ): Promise<Map<string, { organizationName: string; organizationSlug: string }>> {
+    const rows = await client.$queryRaw<
+      Array<{ user_id: string; organization_name: string; organization_slug: string }>
+    >`SELECT user_id, organization_name, organization_slug
+        FROM auth_account_identities(${userIds}::text[], ${phone}::text)`;
+    return new Map(
+      rows.map((row) => [
+        row.user_id,
+        { organizationName: row.organization_name, organizationSlug: row.organization_slug },
+      ]),
+    );
   }
 
   /**
@@ -820,6 +979,46 @@ export class UsersService {
       );
     }
 
+    // 1c. Email self-service (2026-11-21), narrow on purpose.
+    //
+    // A user may REPLACE a generated `noemail+<hex>@users.invalid` address with
+    // a real one. They may NOT move from one real address to another: this
+    // deployment has no email verification, so that would repoint the login at a
+    // mailbox nobody has proven they own. Real-to-real stays with ADMIN/OWNER
+    // through PATCH /api/users/:id.
+    if (dto.email !== undefined) {
+      if (!isPlaceholderEmail(before.email)) {
+        throw new BadRequestException(
+          'Your email is already set. Ask an administrator to change it.',
+        );
+      }
+      if (dto.currentPassword === undefined) {
+        // The DTO already requires it; this is the belt-and-braces check for a
+        // caller that bypasses validation.
+        throw new BadRequestException('Enter your current password to change your email address');
+      }
+      const credential = await this.client.account.findFirst({
+        where: { userId: actor.sub, providerId: 'credential', issuer: 'local:credential' },
+        select: { password: true },
+      });
+      const correct = await verifyPasswordAsync(dto.currentPassword, credential?.password ?? null);
+      if (!correct) {
+        throw new BadRequestException('That password is not correct.');
+      }
+    }
+
+    // 1d. An account must keep ONE usable login identifier. Clearing the phone
+    //     while the address is still a placeholder would leave nothing the
+    //     person can sign in with, and the synthetic address is never shown
+    //     to them.
+    const clearingPhone = dto.phone === null;
+    const emailStaysPlaceholder = dto.email === undefined && isPlaceholderEmail(before.email);
+    if (clearingPhone && emailStaysPlaceholder) {
+      throw new BadRequestException(
+        'Add an email address before removing your phone number - otherwise you could not sign in.',
+      );
+    }
+
     // 2. Write + audit atomically: the audit row must not survive a failed
     //    write, and the write must not land unaudited (AGENTS.md A2/G-1).
     //    One RLS transaction (AuditLog is FORCE RLS; User is not, but sharing
@@ -830,9 +1029,20 @@ export class UsersService {
       // Only the provided fields. `phone: null` is the erase path; undefined
       // means the caller did not touch it. The DTO's refinement guarantees at
       // least one field is present, so this is never an empty write.
-      const data: { name?: string; phone?: string | null } = {};
+      const data: {
+        name?: string;
+        phone?: string | null;
+        email?: string;
+        emailVerified?: boolean;
+      } = {};
       if (dto.name !== undefined) data.name = dto.name;
       if (dto.phone !== undefined) data.phone = dto.phone;
+      if (dto.email !== undefined) {
+        data.email = dto.email;
+        // Nothing has proven the new address yet, so it is stored unverified.
+        // The moment a mailer exists, the reset path must be gated on this.
+        data.emailVerified = false;
+      }
 
       const updated = await client.user
         .update({
@@ -849,8 +1059,8 @@ export class UsersService {
           organizationId: actor.organizationId,
           entityType: 'User',
           entityId: actor.sub,
-          before: { name: before.name, phone: before.phone },
-          after: { name: updated.name, phone: updated.phone },
+          before: { name: before.name, phone: before.phone, email: before.email },
+          after: { name: updated.name, phone: updated.phone, email: updated.email },
           reason: `profile updated by ${actor.email} (${actor.role})`,
         },
       });

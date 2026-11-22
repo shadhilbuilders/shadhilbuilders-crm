@@ -91,6 +91,40 @@ export function normalizePhoneDigits(raw: string): string {
   throw new Error('Invalid phone number format');
 }
 
+/**
+ * Domain for the synthetic address given to a staff member invited without a
+ * real email. `.invalid` is reserved by RFC 2606, so a bug that tries to mail
+ * one fails loudly instead of reaching a stranger.
+ *
+ * The local part is random on purpose. Sign-in looks a user up by email ALONE
+ * (see the `User` comment in schema.prisma) while the unique index is per
+ * organisation, so a predictable local part - a phone number, a name - can
+ * collide across orgs and land the caller on the wrong row. Random removes that
+ * class of bug, and it also stops a re-hired person from squatting on the
+ * address of the account they left, which the index still holds for
+ * soft-deleted rows.
+ */
+export const PLACEHOLDER_EMAIL_DOMAIN = 'users.invalid';
+
+/** Local-part prefix of every generated address: `noemail+<hex>@users.invalid`. */
+export const PLACEHOLDER_EMAIL_PREFIX = 'noemail+';
+
+/**
+ * True for an address this system generated, never for one a person typed.
+ *
+ * Matches on the prefix and the reserved domain rather than the exact hex, so
+ * rows written by an older generator are still recognised after the format
+ * changes.
+ */
+export function isPlaceholderEmail(email: string | null | undefined): boolean {
+  if (email === null || email === undefined) return false;
+  const normalised = email.trim().toLowerCase();
+  return (
+    normalised.startsWith(PLACEHOLDER_EMAIL_PREFIX) &&
+    normalised.endsWith(`@${PLACEHOLDER_EMAIL_DOMAIN}`)
+  );
+}
+
 /** Standard error response envelope. */
 export const ErrorResponseDtoSchema = z.object({
   code: z.string(),

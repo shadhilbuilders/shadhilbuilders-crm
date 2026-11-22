@@ -105,20 +105,38 @@ describe('UsersController.updateMe - body validation', () => {
     expect(updateSelf).not.toHaveBeenCalled();
   });
 
-  it('email is NOT an accepted field - a self-edit cannot move the login address', async () => {
+  it('passes a supplied email through, and refuses it without the current password', async () => {
+    // 2026-11-21: the field is no longer stripped. A staff member invited with
+    // only a phone number carries a generated `noemail+...@users.invalid`
+    // address they never see, and replacing THAT with a real one is the single
+    // self-service email change allowed. The DTO now requires the current
+    // password whenever an email is present, so the controller must not accept
+    // the pair half-supplied.
     const { controller, updateSelf } = makeController();
 
-    // The DTO is z.object({ name }) - zod strips unknown keys rather than
-    // throwing, so the contract to pin is "email never reaches the service".
     await controller.updateMe({ user: ACTOR } as never, {
-      name: 'Renamed',
-      email: 'attacker@example.com',
+      email: 'staff@shadhilbuilders.in',
+      currentPassword: 'correct horse battery staple',
     });
 
     expect(updateSelf).toHaveBeenCalledTimes(1);
     const [, dto] = updateSelf.mock.calls[0] as [unknown, Record<string, unknown>];
-    expect(dto).toEqual({ name: 'Renamed' });
-    expect(dto).not.toHaveProperty('email');
+    expect(dto).toMatchObject({
+      email: 'staff@shadhilbuilders.in',
+      currentPassword: 'correct horse battery staple',
+    });
+  });
+
+  it('rejects an email with no current password before the service is reached', async () => {
+    const { controller, updateSelf } = makeController();
+
+    const err = await controller
+      .updateMe({ user: ACTOR } as never, { email: 'staff@shadhilbuilders.in' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(updateSelf).not.toHaveBeenCalled();
   });
 
   it('the target is the JWT subject - the route exposes no id parameter', async () => {

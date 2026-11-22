@@ -202,7 +202,7 @@ describe.skipIf(!HAS_DB)('UsersService.updateSelf - live DB', () => {
 
   it('writes an audit row in the same transaction with a real before/after pair', async () => {
     const service = makeService();
-    const before = await readSelf({ name: true, phone: true });
+    const before = await readSelf({ name: true, phone: true, email: true });
 
     const next = `Self Edit Audited ${RUN_TAG}`;
     await service.updateSelf(selfActor, { name: next });
@@ -225,11 +225,15 @@ describe.skipIf(!HAS_DB)('UsersService.updateSelf - live DB', () => {
     expect(audit.userId).toBe(SELF_ID);
     expect(audit.organizationId).toBe(ORG);
     expect(audit.entityType).toBe('User');
-    expect(audit.before).toEqual({ name: before?.['name'], phone: before?.['phone'] ?? null });
-    // 2026-11-18: the self-edit audit now carries phone alongside name, so a
-    // number change is reconstructable from history (same treatment email
-    // already gets on the admin edit path).
-    expect(audit.after).toEqual({ name: next, phone: null });
+    // 2026-11-21: email joins the pair. A placeholder -> real address change is
+    // now possible from Settings, and it moves the login, so the history has to
+    // show what it moved from and to.
+    expect(audit.before).toEqual({
+      name: before?.['name'],
+      phone: before?.['phone'] ?? null,
+      email: before?.['email'],
+    });
+    expect(audit.after).toEqual({ name: next, phone: null, email: before?.['email'] });
   });
 
   it('cannot reach another user: an id in the body is ignored (the route has no id param)', async () => {

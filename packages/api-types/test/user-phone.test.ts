@@ -99,10 +99,15 @@ describe('UpdateProfileDtoSchema (self edit)', () => {
   });
 
   it('still refuses an email self-edit (login identifier stays admin-only)', () => {
-    // Zod strips unknown keys, so the parse SUCCEEDS but email is never
-    // present in the output - the service therefore cannot write it.
-    const parsed = UpdateProfileDtoSchema.parse({ name: 'Asha', email: 'x@y.z' });
-    expect(parsed).not.toHaveProperty('email');
+    // Behaviour changed 2026-11-21: the DTO now CARRIES `email`, but only so a
+    // user can replace a generated address. The password gate is the fence the
+    // DTO can enforce; the placeholder-only rule needs the stored row, so the
+    // service enforces that one.
+    const noPassword = UpdateProfileDtoSchema.safeParse({ name: 'Asha', email: 'asha@example.com' });
+    expect(noPassword.success).toBe(false);
+    if (!noPassword.success) {
+      expect(JSON.stringify(noPassword.error.issues)).toContain('current password');
+    }
   });
 });
 

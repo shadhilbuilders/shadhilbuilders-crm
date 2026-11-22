@@ -10,7 +10,8 @@
 // shadhil_app but never FORCEs them), so these writes run on the bare client
 // - exactly the seed's path. Auth tables are pre-RLS by design: better-auth's
 // own HTTP handlers write them session-agnostically.
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 
 const SCRYPT_PARAMS = {
   N: 16384,
@@ -18,6 +19,13 @@ const SCRYPT_PARAMS = {
   p: 1,
   maxmem: 128 * 16384 * 16 * 2,
 } as const;
+
+const scryptAsync = promisify(scrypt) as unknown as (
+  password: string,
+  salt: string,
+  keylen: number,
+  options: typeof SCRYPT_PARAMS,
+) => Promise<Buffer>;
 
 /** NFKC-normalize, scrypt-hash with @better-auth/utils params, "salt:key". */
 export function hashPassword(password: string): string {
@@ -28,6 +36,27 @@ export function hashPassword(password: string): string {
 }
 
 /**
+ * Split a stored "salt:key" once, for BOTH verify paths.
+ *
+ * Shared on purpose: the sync and async verifiers must agree on the format or
+ * one of them silently rejects every correct password. That exact bug shipped
+ * once already (the salt was hex-decoded in one place and used as a string in
+ * another).
+ */
+function parseStoredPassword(
+  stored: string | null | undefined,
+): { salt: string; expected: Buffer } | null {
+  if (stored === null || stored === undefined || stored.length === 0) return null;
+  const [salt, key] = stored.split(':');
+  if (salt === undefined || key === undefined || salt.length === 0 || key.length === 0) {
+    return null;
+  }
+  const expected = Buffer.from(key, 'hex');
+  if (expected.length === 0) return null;
+  return { salt, expected };
+}
+
+/**
  * Verify a plaintext password against a stored "salt:key" string.
  * Constant-time comparison (timingSafeEqual) so an attacker can't
  * extract the scrypt-params from response-time variance. Returns
@@ -35,16 +64,8 @@ export function hashPassword(password: string): string {
  * can map to a single BadRequestException for "wrong password".
  */
 export function verifyPassword(plaintext: string, stored: string | null | undefined): boolean {
-  if (stored === null || stored === undefined || stored.length === 0) {
-    return false;
-  }
-  const [salt, key] = stored.split(':');
-  if (salt === undefined || key === undefined || salt.length === 0 || key.length === 0) {
-    return false;
-  }
-  const normalized = plaintext.normalize('NFKC');
-  const expected = Buffer.from(key, 'hex');
-  if (expected.length === 0) return false;
+  const parsed = parseStoredPassword(stored);
+  if (parsed === null) return false;
   // Salt is passed as the raw hex STRING, not hex-decoded to bytes - this
   // must match hashPassword() above (which does the same) and better-auth's
   // own @better-auth/utils password.node.ts (`scrypt(password, salt, ...)`
@@ -53,10 +74,54 @@ export function verifyPassword(plaintext: string, stored: string | null | undefi
   // it here silently derived a different key for every password, so the
   // "current password" check always failed even when the password was
   // correct.
-  const candidate = scryptSync(normalized, salt, expected.length, SCRYPT_PARAMS);
-  if (candidate.length !== expected.length) return false;
-  return timingSafeEqual(candidate, expected);
+  const candidate = scryptSync(
+    plaintext.normalize('NFKC'),
+    parsed.salt,
+    parsed.expected.length,
+    SCRYPT_PARAMS,
+  );
+  if (candidate.length !== parsed.expected.length) return false;
+  return timingSafeEqual(candidate, parsed.expected);
 }
+
+/**
+ * Same check, off the event loop.
+ *
+ * Use this on any path an unauthenticated caller can reach: `scryptSync` blocks
+ * the whole process for tens of milliseconds, so a login endpoint built on it
+ * is a trivial denial of service - one request at a time, from anywhere. The
+ * work runs on the libuv threadpool instead.
+ *
+ * Identical semantics to the sync version, including the tolerance for a
+ * malformed stored value: `false`, never a throw.
+ */
+export async function verifyPasswordAsync(
+  plaintext: string,
+  stored: string | null | undefined,
+): Promise<boolean> {
+  const parsed = parseStoredPassword(stored);
+  if (parsed === null) return false;
+  const candidate = await scryptAsync(
+    plaintext.normalize('NFKC'),
+    parsed.salt,
+    parsed.expected.length,
+    SCRYPT_PARAMS,
+  );
+  if (candidate.length !== parsed.expected.length) return false;
+  return timingSafeEqual(candidate, parsed.expected);
+}
+
+/**
+ * A real hash of a throwaway password, verified against when a lookup finds no
+ * candidates.
+ *
+ * Without it, "no such account" returns in ~1ms while "wrong password" costs a
+ * full scrypt, and that difference is a free account-enumeration oracle. Costs
+ * one scrypt at module load, which happens once per process.
+ */
+export const TIMING_DUMMY_PASSWORD_HASH = hashPassword(
+  `not-a-real-password-${randomBytes(8).toString('hex')}`,
+);
 
 /**
  * Attach (or reset) credential credentials for a user, in better-auth 1.7's

@@ -325,12 +325,17 @@ export type UpdateUserDto = z.infer<typeof UpdateUserDtoSchema>;
  *     separate surface: the route resolves the target from the JWT `sub`, so a
  *     caller can only ever edit themselves and no hierarchy check applies.
  *
- *   - `name` and `phone` only (phone added 2026-11-18). `email` is deliberately
- *     absent: this deployment configures NO email verification
- *     (packages/auth-client/src/auth.ts has no `emailVerification` block), so
- *     letting a user rewrite their own login address would move the account to
- *     an address nobody has proven they own. Email changes stay with
+ *   - `name`, `phone` and, since 2026-11-21, `email` + `currentPassword`. A
+ *     user may only replace a GENERATED address: this deployment configures no
+ *     email verification (packages/auth-client/src/auth.ts has no
+ *     `emailVerification` block), so a self-service move from one real address
+ *     to another would repoint the login at a mailbox nobody has proven they
+ *     own. The service refuses that case (`isPlaceholderEmail`); the DTO cannot,
+ *     because it has no access to the stored row. Real-to-real stays with
  *     ADMIN/OWNER via PATCH /api/users/:id.
+ *
+ *   - `currentPassword` is required whenever `email` is present, enforced
+ *     below. Without it a stolen session could quietly move the login address.
  *
  *   - BOTH fields are optional. Before 2026-11-18 `name` was required, which was
  *     fine while it was the only field: now a staff member saving ONLY a phone
@@ -347,9 +352,31 @@ export const UpdateProfileDtoSchema = z
   .object({
     name: nameSchema.optional(),
     phone: ClearablePhoneSchema.optional(),
+    email: emailSchema.optional(),
+    /**
+     * Only ever read to authorise an `email` change. Never stored, never
+     * echoed back, and ignored for name-only or phone-only edits so the
+     * Settings form does not have to ask again for those.
+     */
+    currentPassword: z.string().min(1).max(128).optional(),
   })
-  .refine((values) => values.name !== undefined || values.phone !== undefined, {
-    message: 'Nothing to update - provide a name or a phone number',
+  .superRefine((values, ctx) => {
+    const touchesSomething =
+      values.name !== undefined || values.phone !== undefined || values.email !== undefined;
+    if (!touchesSomething) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Nothing to update - provide a name, a phone number or an email address',
+      });
+      return;
+    }
+    if (values.email !== undefined && values.currentPassword === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['currentPassword'],
+        message: 'Enter your current password to change your email address',
+      });
+    }
   });
 export type UpdateProfileDto = z.infer<typeof UpdateProfileDtoSchema>;
 
@@ -484,3 +511,59 @@ export const AdminResetPasswordFormSchema = z
     path: ['confirmPassword'],
   });
 export type AdminResetPasswordFormValues = z.infer<typeof AdminResetPasswordFormSchema>;
+
+/**
+ * POST /api/public/auth/login-identifier - resolve "email or phone + password"
+ * into the email the browser then signs in with.
+ *
+ * WHY THIS EXISTS: better-auth's credential sign-in looks a user up by email
+ * alone, so a phone cannot be handed to it. This route proves the password
+ * first, then returns the address; the client calls the normal `signIn.email`
+ * with it, which keeps every session cookie, hook and refresh path on the
+ * route that already works.
+ *
+ * The response is ALWAYS 200, with one of three shapes. That is deliberate:
+ * distinguishing "no such account" from "wrong password" by status code is a
+ * free enumeration oracle, and this endpoint is unauthenticated.
+ */
+export const LoginIdentifierDtoSchema = z.object({
+  /** An email address or a phone number, whichever the person typed. */
+  identifier: z.string().trim().min(1, 'Enter your email or phone number').max(320),
+  password: z.string().min(1, 'Enter your password').max(128, 'That password is too long'),
+  /**
+   * Only sent by the account picker, on the second attempt: the chosen row's
+   * `userId`. The number is on more than one account and this is the handle that
+   * says which one. It is NOT a credential - the password is checked again, and
+   * only accounts whose password already matched are eligible.
+   *
+   * A slug cannot do this job: two matched accounts can be in the SAME
+   * organisation (one person provisioned twice), and then the slug picks
+   * nothing.
+   */
+  accountUserId: z.string().trim().min(1).max(64).optional(),
+});
+export type LoginIdentifierDto = z.infer<typeof LoginIdentifierDtoSchema>;
+
+/** One row of the picker. No email, no phone: only what the choice needs. */
+export const LoginIdentifierAccountSchema = z.object({
+  /** Opaque handle the picker sends back; not shown to the person. */
+  userId: z.string(),
+  name: z.string(),
+  organizationName: z.string(),
+  organizationSlug: z.string(),
+  role: z.string(),
+});
+export type LoginIdentifierAccount = z.infer<typeof LoginIdentifierAccountSchema>;
+
+export const LoginIdentifierResultSchema = z.discriminatedUnion('kind', [
+  /** Exactly one account matched the password: sign in with this address. */
+  z.object({ kind: z.literal('ok'), email: z.string() }),
+  /** More than one account matched: let the person choose, then ask again. */
+  z.object({ kind: z.literal('pick'), accounts: z.array(LoginIdentifierAccountSchema) }),
+  /** Nothing matched, or the password did not. Never says which. */
+  z.object({ kind: z.literal('invalid') }),
+]);
+export type LoginIdentifierResult = z.infer<typeof LoginIdentifierResultSchema>;
+
+/** Maximum accounts the picker will ever list for one number. */
+export const LOGIN_IDENTIFIER_CANDIDATE_CAP = 5;
