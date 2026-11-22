@@ -32,6 +32,7 @@ import {
 import { PasswordInput } from '@/components/shared/PasswordInput';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { authClient } from '@/lib/auth-client';
+import { isPlaceholderEmail } from '@shadhil/api-types';
 import { toPhoneInputValue } from '@/lib/phone';
 
 type Props = {
@@ -192,13 +193,27 @@ export function AcceptInviteForm({ token, preview }: Props) {
           not push the 288px card wider on a 320px phone. */}
       <div className="border-border bg-muted/40 rounded-md border p-3">
         <p className="text-muted-foreground text-xs font-medium">You will sign in as</p>
-        <p
-          className="text-foreground text-sm break-all"
-          aria-label="Email this invite was sent to"
-          data-qa="accept-email"
-        >
-          {preview.email}
-        </p>
+        {isPlaceholderEmail(preview.email) ? (
+          // 2026-11-21: an invite can be phone-only, and the account then holds
+          // a generated `noemail+<hex>@users.invalid` address. Printing it here
+          // would show the new hire a mailbox that does not exist, so the card
+          // states the number instead - the one identifier they will type.
+          <p
+            className="text-foreground text-sm break-all"
+            aria-label="Phone number this invite was sent to"
+            data-qa="accept-phone-identifier"
+          >
+            {toPhoneInputValue(preview.phone) || 'Your phone number'}
+          </p>
+        ) : (
+          <p
+            className="text-foreground text-sm break-all"
+            aria-label="Email this invite was sent to"
+            data-qa="accept-email"
+          >
+            {preview.email}
+          </p>
+        )}
       </div>
 
       <Form

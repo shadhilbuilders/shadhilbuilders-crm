@@ -20,10 +20,10 @@
 // browser chrome. Without it the result step's link block pushes the footer
 // below the fold on a landscape phone and the dialog looks like it has no way
 // out - a failure already documented on the Create dialog.
-import { Button, Combobox, Dialog, Form, toast } from '@paalstack/react-ui';
+import { Button, Combobox, Dialog, Form, Input, Label, toast } from '@paalstack/react-ui';
 import type { FormFieldItemType } from '@paalstack/react-ui';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { LuUserPlus } from '@paalstack/react-icons/lu';
+import { LuChevronRight, LuUserPlus } from '@paalstack/react-icons/lu';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -52,12 +52,21 @@ const ROLES_REQUIRING_TEAM: readonly Role[] = ['TELECALLER', 'SALES_EXEC', 'ENGI
  */
 const InviteStaffFormSchema = z
   .object({
-    email: z
-      .email({ error: 'Enter a valid email address' })
-      .trim()
-      .toLowerCase()
-      .min(1, 'Email is required')
-      .max(254, 'Email is too long'),
+    /**
+     * Optional since 2026-11-21. The union, not `.optional()`, is the project
+     * convention for a text input that may be left blank: the field always holds
+     * a string, and the server's `EmailSchema.optional()` would 400 on `''` as
+     * if the address were malformed. Blank is turned into an omitted key in
+     * `onSubmit`, never into `email: ''`.
+     */
+    email: z.union([
+      z.literal(''),
+      z
+        .email({ error: 'Enter a valid email address' })
+        .trim()
+        .toLowerCase()
+        .max(254, 'Email is too long'),
+    ]),
     name: z
       .string()
       .trim()
@@ -131,8 +140,10 @@ function InviteStaffDialogBody({
   teamsLoading: boolean;
 }) {
   const formId = useFormId('invite-staff-form');
+  const emailInputId = useFormId('invite-email');
   const createInvite = useCreateInvite();
   const [result, setResult] = useState<CreateInviteResult | null>(null);
+  const [emailExpanded, setEmailExpanded] = useState(false);
   const copyRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<InviteStaffFormValues>({
@@ -155,6 +166,7 @@ function InviteStaffDialogBody({
   useEffect(() => {
     if (!open) {
       setResult(null);
+      setEmailExpanded(false);
       form.reset({
         email: '',
         name: '',
@@ -174,7 +186,9 @@ function InviteStaffDialogBody({
   function onSubmit(values: InviteStaffFormValues) {
     createInvite.mutate(
       {
-        email: values.email,
+        // Blank means "no email": the key is omitted so the service generates a
+        // placeholder, rather than sending '' and being refused as malformed.
+        ...(values.email.length > 0 ? { email: values.email } : {}),
         name: values.name,
         phone: values.phone as string,
         role: values.role as Role,
@@ -201,15 +215,6 @@ function InviteStaffDialogBody({
       required: true,
       placeholder: 'Enter name',
       inputProps: { autoComplete: 'name', 'data-qa': 'invite-name' },
-    },
-    {
-      type: 'input',
-      name: 'email',
-      label: 'Email',
-      required: true,
-      inputType: 'email',
-      placeholder: 'name@shadhilbuilders.in',
-      inputProps: { autoComplete: 'email', 'data-qa': 'invite-email' },
     },
     {
       type: 'custom',
@@ -253,6 +258,14 @@ function InviteStaffDialogBody({
 
   const isResult = result !== null;
 
+  // The panel stays open while it holds a value: collapsing a typed address
+  // would hide what the invite will use, and the trigger cannot show it back.
+  // "Remove email" is the way back to the collapsed state.
+  const emailValue = form.watch('email');
+  const showEmailField = emailExpanded || emailValue.length > 0;
+  const emailPanelId = `${emailInputId}-panel`;
+  const emailError = form.formState.errors.email?.message;
+
   return (
     <Dialog
       // The trigger is rendered by the outer shell, so this body opens with
@@ -277,7 +290,10 @@ function InviteStaffDialogBody({
       // `max-h` + `grid-rows-[auto_minmax(0,1fr)_auto]` instead pins the header
       // and footer and makes the BODY the only scrolling region: the body is
       // `children` and gets `overflow-y-auto` per-step below.
-      contentClassName="max-h-[calc(100dvh-4rem)] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-lg"
+      // `sm:max-w-md` is the library's standard dialog width. The three fields and
+      // the footer are single-column, so the extra 8rem of `lg` bought nothing
+      // but a wider tap target to miss on a phone.
+      contentClassName="max-h-[calc(100dvh-4rem)] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-md"
       footer={
         isResult ? (
           <div className="flex w-full justify-end">
@@ -322,15 +338,76 @@ function InviteStaffDialogBody({
           </p>
         </div>
       ) : (
-        <Form
-          form={form}
-          id={formId}
-          onSubmit={onSubmit}
-          hideSubmitButton
-          hideResetButton
-          className="min-h-0 overflow-y-auto px-2"
-          fields={fields}
-        />
+        <div className="min-h-0 overflow-y-auto px-2">
+          <Form
+            form={form}
+            id={formId}
+            onSubmit={onSubmit}
+            hideSubmitButton
+            hideResetButton
+            fields={fields}
+          />
+
+          {/*
+            Email lives OUTSIDE the field list on purpose: it is optional, and a
+            Form field would render a permanent "Email" label for something most
+            invites do not fill in. The disclosure keeps the default form at
+            name / phone / role and one quiet line.
+          */}
+          <div className="mt-4 border-t pt-3">
+            {showEmailField ? (
+              <div id={emailPanelId} className="space-y-2">
+                <Label htmlFor={emailInputId}>Email</Label>
+                <Input
+                  id={emailInputId}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="name@shadhilbuilders.in"
+                  data-qa="invite-email"
+                  aria-invalid={emailError ? true : undefined}
+                  {...form.register('email')}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Used for signing in and notifications. Leave it empty and the person signs in with
+                  their phone number.
+                </p>
+                {emailError ? (
+                  <p className="text-danger text-xs" role="alert">
+                    {emailError}
+                  </p>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-0"
+                  data-qa="invite-email-remove"
+                  onClick={() => {
+                    form.setValue('email', '');
+                    form.clearErrors('email');
+                    setEmailExpanded(false);
+                  }}
+                >
+                  Remove email
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground px-0"
+                onClick={() => setEmailExpanded(true)}
+                aria-expanded={false}
+                aria-controls={emailPanelId}
+                data-qa="invite-email-toggle"
+              >
+                <LuChevronRight className="size-4" />
+                Add an email (optional)
+              </Button>
+            )}
+          </div>
+        </div>
       )}
     </Dialog>
   );

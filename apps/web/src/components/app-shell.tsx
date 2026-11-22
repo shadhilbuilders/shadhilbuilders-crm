@@ -93,6 +93,8 @@ import {
   useNavSync,
   type NavItem,
 } from '@/lib/nav';
+import { isPlaceholderEmail } from '@shadhil/api-types';
+
 import { Skeleton } from '@/components/shared/Skeleton';
 import { isAdminLike, useSessionUser } from '@/lib/session';
 import Image from 'next/image';
@@ -605,8 +607,11 @@ function UserMenuFooter() {
 
   return (
     <NavUser
-      name={user.name || user.email}
-      email={user.email}
+      // A staff member invited by phone only has a generated
+      // `noemail+<hex>@users.invalid` address (2026-11-21). It is not an address
+      // anybody can write to, so it is never shown - the name stands alone.
+      name={user.name || 'Your account'}
+      email={isPlaceholderEmail(user.email) ? '' : user.email}
       role={user.role}
       // Settings is an ORGANIZATION-scoped page (`/[orgSlug]/settings`), so the
       // href needs the resolved slug. useOrgSlug() falls back to the URL's first

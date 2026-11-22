@@ -54,7 +54,11 @@ import {
 } from '@paalstack/react-ui';
 import { LuArrowRight, LuExternalLink, LuInfo, LuMoon, LuSun } from '@paalstack/react-icons/lu';
 
-import { ChangePasswordFormSchema, type ChangePasswordFormValues } from '@shadhil/api-types';
+import {
+  ChangePasswordFormSchema,
+  isPlaceholderEmail,
+  type ChangePasswordFormValues,
+} from '@shadhil/api-types';
 
 import { api } from '@/apis/client';
 import { authClient } from '@/lib/auth-client';
@@ -263,6 +267,48 @@ function ProfileSection({
     );
   }
 
+  // --- Email (2026-11-21) -------------------------------------------------
+  // A staff member invited with only a phone number carries a generated
+  // `noemail+<hex>@users.invalid` address that is never shown. That is the one
+  // case where they may set their own address, and it needs the current
+  // password because the change repoints their login. Anything else stays a
+  // read-only field pointing at an administrator: this deployment has no
+  // verification email, so a real-to-real self-service change could hand the
+  // account to a mailbox nobody has proven they own.
+  const showsPlaceholderEmail = isPlaceholderEmail(email);
+  const [newEmail, setNewEmail] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [emailPending, setEmailPending] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const canAddEmail =
+    newEmail.trim().length >= 5 &&
+    newEmail.includes('@') &&
+    emailPassword.length > 0 &&
+    !emailPending;
+
+  function onAddEmail(): void {
+    if (!canAddEmail) return;
+    setEmailError(null);
+    setEmailPending(true);
+    updateProfile.mutate(
+      { email: newEmail.trim(), currentPassword: emailPassword },
+      {
+        onSuccess: async () => {
+          setNewEmail('');
+          setEmailPassword('');
+          toast.success('Email added. You can now sign in with it.');
+          await onSaved();
+        },
+        onError: (err: unknown) => {
+          // Shown inline rather than as a toast: the person needs the message
+          // next to the field they have to fix.
+          setEmailError(err instanceof Error ? err.message : 'Could not save your email');
+        },
+        onSettled: () => setEmailPending(false),
+      },
+    );
+  }
+
   const fields: FormFieldItemType<ProfileFormValues>[] = [
     {
       type: 'input',
@@ -299,8 +345,10 @@ function ProfileSection({
       <CardHeader>
         <CardTitle>Profile</CardTitle>
         <CardDescription>
-          How your name appears to teammates in the sidebar, chat mentions and notifications. Your
-          email address is managed by an administrator.
+          How your name appears to teammates in the sidebar, chat mentions and notifications.
+          {showsPlaceholderEmail
+            ? ' Add an email address to sign in with it as well as your phone number.'
+            : ' Your email address is managed by an administrator.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="mt-4 space-y-4">
@@ -321,16 +369,70 @@ function ProfileSection({
         <Separator />
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="settings-profile-email">Email</Label>
-            <Input
-              id="settings-profile-email"
-              value={email}
-              readOnly
-              aria-describedby="settings-profile-email-help"
-              className="min-h-11"
-              data-qa="settings-profile-email"
-            />
+          <div className="space-y-1 sm:col-span-2">
+            {showsPlaceholderEmail ? (
+              <>
+                <Label htmlFor="settings-profile-email">Email</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Input
+                    id="settings-profile-email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                    value={newEmail}
+                    onChange={(event) => setNewEmail(event.target.value)}
+                    disabled={emailPending}
+                    aria-describedby="settings-profile-email-help"
+                    className="min-h-11"
+                    data-qa="settings-profile-email"
+                  />
+                  <PasswordInput
+                    value={emailPassword}
+                    onChange={(event) => setEmailPassword(event.target.value)}
+                    placeholder="Current password"
+                    autoComplete="current-password"
+                    disabled={emailPending}
+                    aria-label="Current password"
+                    className="min-h-11 w-full"
+                    data-qa="settings-profile-email-password"
+                  />
+                </div>
+                {emailError !== null ? (
+                  <p className="text-destructive text-xs" data-qa="settings-profile-email-error">
+                    {emailError}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={onAddEmail}
+                    disabled={!canAddEmail}
+                    isLoading={emailPending}
+                    loadingText="Adding..."
+                    data-qa="settings-profile-email-save"
+                  >
+                    Add email
+                  </Button>
+                  <span className="text-muted-foreground text-xs">
+                    Until then, sign in with your phone number and password.
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <Label htmlFor="settings-profile-email">Email</Label>
+                <Input
+                  id="settings-profile-email"
+                  value={email}
+                  readOnly
+                  aria-describedby="settings-profile-email-help"
+                  className="min-h-11"
+                  data-qa="settings-profile-email"
+                />
+              </>
+            )}
           </div>
           <div className="space-y-1">
             <Label htmlFor="settings-profile-userid">User ID</Label>
@@ -349,9 +451,18 @@ function ProfileSection({
         >
           <LuInfo className="size-3.5 shrink-0" aria-hidden />
           <span>
-            Email changes need an administrator because this deployment has no email-verification
-            step - a self-service change could move your login to an address nobody has proven they
-            own.
+            {showsPlaceholderEmail ? (
+              <>
+                Adding an email means you can sign in with either your phone number or this address.
+                We do not send email yet, so there is nothing to confirm.
+              </>
+            ) : (
+              <>
+                Email changes need an administrator because this deployment has no
+                email-verification step - a self-service change could move your login to an address
+                nobody has proven they own.
+              </>
+            )}
             {orgSlug !== null ? (
               <>
                 {' '}
@@ -809,7 +920,9 @@ function AppearanceSection() {
           </div>
         </div>
         {user !== null ? (
-          <p className="text-muted-foreground mt-4 text-xs">Signed in as {user.email}.</p>
+          <p className="text-muted-foreground mt-4 text-xs">
+            Signed in as {isPlaceholderEmail(user.email) ? user.name : user.email}.
+          </p>
         ) : null}
       </CardContent>
     </Card>

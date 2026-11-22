@@ -78,12 +78,24 @@ async function openInvitesTab(page: Page): Promise<void> {
   await page.waitForTimeout(300);
 }
 
-/** Open the "Invite staff" dialog. */
+/** Open the "Invite staff" dialog and reveal the optional email field. */
 async function openInviteDialog(page: Page): Promise<void> {
   const trigger = page.locator('[data-qa="invite-staff-button"]');
   await trigger.waitFor({ state: 'visible', timeout: 20_000 });
   await trigger.click();
-  await page.locator('[data-qa="invite-email"]').waitFor({ state: 'visible', timeout: 15_000 });
+  await revealEmailField(page);
+}
+
+/**
+ * The email input is a disclosure since 2026-11-21 (an invite can go out with a
+ * phone only), so anything that fills it has to open the panel first.
+ */
+async function revealEmailField(page: Page): Promise<void> {
+  const emailField = page.locator('[data-qa="invite-email"]');
+  if ((await emailField.count()) === 0) {
+    await page.locator('[data-qa="invite-email-toggle"]').click();
+  }
+  await emailField.waitFor({ state: 'visible', timeout: 15_000 });
 }
 
 /** Layout facts for the current viewport. */
@@ -225,7 +237,7 @@ test('the invite link wraps inside the dialog instead of widening it', async ({ 
   const emptyCta = page.locator('[data-qa="invite-staff-empty-cta"]');
   const headerCta = page.locator('[data-qa="invite-staff-button"]');
   await ((await emptyCta.count()) > 0 ? emptyCta : headerCta).first().click();
-  await page.locator('[data-qa="invite-email"]').waitFor({ state: 'visible', timeout: 20_000 });
+  await revealEmailField(page);
   await page.locator('[data-qa="invite-name"]').fill('Mobile Audit Invitee');
   await page.locator('[data-qa="invite-email"]').fill(seedEmail);
   await page.locator('[data-qa="invite-phone"]').fill('9876500011');

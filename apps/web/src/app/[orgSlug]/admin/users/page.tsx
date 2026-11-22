@@ -63,6 +63,7 @@ import type { Role } from '@/apis/client';
 import { STAFF_ROLES } from '@/apis/client';
 import { orgHref } from '@/lib/nav';
 import { isAdminLike, outranks, useSessionUser } from '@/lib/session';
+import { isPlaceholderEmail } from '@shadhil/api-types';
 import { useOrgSlug } from '@/lib/tenant-context';
 
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -608,9 +609,22 @@ function UserTable({
         // Hidden below md with phone/reportsTo/projects: a long address alone was
         // wider than the viewport. The name still links to the detail page, and
         // the search matches email, so nothing becomes unreachable.
-        cell: ({ row }) => (
-          <span className="text-muted-foreground text-sm">{row.original.email}</span>
-        ),
+        cell: ({ row }) => {
+          // Staff invited with a phone only carry a generated
+          // `noemail+<hex>@users.invalid` address (2026-11-21). Printing it would
+          // look like a real mailbox and invites people to try it, so the cell
+          // says what is true: there is no address, sign in by phone.
+          if (isPlaceholderEmail(row.original.email)) {
+            return (
+              <Tooltip content="This account signs in with its phone number">
+                <span className="text-muted-foreground text-sm italic" data-qa="users-no-email">
+                  No email
+                </span>
+              </Tooltip>
+            );
+          }
+          return <span className="text-muted-foreground text-sm">{row.original.email}</span>;
+        },
         enableSorting: true,
       },
       {

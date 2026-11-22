@@ -40,6 +40,9 @@ const PUBLIC_PATHS = [
   // is unreachable. See the matcher for the second half of this fix.
   '/invite',
   '/api/public/invites',
+  // Phone-or-email login resolver (2026-11-21). Same reason: it runs before a
+  // session exists and the browser has to reach a same-origin URL.
+  '/api/public/auth',
   '/icons', // PWA brand assets (icon-192, icon-512, maskable-512, apple-touch-180)
   '/cmda-plan.svg', // approved plot-layout artwork: the SW precaches it from /login with no session, so it must never redirect to /login
   '/brand', // brand logo assets - rendered on the unauthenticated auth top bar (/login etc.)

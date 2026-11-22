@@ -106,7 +106,9 @@ export async function loginAs(page: Page, email: string, password: string): Prom
  *     already left /login before deciding anything went wrong.
  */
 async function signInOnLoginForm(page: Page, email: string, password: string): Promise<void> {
-  const emailInput = page.locator('input#email, input[name="email"]');
+  // The field accepts an email OR a phone number since 2026-11-21, so it is
+  // named `identifier`. `input[name="email"]` no longer exists.
+  const emailInput = page.locator('input#identifier, input[name="identifier"]');
   const passwordInput = page.locator('[data-qa="login-password"]');
   const submit = page.getByRole('button', { name: /sign in/i });
 

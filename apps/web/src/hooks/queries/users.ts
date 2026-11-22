@@ -281,12 +281,24 @@ export type BackendUpdatedProfile = {
 export function useUpdateProfile() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, phone }: { name?: string; phone?: string | null }) =>
+    mutationFn: ({
+      name,
+      phone,
+      email,
+      currentPassword,
+    }: {
+      name?: string;
+      phone?: string | null;
+      /** Only ever a placeholder -> real change; the API refuses anything else. */
+      email?: string;
+      currentPassword?: string;
+    }) =>
       api<BackendUpdatedProfile>('/users/me', {
         method: 'PATCH',
         json: {
           ...(name !== undefined ? { name } : {}),
           ...(phone !== undefined ? { phone } : {}),
+          ...(email !== undefined ? { email, currentPassword } : {}),
         },
       }),
     onSuccess: () => {

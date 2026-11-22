@@ -270,6 +270,49 @@ describe('SettingsPage - profile', () => {
     expect(email?.hasAttribute('readonly')).toBe(true);
   });
 
+  it('offers an editable email when the stored address is a placeholder', async () => {
+    // Staff invited by phone only carry a generated address they never see
+    // (2026-11-21). That is the single case where the field stops being
+    // read-only, and it needs the current password beside it.
+    mocks.useSessionUser.mockReturnValue({
+      user: { ...telecaller, email: 'noemail+0123456789abcdef@users.invalid' },
+      isPending: false,
+      error: null,
+      refetchSession: vi.fn().mockResolvedValue(undefined),
+    });
+    await mount();
+
+    const email = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-email"]');
+    expect(email?.readOnly).toBe(false);
+    // The synthetic address is never rendered, not even as a value.
+    expect(email?.value).toBe('');
+    expect(document.body.textContent ?? '').not.toContain('users.invalid');
+
+    const save = (): HTMLButtonElement | null =>
+      document.querySelector<HTMLButtonElement>('[data-qa="settings-profile-email-save"]');
+    // Nothing typed yet, so the button cannot be pressed.
+    expect(save()?.disabled).toBe(true);
+
+    setNativeValue(email!, 'priya@shadhilbuilders.in');
+    const passwordWrap = document.querySelector('[data-qa="settings-profile-email-password"]');
+    const passwordInput = (
+      passwordWrap instanceof HTMLInputElement ? passwordWrap : passwordWrap?.querySelector('input')
+    ) as HTMLInputElement | null;
+    expect(passwordInput).not.toBeNull();
+    setNativeValue(passwordInput!, 'secret123');
+    await act(async () => {});
+
+    expect(save()?.disabled).toBe(false);
+    await act(async () => {
+      save()?.click();
+    });
+
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      { email: 'priya@shadhilbuilders.in', currentPassword: 'secret123' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
   it('posts the name to the SELF endpoint and refetches the session', async () => {
     const refetchSession = vi.fn().mockResolvedValue(undefined);
     mocks.useSessionUser.mockReturnValue({
