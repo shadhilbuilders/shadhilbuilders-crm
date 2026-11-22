@@ -60,6 +60,7 @@ import {
   hashInviteToken,
   inviteExpiryFrom,
   looksLikeInviteToken,
+  makePlaceholderEmail,
 } from './invites.tokens';
 
 /** Roles that cannot exist without a team, mirroring UsersService.create. */
@@ -212,12 +213,19 @@ export class InvitesService {
 
       const teamId = await this.resolveInviteTeam(client, actor, dto);
 
+      // An invite without an address still needs one in the row: `User.email`
+      // is NOT NULL and sign-in looks users up by email. Computed once, here,
+      // so every duplicate check below runs against the value that will be
+      // stored - `where: { email: undefined }` would silently drop the
+      // predicate and match an arbitrary row.
+      const email = dto.email ?? makePlaceholderEmail();
+
       // The address must not already be a user in this org. Checked for
       // soft-deleted rows too: re-inviting an address that belongs to a
       // disabled account would fail at acceptance with a P2002 the invitee
       // could do nothing about, so the admin is told now instead.
       const existingUser = await client.user.findFirst({
-        where: { email: dto.email, organizationId: actor.organizationId },
+        where: { email, organizationId: actor.organizationId },
         select: { id: true, deletedAt: true },
       });
       if (existingUser !== null) {
@@ -229,14 +237,17 @@ export class InvitesService {
         );
       }
 
-      // One live invite per address. The partial unique index would also
-      // catch this, but a P2002 gives the operator nothing to act on.
+      // One live invite per address, and a LAPSED one still blocks: the partial
+      // unique index keys on `status` alone, so a PENDING row past its deadline
+      // would reject the insert with a P2002 that says nothing about expiry.
+      // Flip it first, then everything still PENDING is live by definition.
+      await this.expireLapsed(client, actor.organizationId, email);
+
       const liveInvite = await client.invite.findFirst({
         where: {
           organizationId: actor.organizationId,
-          email: dto.email,
+          email,
           status: 'PENDING',
-          expiresAt: { gt: new Date() },
         },
         select: { id: true },
       });
@@ -248,19 +259,16 @@ export class InvitesService {
       }
 
       const rawToken = generateInviteToken();
-      const created = await client.invite.create({
-        data: {
-          organizationId: actor.organizationId,
-          email: dto.email,
-          name: dto.name,
-          phone: dto.phone,
-          role: dto.role as Role,
-          teamId,
-          tokenHash: hashInviteToken(rawToken),
-          invitedById: actor.sub,
-          expiresAt: inviteExpiryFrom(new Date(), INVITE_TTL_DAYS),
-        },
-        select: INVITE_SELECT,
+      const created = await this.createInviteRow(client, {
+        organizationId: actor.organizationId,
+        email,
+        name: dto.name,
+        phone: dto.phone,
+        role: dto.role as Role,
+        teamId,
+        tokenHash: hashInviteToken(rawToken),
+        invitedById: actor.sub,
+        expiresAt: inviteExpiryFrom(new Date(), INVITE_TTL_DAYS),
       });
 
       await client.auditLog.create({
@@ -334,6 +342,75 @@ export class InvitesService {
   }
 
   /**
+   * Flip a lapsed PENDING invite for this address to EXPIRED.
+   *
+   * The partial unique index keys on `status` alone, so a PENDING row past its
+   * deadline blocks a re-invite that every other check allows. This is the only
+   * moment the stored value decides anything: reads keep deriving EXPIRED from
+   * `expiresAt`, so an address that is never re-invited stays PENDING in storage
+   * and still reports EXPIRED. ACCEPTED and REVOKED are terminal, and the WHERE
+   * clause below keeps them that way.
+   *
+   * At most one row can match, because the same index permits only one PENDING
+   * row per organisation and address. Column-level grants on `Invite` include
+   * `status`, so this needs no privilege change.
+   */
+  private async expireLapsed(
+    client: PrismaClient,
+    organizationId: string,
+    email: string,
+  ): Promise<void> {
+    await client.invite.updateMany({
+      where: {
+        organizationId,
+        email,
+        status: 'PENDING',
+        expiresAt: { lte: new Date() },
+      },
+      data: { status: 'EXPIRED' },
+    });
+  }
+
+  /**
+   * Insert an invite, translating the partial-index violation into the same
+   * friendly 409 the pre-insert check throws.
+   *
+   * Two concurrent creates for one address both pass that check and only one
+   * can win the index; without this the loser gets a raw P2002 and a 500. The
+   * `id` is a cuid and `tokenHash` is 32 random bytes, so the pending-email
+   * index is the only realistic source of a violation on this insert.
+   */
+  private async createInviteRow(
+    client: PrismaClient,
+    data: {
+      organizationId: string;
+      email: string;
+      name: string;
+      phone: string;
+      role: Role;
+      teamId: string | null;
+      tokenHash: string;
+      invitedById: string;
+      expiresAt: Date;
+    },
+  ): Promise<InviteRecord> {
+    try {
+      return (await client.invite.create({
+        data,
+        select: INVITE_SELECT,
+      })) as unknown as InviteRecord;
+    } catch (error) {
+      if ((error as { code?: string }).code === 'P2002') {
+        throw new CodedConflictException(
+          INVITE_ALREADY_PENDING,
+          'That person already has a pending invite. Resend it instead of creating a new one.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Translate a requested status list into SQL.
    *
    * EXPIRED and PENDING both live on the SAME stored value ('PENDING'), split
@@ -348,7 +425,16 @@ export class InvitesService {
 
     const clauses = statuses.map((status) => {
       if (status === 'EXPIRED') {
-        return { status: 'PENDING', expiresAt: { lte: now } };
+        // Two shapes, one state. A row `create()` flipped while replacing a
+        // lapsed invite is stored EXPIRED; a row nobody re-invited is still
+        // PENDING with a past deadline. Filtering on only one shape would make
+        // the other disappear from the Invites tab.
+        return {
+          OR: [
+            { status: 'EXPIRED' },
+            { status: 'PENDING', expiresAt: { lte: now } },
+          ],
+        };
       }
       if (status === 'PENDING') {
         return { status: 'PENDING', expiresAt: { gt: now } };

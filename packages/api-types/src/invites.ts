@@ -72,7 +72,14 @@ export const INVITE_TTL_DAYS = 7;
  * rejects it with a readable message rather than the DTO silently allowing it.
  */
 export const CreateInviteDtoSchema = z.object({
-  email: EmailSchema,
+  /**
+   * OPTIONAL since 2026-11-21. Field staff are often reachable on WhatsApp and
+   * nowhere else, and the login path now accepts a phone, so an invite can go
+   * out without an address. The service substitutes a generated
+   * `noemail+<hex>@users.invalid` placeholder because `User.email` is NOT NULL
+   * and sign-in looks users up by email; see `isPlaceholderEmail`.
+   */
+  email: EmailSchema.optional(),
   name: z
     .string()
     .trim()
@@ -88,8 +95,9 @@ export type CreateInviteDto = z.infer<typeof CreateInviteDtoSchema>;
  * GET /api/invites filters.
  *
  * STATUS IS NOT A COLUMN FILTER. EXPIRED is computed from
- * `(status, expiresAt)`, so the service must translate:
- *   EXPIRED -> status = 'PENDING' AND expiresAt <= now()
+ * `(status, expiresAt)`, but a row `create()` replaced can also be STORED as
+ * EXPIRED, so the service must translate:
+ *   EXPIRED -> (status = 'EXPIRED') OR (status = 'PENDING' AND expiresAt <= now())
  *   PENDING -> status = 'PENDING' AND expiresAt >  now()
  *   others  -> status = <value>
  * Applying this in memory instead would silently narrow only the loaded page

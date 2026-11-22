@@ -13,6 +13,8 @@
 // because the token sits in a URL path and `+` / `/` would need escaping.
 import { createHash, randomBytes } from 'node:crypto';
 
+import { PLACEHOLDER_EMAIL_DOMAIN, PLACEHOLDER_EMAIL_PREFIX } from '@shadhil/api-types';
+
 /** Length of the raw token in characters (32 bytes -> 43 base64url chars). */
 export const INVITE_TOKEN_LENGTH = 43;
 
@@ -82,4 +84,24 @@ export function effectiveStatus(
 /** Absolute expiry for a freshly issued token. */
 export function inviteExpiryFrom(now: Date = new Date(), ttlDays = 7): Date {
   return new Date(now.getTime() + ttlDays * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * A synthetic address for an invite that carries no email.
+ *
+ * `noemail+<16 hex>@users.invalid`. `.invalid` is reserved by RFC 2606, so a
+ * bug that tries to mail one fails loudly instead of reaching a stranger, and
+ * the RANDOM local part matters: sign-in looks a user up by email alone while
+ * the unique index is per organisation, so a predictable local part (a phone
+ * number, a name) can collide across orgs and land the caller on the wrong
+ * row. Random also stops a re-hired person from squatting on the address the
+ * index still holds for a soft-deleted account.
+ *
+ * `random` is injectable so a test can assert the shape without pinning real
+ * entropy.
+ */
+export function makePlaceholderEmail(
+  random: () => string = () => randomBytes(8).toString('hex'),
+): string {
+  return `${PLACEHOLDER_EMAIL_PREFIX}${random()}@${PLACEHOLDER_EMAIL_DOMAIN}`;
 }

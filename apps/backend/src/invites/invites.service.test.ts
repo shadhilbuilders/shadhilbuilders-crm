@@ -18,6 +18,7 @@ import {
   INVITE_ALREADY_PENDING,
   INVITE_EMAIL_TAKEN,
   CreateInviteDtoSchema,
+  isPlaceholderEmail,
 } from '@shadhil/api-types';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
@@ -245,6 +246,36 @@ describe.skipIf(SKIP)('InvitesService.create - hierarchy and guards', () => {
     expect(result.whatsappUrl).not.toContain('+91');
   });
 
+  it('creates an invite with no email and generates an unusable placeholder', async () => {
+    const service = makeService();
+    const first = await service.create(adminActor, {
+      name: 'Phone Only One',
+      phone: uniquePhone(),
+      role: 'TELECALLER',
+      teamId: TEAM_ID,
+    });
+    const second = await service.create(adminActor, {
+      name: 'Phone Only Two',
+      phone: uniquePhone(),
+      role: 'TELECALLER',
+      teamId: TEAM_ID,
+    });
+
+    // Two rows must not share an address: sign-in looks a user up by email
+    // alone, so a shared placeholder would resolve to an arbitrary account.
+    expect(first.invite.email).not.toBe(second.invite.email);
+    expect(isPlaceholderEmail(first.invite.email)).toBe(true);
+    expect(first.invite.email.endsWith('@users.invalid')).toBe(true);
+
+    const stored = await seed((db) =>
+      db.invite.findUnique({
+        where: { id: first.invite.id },
+        select: { email: true },
+      }),
+    );
+    expect(stored?.email).toBe(first.invite.email);
+  });
+
   it('refuses a second live invite for the same address', async () => {
     const service = makeService();
     const email = inviteEmail('dupe');
@@ -336,6 +367,87 @@ describe.skipIf(SKIP)('InvitesService.create - hierarchy and guards', () => {
   });
 });
 
+describe.skipIf(SKIP)('InvitesService.create - an address whose invite lapsed', () => {
+  it('re-invites the address and stores the replaced invite as EXPIRED', async () => {
+    const service = makeService();
+    const email = inviteEmail('lapsed');
+    const first = await service.create(adminActor, {
+      email,
+      name: 'Lapsed First',
+      phone: uniquePhone(),
+      role: 'TELECALLER',
+      teamId: TEAM_ID,
+    });
+
+    // Age it the way a week would. The row is still PENDING in storage, which
+    // is exactly the state the partial unique index refuses to share.
+    await seed((db) =>
+      db.invite.update({
+        where: { id: first.invite.id },
+        data: { expiresAt: new Date(Date.now() - 60_000) },
+      }),
+    );
+
+    const second = await service.create(adminActor, {
+      email,
+      name: 'Lapsed Second',
+      phone: uniquePhone(),
+      role: 'TELECALLER',
+      teamId: TEAM_ID,
+    });
+    expect(second.invite.id).not.toBe(first.invite.id);
+
+    const rows = await seed((db) =>
+      db.invite.findMany({
+        where: { email },
+        select: { id: true, status: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.id).toBe(first.invite.id);
+    expect(rows[0]?.status).toBe('EXPIRED');
+    expect(rows[1]?.status).toBe('PENDING');
+  });
+
+  it('leaves a REVOKED invite alone - the flip only touches PENDING rows', async () => {
+    const service = makeService();
+    const email = inviteEmail('revoked');
+    const created = await service.create(adminActor, {
+      email,
+      name: 'Revoked Then Again',
+      phone: uniquePhone(),
+      role: 'TELECALLER',
+      teamId: TEAM_ID,
+    });
+    await service.revoke(adminActor, created.invite.id);
+    await seed((db) =>
+      db.invite.update({
+        where: { id: created.invite.id },
+        data: { expiresAt: new Date(Date.now() - 60_000) },
+      }),
+    );
+
+    // A revoked row holds no slot, so this create needs no flip to succeed.
+    const again = await service.create(adminActor, {
+      email,
+      name: 'Revoked Then Again 2',
+      phone: uniquePhone(),
+      role: 'TELECALLER',
+      teamId: TEAM_ID,
+    });
+    expect(again.invite.id).not.toBe(created.invite.id);
+
+    const row = await seed((db) =>
+      db.invite.findUnique({
+        where: { id: created.invite.id },
+        select: { status: true },
+      }),
+    );
+    expect(row?.status).toBe('REVOKED');
+  });
+});
+
 describe.skipIf(SKIP)('InvitesService.list - scope and the derived-status filter', () => {
   it('narrows to EXPIRED via SQL, not the stored column', async () => {
     const service = makeService();
@@ -347,7 +459,7 @@ describe.skipIf(SKIP)('InvitesService.list - scope and the derived-status filter
       teamId: TEAM_ID,
     });
 
-    // Backdate the deadline: nothing writes EXPIRED to the column, so a naive
+    // Backdate the deadline: this row is still PENDING in storage, so a naive
     // `WHERE status = 'EXPIRED'` would return nothing here.
     await seed((db) =>
       db.invite.update({
@@ -371,6 +483,46 @@ describe.skipIf(SKIP)('InvitesService.list - scope and the derived-status filter
     for (const row of rows.rows) {
       expect(row.team?.id).toBe(TEAM_ID);
     }
+  });
+
+  it('returns a stored EXPIRED row and a lapsed PENDING one from the same filter', async () => {
+    const service = makeService();
+
+    // Derived: still PENDING, past its deadline.
+    const derived = await service.create(adminActor, {
+      email: inviteEmail('derived-expired'),
+      name: 'Derived Expired',
+      phone: uniquePhone(),
+      role: 'TELECALLER',
+      teamId: TEAM_ID,
+    });
+    await seed((db) =>
+      db.invite.update({
+        where: { id: derived.invite.id },
+        data: { expiresAt: new Date(Date.now() - 60_000) },
+      }),
+    );
+
+    // Stored: what create() leaves behind when it replaces a lapsed invite.
+    const stored = await service.create(adminActor, {
+      email: inviteEmail('stored-expired'),
+      name: 'Stored Expired',
+      phone: uniquePhone(),
+      role: 'TELECALLER',
+      teamId: TEAM_ID,
+    });
+    await seed((db) =>
+      db.invite.update({
+        where: { id: stored.invite.id },
+        data: { status: 'EXPIRED' },
+      }),
+    );
+
+    const expired = await service.list(adminActor, { status: ['EXPIRED'], limit: 200, offset: 0 });
+    const ids = expired.rows.map((r) => r.id);
+    expect(ids).toContain(derived.invite.id);
+    expect(ids).toContain(stored.invite.id);
+    expect(expired.rows.every((r) => r.status === 'EXPIRED')).toBe(true);
   });
 });
 
