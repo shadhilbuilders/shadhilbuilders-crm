@@ -111,3 +111,39 @@ export const LEAD_AGE_TIER_CLASS: Record<LeadAgeTier, string> = {
   warn: 'bg-yellow-200 hover:bg-yellow-300 dark:bg-yellow-900/50 dark:hover:bg-yellow-900/70',
   overdue: 'bg-red-200 hover:bg-red-300 dark:bg-red-950/50 dark:hover:bg-red-950/70',
 };
+
+/**
+ * One sentence for a bulk delete, in the operator's words (2026-11-23).
+ *
+ * The server refuses a WON lead or one with booking history on purpose, so the
+ * toast has to say which rows stayed and why. "Failed" would be a lie: nothing
+ * went wrong, those leads are protected.
+ */
+export function bulkDeleteSummary(result: {
+  deleted: readonly string[];
+  refused: readonly { id: string; reason: string }[];
+}): string {
+  const deleted = result.deleted.length;
+  const kept = result.refused.length;
+  const deletedText = deleted === 1 ? 'Lead deleted' : `${deleted} leads deleted`;
+  if (kept === 0) return deletedText;
+
+  // Group by what the server said, so twenty refusals read as one clause.
+  const counts = new Map<string, number>();
+  for (const row of result.refused) {
+    const label = classifyRefusal(row.reason);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const clauses = [...counts.entries()].map(([label, n]) => `${n} ${label}`);
+  const keptText = `${kept} kept: ${clauses.join(', ')}`;
+  if (deleted > 0) return `${deletedText}, ${keptText}`;
+  return keptText.charAt(0).toUpperCase() + keptText.slice(1);
+}
+
+/** Short phrase for a refusal reason. Unknown wording is passed through. */
+function classifyRefusal(reason: string): string {
+  if (/\bWON\b/.test(reason)) return 'already WON';
+  if (/booking/i.test(reason)) return 'with booking history';
+  if (/not found/i.test(reason)) return 'no longer exists';
+  return reason;
+}

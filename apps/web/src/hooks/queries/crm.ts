@@ -33,6 +33,7 @@ import type {
   CreateSiteVisitDto,
   LeadActivitiesResponse,
   LeadDetail,
+  BulkDeleteLeadsResult,
   LeadFactsResponse,
   LeadFactRow,
   LeadStateTransitionDto,
@@ -366,6 +367,35 @@ export function useDeleteLead(leadId: string | null) {
         // Detail cache is REMOVED (not invalidated) so a stale link cannot
         // refetch a deleted row into ['lead', id] and render a 404 page.
         void queryClient.removeQueries({ queryKey: ['lead', leadId] });
+      }
+    },
+  });
+}
+
+/**
+ * Delete several leads in one action (POST /leads/bulk-delete, 2026-11-23).
+ *
+ * The server answers per id: `deleted` and `refused` with a reason. A refusal is
+ * not an error - a WON lead or one with booking history cannot go - so this
+ * resolves normally and the caller reports what happened.
+ *
+ * Cache: every lead list and envelope is invalidated, and each deleted lead's
+ * DETAIL cache is removed (same reasoning as useDeleteLead: invalidating would
+ * refetch a deleted row into a 404-shaped error page).
+ */
+export function useBulkDeleteLeads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (leadIds: string[]) =>
+      api<BulkDeleteLeadsResult>('/leads/bulk-delete', {
+        method: 'POST',
+        json: { leadIds },
+      }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      void queryClient.invalidateQueries({ queryKey: ['leads-envelope'] });
+      for (const id of result.deleted) {
+        void queryClient.removeQueries({ queryKey: ['lead', id] });
       }
     },
   });

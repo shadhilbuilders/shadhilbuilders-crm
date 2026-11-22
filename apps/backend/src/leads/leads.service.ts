@@ -42,6 +42,7 @@ import type { JwtPayload } from '@shadhil/auth';
 import { PROJECT_ACTIVE, LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
 import { deriveWhatsAppReachability } from './whatsapp-reachability';
 import type {
+  BulkDeleteLeadsResult,
   CreateLeadDto,
   LeadActivitiesResponse,
   LeadDetail,
@@ -2083,6 +2084,39 @@ export class LeadsService {
    * WhatsappUnknownContact.convertedToLeadId pointing here (bare unique
    * string, no FK - cascade never touches it, D19).
    */
+  /**
+   * Delete several leads in one action (POST /leads/bulk-delete).
+   *
+   * A LOOP OVER `delete`, deliberately: that method owns the guard (WON, any
+   * booking), the audit before-snapshot and the RLS transaction, and duplicating
+   * those rules here is how they drift. The cost is one transaction per lead,
+   * which is fine for a cleanup of at most a hundred.
+   *
+   * A refusal is a RESULT, not an error: the caller gets back what was deleted
+   * and what stayed, with the reason the operator can act on. Only an
+   * unexpected failure (permissions, deadlock) escapes.
+   */
+  async deleteMany(actor: JwtPayload, leadIds: string[]): Promise<BulkDeleteLeadsResult> {
+    if (actor.role !== 'ADMIN' && actor.role !== 'OWNER') {
+      throw new ForbiddenException('Only admins and managers (owner/admin) can delete leads');
+    }
+    const deleted: string[] = [];
+    const refused: Array<{ id: string; reason: string }> = [];
+    for (const id of Array.from(new Set(leadIds))) {
+      try {
+        await this.delete(actor, id);
+        deleted.push(id);
+      } catch (error) {
+        if (error instanceof ConflictException || error instanceof NotFoundException) {
+          refused.push({ id, reason: error.message });
+          continue;
+        }
+        throw error;
+      }
+    }
+    return { deleted, refused };
+  }
+
   async delete(actor: JwtPayload, leadId: string): Promise<{ id: string }> {
     if (actor.role !== 'ADMIN' && actor.role !== 'OWNER') {
       throw new ForbiddenException('Only admins and managers (owner/admin) can delete leads');

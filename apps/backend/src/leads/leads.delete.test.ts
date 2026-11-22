@@ -39,7 +39,15 @@ const PROJECT_ID = `test-del-project-${RUN_TAG}`;
 const PHASE_ID = `test-del-phase-${RUN_TAG}`;
 const UNIT_ID = `test-del-unit-${RUN_TAG}`;
 
-const ALL_LEAD_IDS = [LEAD_OK, LEAD_WON, LEAD_BOOKED, LEAD_CONVERTED];
+// Includes the bulk-delete fixtures: those leads live on the same project, so a
+// teardown that forgets them leaves the FK from Lead.projectId blocking the
+// project delete (which then fails AFTER the tests have passed).
+const BULK_LEAD_IDS = [
+  `test-del-bulk-a-${RUN_TAG}`,
+  `test-del-bulk-b-${RUN_TAG}`,
+  `test-del-bulk-won-${RUN_TAG}`,
+];
+const ALL_LEAD_IDS = [LEAD_OK, LEAD_WON, LEAD_BOOKED, LEAD_CONVERTED, ...BULK_LEAD_IDS];
 const ALL_USER_IDS = [ADMIN_ID, TC_ID, MGR_ID, SE_ID];
 // Every business row now carries organizationId (T-ORG multitenancy).
 const ORG = 'ceid01lpfe1esm8jwsxid41k28';
@@ -367,5 +375,93 @@ describe.skipIf(!HAS_DB)('DELETE /leads/:id (leads.service.delete)', () => {
     );
     expect(contact).not.toBeNull();
     expect(contact?.convertedToLeadId).toBeNull();
+  });
+});
+
+// ── Bulk delete (2026-11-23) ───────────────────────────────────────────
+// Clearing junk one dialog at a time is what makes people stop clearing junk.
+// The bulk path is a loop over the single delete so the WON + booking guards and
+// the audit snapshot cannot drift, and a refusal is a RESULT: the operator has to
+// see which rows stayed and why, not a single opaque failure.
+describe.skipIf(!HAS_DB)('POST /leads/bulk-delete (leads.service.deleteMany)', () => {
+  const BULK_A = `test-del-bulk-a-${RUN_TAG}`;
+  const BULK_B = `test-del-bulk-b-${RUN_TAG}`;
+  const BULK_WON = `test-del-bulk-won-${RUN_TAG}`;
+
+  beforeAll(async () => {
+    if (prisma === null) return;
+    await adminSeed(async (db) => {
+      const baseLead = {
+        name: 'Bulk Delete Lead',
+        source: 'WEBSITE',
+        teamId: TEAM_ID,
+        ownerId: TC_ID,
+        ownerType: 'TELECALLER' as const,
+        organizationId: ORG,
+        projectId: PROJECT_ID,
+      };
+      for (const [id, n, state] of [
+        [BULK_A, 21, 'NEW'],
+        [BULK_B, 22, 'CONTACTED'],
+        [BULK_WON, 23, 'WON'],
+      ] as const) {
+        await db.lead.upsert({
+          where: { id },
+          update: { phone: PHONE(n), phoneE164: PHONE(n), state },
+          create: { id, phone: PHONE(n), phoneE164: PHONE(n), ...baseLead, state },
+        });
+      }
+    });
+  });
+
+  it('deletes what can go and names why the rest stayed', async () => {
+    const service = makeLeadsService();
+    const result = await service.deleteMany(actorFor('ADMIN'), [
+      BULK_A,
+      LEAD_WON,
+      LEAD_BOOKED,
+      BULK_B,
+      'test-del-bulk-missing',
+    ]);
+
+    expect(result.deleted.sort()).toEqual([BULK_A, BULK_B].sort());
+    const refusedIds = result.refused.map((r) => r.id).sort();
+    expect(refusedIds).toEqual([LEAD_WON, LEAD_BOOKED, 'test-del-bulk-missing'].sort());
+
+    const won = result.refused.find((r) => r.id === LEAD_WON);
+    expect(won?.reason).toContain('WON');
+    const booked = result.refused.find((r) => r.id === LEAD_BOOKED);
+    expect(booked?.reason.toLowerCase()).toContain('booking');
+    const missing = result.refused.find((r) => r.id === 'test-del-bulk-missing');
+    expect(missing?.reason.toLowerCase()).toContain('not found');
+
+    // Both deletions really happened, and each left its own audit snapshot.
+    if (prisma === null) throw new Error('prisma missing');
+    const remaining = await adminSeed((db) =>
+      db.lead.findMany({ where: { id: { in: [BULK_A, BULK_B] } }, select: { id: true } }),
+    );
+    expect(remaining).toEqual([]);
+    const audits = await adminSeed((db) =>
+      db.auditLog.findMany({
+        where: { action: 'lead.delete', entityId: { in: [BULK_A, BULK_B] } },
+        select: { entityId: true },
+      }),
+    );
+    expect(audits.map((a) => a.entityId).sort()).toEqual([BULK_A, BULK_B].sort());
+  });
+
+  it('de-duplicates repeated ids instead of reporting a second delete', async () => {
+    const service = makeLeadsService();
+    // BULK_WON was not touched above, so it is still here and still refused.
+    const result = await service.deleteMany(actorFor('ADMIN'), [BULK_WON, BULK_WON]);
+    expect(result.deleted).toEqual([]);
+    expect(result.refused).toHaveLength(1);
+  });
+
+  it('403: TELECALLER cannot bulk delete', async () => {
+    const service = makeLeadsService();
+    await expect(
+      service.deleteMany(actorFor('TELECALLER'), [BULK_WON]),
+    ).rejects.toMatchObject({ status: 403 });
   });
 });

@@ -38,6 +38,7 @@ import {
 } from '@paalstack/react-ui';
 import {
   AlertDialog,
+  Checkbox,
   DataTable,
   DataTableColumnHeaderToggle,
   DataTableRowActions,
@@ -55,16 +56,27 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
 import { LeadReassignDialog } from '@/components/leads/LeadReassignDialog';
 
-import { useDeleteLead, useLeads, useLeadsEnvelope } from '@/hooks/queries/crm';
+import {
+  useBulkDeleteLeads,
+  useDeleteLead,
+  useLeads,
+  useLeadsEnvelope,
+} from '@/hooks/queries/crm';
 import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { canDeleteLeads, canReassign, useSessionUser } from '@/lib/session';
-import { isOverdue, leadAgeTier, LEAD_AGE_TIER_CLASS, LEAD_STATES } from '@/lib/leads';
+import {
+  bulkDeleteSummary,
+  isOverdue,
+  leadAgeTier,
+  LEAD_AGE_TIER_CLASS,
+  LEAD_STATES,
+} from '@/lib/leads';
 import { useAgingTick } from '@/lib/use-aging-tick';
 import { labelFor } from '@/lib/labels';
 
 import { PageHeader } from '@/components/shared/PageHeader';
-import { LuInfo, LuPlus } from '@paalstack/react-icons/lu';
+import { LuInfo, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 
 type LeadRow = {
   id: string;
@@ -195,6 +207,34 @@ function LeadInboxPageInner() {
   const [reassignTarget, setReassignTarget] = useState<LeadRow | null>(null);
   const deleteLead = useDeleteLead(deleteTarget?.id ?? null);
 
+  // ── Bulk delete (2026-11-23) ────────────────────────────────────────────
+  // Selection is keyed by LEAD ID, never by row index. The table is server-paged
+  // and refetches under you (window focus, SSE), so an index-keyed selection
+  // would delete whatever happened to land in that position next.
+  //
+  // WON rows are not selectable because the server refuses them anyway; a
+  // checkbox that always fails is a trap. Bookings are not in the row payload,
+  // so those refusals surface after the fact, by name, in the toast.
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const bulkDelete = useBulkDeleteLeads();
+  const deletableRows = useMemo(() => rows.filter((row) => row.status !== 'WON'), [rows]);
+  const selectedCount = selectedIds.size;
+  const allDeletableSelected =
+    deletableRows.length > 0 && deletableRows.every((row) => selectedIds.has(row.id));
+
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleAll = (next: boolean) => {
+    setSelectedIds(next ? new Set(deletableRows.map((row) => row.id)) : new Set());
+  };
+
   function syncUrl(nextQ: string) {
     const usp = new URLSearchParams();
     if (nextQ.length >= 2) usp.set('q', nextQ);
@@ -212,6 +252,13 @@ function LeadInboxPageInner() {
     setSelectedStates(next);
     setPage(1); // a new filter starts back at page 1
   }
+
+  // A selection belongs to the rows the operator is looking at. Paging, sorting,
+  // searching or filtering replaces that slice, so the selection goes with it
+  // rather than turning into a deletion of rows nobody can see any more.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page, pageSize, serverSearch, selectedStates.join(','), sortBy, sortDir]);
 
   const summaryParts: string[] = [];
   if (overdueCount > 0) summaryParts.push(`${overdueCount} overdue`);
@@ -278,6 +325,39 @@ function LeadInboxPageInner() {
         </TooltipProvider>
       </div>
 
+      {canDelete && selectedCount > 0 ? (
+        <div
+          className="bg-muted/60 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2"
+          data-qa="leads-bulk-bar"
+        >
+          <span className="text-sm font-medium" data-qa="leads-bulk-count">
+            {selectedCount === 1 ? '1 lead selected' : `${selectedCount} leads selected`}
+          </span>
+          <span className="text-muted-foreground text-xs">
+            Only this page. WON leads cannot be deleted.
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+              data-qa="leads-bulk-clear"
+            >
+              Clear
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              leftIcon={<LuTrash2 className="size-4" />}
+              onClick={() => setBulkConfirmOpen(true)}
+              data-qa="leads-bulk-delete"
+            >
+              Delete {selectedCount === 1 ? 'lead' : `${selectedCount} leads`}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {leadsQuery.isLoading ? (
         <Skeleton variant="table" />
       ) : leadsQuery.error !== null && leadsQuery.error !== undefined ? (
@@ -323,6 +403,10 @@ function LeadInboxPageInner() {
           projectSlug={projectSlug}
           orgSlug={orgSlug}
           canDelete={canDelete}
+          selectedIds={selectedIds}
+          allDeletableSelected={allDeletableSelected}
+          onToggleRow={toggleRow}
+          onToggleAll={toggleAll}
           isFiltered={isFiltered}
           search={search}
           onSearchChange={applySearch}
@@ -383,6 +467,27 @@ function LeadInboxPageInner() {
         }}
       />
 
+      <AuditBulkDeleteDialog
+        open={bulkConfirmOpen}
+        count={selectedCount}
+        pending={bulkDelete.isPending}
+        onConfirm={() => {
+          const ids = Array.from(selectedIds);
+          bulkDelete.mutate(ids, {
+            onSuccess: (result) => {
+              // Server copy, summarised: refusals are protected rows, not errors.
+              toast.success(bulkDeleteSummary(result));
+              setSelectedIds(new Set());
+              setBulkConfirmOpen(false);
+            },
+            onError: (error) => {
+              toast.error(error instanceof Error ? error.message : 'Bulk delete failed');
+            },
+          });
+        }}
+        onCancel={() => setBulkConfirmOpen(false)}
+      />
+
       <LeadReassignDialog
         lead={
           reassignTarget === null
@@ -438,6 +543,43 @@ function DeleteConfirmDialog({
   );
 }
 
+function AuditBulkDeleteDialog({
+  open,
+  count,
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  count: number;
+  pending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+      trigger={null}
+      header={{
+        title: `Delete ${count === 1 ? 'this lead' : `these ${count} leads`}?`,
+        description:
+          'This permanently removes the leads, their chat history, activities, and visits. Leads that are WON or have booking history stay behind, and the result will tell you which. This action cannot be undone.',
+      }}
+      cancelButtonText="Cancel"
+      confirmButtonText={pending ? 'Deleting...' : count === 1 ? 'Delete lead' : `Delete ${count} leads`}
+      confirmButtonProps={{
+        variant: 'destructive',
+        disabled: pending,
+      }}
+      onConfirm={() => onConfirm()}
+      onCancel={() => onCancel()}
+    />
+  );
+}
+
 function LeadTable({
   rows,
   total,
@@ -454,6 +596,10 @@ function LeadTable({
   orgSlug,
   canDelete,
   canAssign,
+  selectedIds,
+  allDeletableSelected,
+  onToggleRow,
+  onToggleAll,
   isFiltered,
   search,
   onSearchChange,
@@ -478,6 +624,10 @@ function LeadTable({
   orgSlug: string | null;
   canDelete: boolean;
   canAssign: boolean;
+  selectedIds: ReadonlySet<string>;
+  allDeletableSelected: boolean;
+  onToggleRow: (id: string) => void;
+  onToggleAll: (next: boolean) => void;
   isFiltered: boolean;
   search: string;
   onSearchChange: (next: string) => void;
@@ -509,6 +659,43 @@ function LeadTable({
 
   const columns = useMemo<DataTableColumnDef<LeadRow>[]>(
     () => [
+      // Selection column (2026-11-23). Keyed by lead id, NOT by row index: the
+      // table is server-paged and refetches under the operator, and an index-keyed
+      // selection would end up pointing at different leads after a refetch.
+      ...(canDelete
+        ? [
+            {
+              id: 'select',
+              header: () => (
+                <Checkbox
+                  checked={allDeletableSelected}
+                  onCheckedChange={(checked) => onToggleAll(checked === true)}
+                  aria-label="Select every deletable lead on this page"
+                  data-qa="leads-select-all"
+                />
+              ),
+              cell: ({ row }: { row: { original: LeadRow } }) => {
+                const deletable = row.original.status !== 'WON';
+                return (
+                  <Checkbox
+                    checked={deletable && selectedIds.has(row.original.id)}
+                    disabled={!deletable}
+                    onCheckedChange={() => onToggleRow(row.original.id)}
+                    aria-label={
+                      deletable
+                        ? `Select ${row.original.name}`
+                        : `${row.original.name} is WON and cannot be deleted`
+                    }
+                    title={deletable ? undefined : 'WON leads cannot be deleted'}
+                    data-qa="leads-select-row"
+                  />
+                );
+              },
+              enableSorting: false,
+              enableHiding: false,
+            } satisfies DataTableColumnDef<LeadRow>,
+          ]
+        : []),
       {
         accessorKey: 'name',
         header: 'Name',
@@ -623,7 +810,20 @@ function LeadTable({
         enableHiding: false,
       },
     ],
-    [projectSlug, orgSlug, canDelete, canAssign, onEdit, onDelete, onReassign, onView],
+    [
+      projectSlug,
+      orgSlug,
+      canDelete,
+      canAssign,
+      selectedIds,
+      allDeletableSelected,
+      onToggleRow,
+      onToggleAll,
+      onEdit,
+      onDelete,
+      onReassign,
+      onView,
+    ],
   );
 
   const statusOptions = useMemo(

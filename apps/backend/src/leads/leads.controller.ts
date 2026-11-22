@@ -26,12 +26,14 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  BulkDeleteLeadsDtoSchema,
   CreateLeadDtoSchema,
   LeadFilterDtoSchema,
   LeadStateTransitionDtoSchema,
   ReassignLeadDtoSchema,
   SetLeadCoOwnerDtoSchema,
   UpdateLeadDtoSchema,
+  type BulkDeleteLeadsResult,
   type CreateLeadDto,
   LeadActivitiesQuerySchema,
   type LeadActivitiesResponse,
@@ -255,6 +257,19 @@ export class LeadsController {
     }
     const dto: SetLeadCoOwnerDto = parsed;
     return this.leads.setCoOwner(req.user!, dto);
+  }
+
+  @Post('bulk-delete')
+  @ApiOperation({
+    summary:
+      'Delete several leads at once. OWNER/ADMIN only. Returns what was deleted and what stayed, with the reason: a WON lead or one with booking history is deliberately undeletable and the operator needs to see which. POST, not DELETE, because some proxies strip a DELETE body and deleting nothing silently is worse.',
+  })
+  async bulkDelete(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+  ): Promise<BulkDeleteLeadsResult> {
+    const dto = parseBody(BulkDeleteLeadsDtoSchema, body);
+    return this.leads.deleteMany(req.user!, dto.leadIds);
   }
 
   @Delete(':id')

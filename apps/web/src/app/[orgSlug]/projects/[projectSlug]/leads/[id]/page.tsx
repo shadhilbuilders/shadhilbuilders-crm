@@ -13,10 +13,18 @@
 //     source, status badge, owner, co-owner, created/updated.
 //   - Timeline renders the activity rows (newest first) with the
 //     acting user's name joined in ("First call (Asha)").
-import { Card, CardContent, CardHeader, CardTitle } from '@paalstack/react-ui';
+import {
+  AlertDialog,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  toast,
+} from '@paalstack/react-ui';
 import { dateIntl } from '@paalstack/react-ui/lib';
-import { useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { LeadActionPanel } from '@/components/shared/LeadActionPanel';
 import { LeadFactsPanel } from '@/components/leads/lead-facts-panel';
 import { LeadChatPane } from '@/components/shared/LeadChatPane';
@@ -25,7 +33,8 @@ import { LeadVisitPanel } from '@/components/shared/LeadVisitPanel';
 import { PhoneNumber } from '@/components/shared/PhoneNumber';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
-import { useLead, useLeadActivities } from '@/hooks/queries/crm';
+import { useDeleteLead, useLead, useLeadActivities } from '@/hooks/queries/crm';
+import { canDeleteLeads, useSessionUser } from '@/lib/session';
 import { labelFor } from '@/lib/labels';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -33,6 +42,7 @@ import { projectHref } from '@/lib/nav';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import type { LeadDetail } from '@shadhil/api-types';
 import { LeadTimeline } from '@/components/leads/lead-timeline';
+import { LuTrash2 } from '@paalstack/react-icons/lu';
 
 export default function LeadDetailPage() {
   const params = useParams<{ id: string }>();
@@ -44,6 +54,16 @@ export default function LeadDetailPage() {
 
   const leadQuery = useLead(leadId);
   const activitiesQuery = useLeadActivities(leadId);
+
+  // Delete lives here as well as in the list (2026-11-23): you decide a lead is
+  // junk while READING it, and sending the operator back to the queue to hunt
+  // for the same row is how junk survives. Same role gate and same guarded
+  // endpoint; the UI hiding it is defence in depth, the server refuses anyway.
+  const router = useRouter();
+  const { user } = useSessionUser();
+  const canDelete = user !== null && canDeleteLeads(user.role);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const deleteLead = useDeleteLead(leadId);
 
   // Pages arrive newest-first; each page is oldest-first. Reverse each page so
   // the feed reads newest -> oldest, with older pages appended below.
@@ -67,6 +87,50 @@ export default function LeadDetailPage() {
           { label: 'Leads', href: projectHref(orgSlug, projectSlug, '/leads') },
           { label: leadName },
         ]}
+        action={
+          canDelete && lead !== undefined && lead !== null ? (
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<LuTrash2 className="size-4" />}
+              onClick={() => setDeleteOpen(true)}
+              data-qa="lead-delete-button"
+            >
+              Delete
+            </Button>
+          ) : null
+        }
+      />
+
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          if (!open) setDeleteOpen(false);
+        }}
+        trigger={null}
+        header={{
+          title: `Delete ${leadName}?`,
+          description:
+            'This permanently removes the lead, its chat history, activities, and visits. A lead that is WON or has booking history cannot be deleted - close it as LOST instead. This action cannot be undone.',
+        }}
+        cancelButtonText="Cancel"
+        confirmButtonText={deleteLead.isPending ? 'Deleting...' : 'Delete lead'}
+        confirmButtonProps={{ variant: 'destructive', disabled: deleteLead.isPending }}
+        onConfirm={() => {
+          deleteLead.mutate(undefined, {
+            onSuccess: () => {
+              toast.success(`Lead ${leadName} deleted`);
+              setDeleteOpen(false);
+              // Back to the queue: this page's data no longer exists.
+              void router.replace(projectHref(orgSlug, projectSlug, '/leads'));
+            },
+            onError: (error) => {
+              // Server copy verbatim: the 409 names the reason and the way out.
+              toast.error(error instanceof Error ? error.message : 'Delete failed');
+            },
+          });
+        }}
+        onCancel={() => setDeleteOpen(false)}
       />
 
       {leadQuery.isLoading ? (

@@ -133,6 +133,30 @@ export const SetLeadCoOwnerDtoSchema = z.object({
 export type SetLeadCoOwnerDto = z.infer<typeof SetLeadCoOwnerDtoSchema>;
 
 /**
+ * POST /api/leads/bulk-delete - clear out leads nobody wants, in one action.
+ *
+ * A POST, not a DELETE with a body: some proxies drop a DELETE body, and
+ * silently deleting nothing is worse than a slightly impure verb. Capped at 100
+ * because this is a cleanup action, not a migration, and each row is its own
+ * audited transaction on the server.
+ */
+export const BulkDeleteLeadsDtoSchema = z.object({
+  leadIds: z.array(z.string().cuid2()).min(1).max(100),
+});
+export type BulkDeleteLeadsDto = z.infer<typeof BulkDeleteLeadsDtoSchema>;
+
+/**
+ * What actually happened, per id. `refused` is not an error: a WON lead or one
+ * with booking history is deliberately undeletable, and the operator needs to
+ * know which rows stayed and why rather than a single opaque failure.
+ */
+export const BulkDeleteLeadsResultSchema = z.object({
+  deleted: z.array(z.string()),
+  refused: z.array(z.object({ id: z.string(), reason: z.string() })),
+});
+export type BulkDeleteLeadsResult = z.infer<typeof BulkDeleteLeadsResultSchema>;
+
+/**
  * Query filter for GET /api/leads - the Lead Inbox. `state` accepts an array
  * so the UI can filter "show me VISIT_SCHEDULED + VISITED". `ownerId` filters
  * to a single owner; `teamId` filters to a team (manager view).

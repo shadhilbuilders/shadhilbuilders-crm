@@ -48,6 +48,10 @@ vi.mock('@/hooks/queries/crm', async (importOriginal) => {
       isPending: false,
     })),
     useUpdateLead: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+    // 2026-11-23: multi-select + bulk delete. Mocked, not spread from actual:
+    // the real hook needs a QueryClientProvider, and this suite renders the page
+    // outside the provider tree.
+    useBulkDeleteLeads: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   };
 });
 
@@ -70,9 +74,12 @@ vi.mock('@/components/leads/LeadReassignDialog', () => ({
 
 import LeadInboxPage from './page';
 import { useLeads, useLeadsEnvelope } from '@/hooks/queries/crm';
+import * as sessionModule from '@/lib/session';
 import { LEAD_AGE_TIER_CLASS } from '@/lib/leads';
 
 const mockedUseLeads = vi.mocked(useLeads);
+// Bulk selection is gated on the session role, so these tests drive it directly.
+const mockedUseSessionUser = vi.mocked(sessionModule.useSessionUser);
 const mockedUseLeadsEnvelope = vi.mocked(useLeadsEnvelope);
 
 const baseRow = {
@@ -322,5 +329,53 @@ describe('LeadInboxPage - age row tint', () => {
     } as never);
     const cls = bodyRowClass(renderToStaticMarkup(<LeadInboxPage />));
     expect(cls).not.toMatch(/bg-yellow|bg-red/);
+  });
+});
+
+// ── Multi-select + bulk delete (2026-11-23) ────────────────────────────
+// Cleaning junk one dialog at a time is what makes people stop cleaning junk. The
+// selection column exists only for the roles allowed to delete, and WON rows are
+// not selectable because the server refuses them anyway.
+describe('LeadInboxPage - bulk selection', () => {
+  const withRole = (role: string) => {
+    mockedUseSessionUser.mockReturnValue({
+      user: { id: 'u-1', role, email: 'a@x', teamId: null },
+    } as never);
+  };
+
+  afterEach(() => {
+    withRole('ADMIN');
+  });
+
+  it('gives an ADMIN a selection column, with WON rows disabled', () => {
+    withRole('ADMIN');
+    mockedUseLeads.mockReturnValue({
+      data: [freshRow({ id: 'lead-open', name: 'Open Lead', status: 'NEW' }), freshRow({
+        id: 'lead-won',
+        name: 'Won Lead',
+        status: 'WON',
+      })],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<LeadInboxPage />);
+    expect(html).toContain('data-qa="leads-select-all"');
+    expect(html).toContain('data-qa="leads-select-row"');
+    // The WON row's checkbox is disabled - it can never be deleted.
+    expect(html).toContain('Won Lead is WON and cannot be deleted');
+  });
+
+  it('gives a SALES_EXEC no selection column at all', () => {
+    withRole('SALES_EXEC');
+    mockedUseLeads.mockReturnValue({
+      data: [freshRow({ status: 'NEW' })],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<LeadInboxPage />);
+    expect(html).not.toContain('data-qa="leads-select-all"');
+    expect(html).not.toContain('data-qa="leads-select-row"');
   });
 });

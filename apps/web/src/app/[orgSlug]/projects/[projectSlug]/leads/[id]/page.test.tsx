@@ -31,6 +31,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // a string fallback that the page already handles.
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: 'lead-1', projectId: 'proj-1' }),
+  // The delete action navigates back to the queue after a successful delete.
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }));
 
 vi.mock('@/hooks/queries/crm', () => ({
@@ -41,6 +43,8 @@ vi.mock('@/hooks/queries/crm', () => ({
   // that resolves so this suite keeps asserting the page's own state matrix.
   useLeadFacts: vi.fn(() => ({ data: undefined, isPending: false })),
   useDecideLeadFact: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  // 2026-11-23: deletion is available from this page for admins/owners.
+  useDeleteLead: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }));
 
 vi.mock('@/components/shared/LeadActionPanel', () => ({
@@ -65,13 +69,17 @@ vi.mock('@/lib/session', () => ({
     user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
     isPending: false,
   })),
+  // Mirrors the real gate: ADMIN and OWNER only.
+  canDeleteLeads: (role?: string) => role === 'ADMIN' || role === 'OWNER',
 }));
 
 import LeadDetailPage from './page';
 import { useLead, useLeadActivities } from '@/hooks/queries/crm';
+import { useSessionUser } from '@/lib/session';
 
 const mockedUseLead = vi.mocked(useLead);
 const mockedUseLeadActivities = vi.mocked(useLeadActivities);
+const mockedUseSessionUser = vi.mocked(useSessionUser);
 
 const FULL_LEAD = {
   id: 'lead-1',
@@ -158,5 +166,51 @@ describe('LeadDetailPage - T-D3 state matrix', () => {
     expect(html).toContain('API 404');
     // No Skeleton.
     expect(html).not.toContain('data-slot="skeleton"');
+  });
+});
+
+// ── Delete from the detail page (2026-11-23) ──────────────────────────
+// You decide a lead is junk while reading it, so the action belongs here and not
+// only in the list. Same role gate as the list: ADMIN/OWNER only, and the server
+// refuses everyone else regardless of what the UI renders.
+describe('LeadDetailPage - delete action', () => {
+  const renderWithRole = (role: string) => {
+    mockedUseLead.mockReturnValue({ data: FULL_LEAD, isLoading: false, error: null } as never);
+    // Infinite query shape (pages), not a flat array.
+    mockedUseLeadActivities.mockReturnValue({
+      data: { pages: [{ items: [], nextCursor: null }] },
+      isLoading: false,
+      error: null,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    } as never);
+    mockedUseSessionUser.mockReturnValue({
+      user: { id: 'u-1', role, email: 'a@x', teamId: null },
+      isPending: false,
+      error: null,
+      refetchSession: async () => undefined,
+    } as never);
+    return renderToStaticMarkup(<LeadDetailPage />);
+  };
+
+  afterEach(() => {
+    // Back to the default ADMIN session for the state-matrix tests above.
+    mockedUseSessionUser.mockReturnValue({
+      user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
+      isPending: false,
+    } as never);
+  });
+
+  it('shows the delete action to an ADMIN', () => {
+    expect(renderWithRole('ADMIN')).toContain('data-qa="lead-delete-button"');
+  });
+
+  it('shows it to an OWNER', () => {
+    expect(renderWithRole('OWNER')).toContain('data-qa="lead-delete-button"');
+  });
+
+  it('hides it from a SALES_EXEC and a MANAGER', () => {
+    expect(renderWithRole('SALES_EXEC')).not.toContain('data-qa="lead-delete-button"');
+    expect(renderWithRole('MANAGER')).not.toContain('data-qa="lead-delete-button"');
   });
 });

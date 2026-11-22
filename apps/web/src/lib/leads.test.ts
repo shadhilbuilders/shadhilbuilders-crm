@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AGE_URGENT_AFTER_MIN,
   AGE_WARN_AFTER_MIN,
+  bulkDeleteSummary,
   isOverdue,
   leadAgeTier,
   LEAD_AGE_TIER_CLASS,
@@ -158,5 +159,47 @@ describe('leadAgeTier', () => {
   it('the warn tier is a deeper yellow than the age tier', () => {
     const shade = (cls: string) => Number(/-(\d{2,3})\b/.exec(cls)?.[1] ?? 0);
     expect(shade(LEAD_AGE_TIER_CLASS.warn)).toBeGreaterThan(shade(LEAD_AGE_TIER_CLASS.age));
+  });
+});
+
+// ── Bulk delete summary (2026-11-23) ────────────────────────────────────
+// The toast is the only place a refusal is reported. It has to say which rows
+// stayed and why, because "failed" would be wrong: protected leads are a rule,
+// not an error.
+describe('bulkDeleteSummary', () => {
+  it('says nothing about refusals when everything went', () => {
+    expect(bulkDeleteSummary({ deleted: ['a'], refused: [] })).toBe('Lead deleted');
+    expect(bulkDeleteSummary({ deleted: ['a', 'b', 'c'], refused: [] })).toBe('3 leads deleted');
+  });
+
+  it('names the protected rows and why, grouping repeats', () => {
+    const out = bulkDeleteSummary({
+      deleted: ['a', 'b'],
+      refused: [
+        { id: 'c', reason: 'This lead has bookings. Deleting it would erase booking history.' },
+        { id: 'd', reason: 'This lead has bookings. Deleting it would erase booking history.' },
+        { id: 'e', reason: 'This lead is WON - it cannot be deleted.' },
+      ],
+    });
+    expect(out).toContain('2 leads deleted');
+    expect(out).toContain('3 kept');
+    expect(out).toContain('2 with booking history');
+    expect(out).toContain('1 already WON');
+  });
+
+  it('reads as a sentence when nothing could be deleted', () => {
+    const out = bulkDeleteSummary({
+      deleted: [],
+      refused: [{ id: 'c', reason: 'This lead is WON - it cannot be deleted.' }],
+    });
+    expect(out).toBe('1 kept: 1 already WON');
+  });
+
+  it('reports a lead that vanished as gone, not as an error', () => {
+    const out = bulkDeleteSummary({
+      deleted: [],
+      refused: [{ id: 'x', reason: 'Lead x not found' }],
+    });
+    expect(out).toContain('no longer exists');
   });
 });

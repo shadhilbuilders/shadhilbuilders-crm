@@ -71,6 +71,9 @@ vi.mock('@/hooks/queries/crm', async (importOriginal) => {
     useLeadsEnvelope: () => ({ total: 1, overdueCount: 0, newTodayCount: 0 }),
     useDeleteLead: () => ({ mutate: mocks.mutate, isPending: false }),
     useUpdateLead: () => ({ mutate: vi.fn(), isPending: false }),
+    // 2026-11-23: mocked, not spread from actual - the real hook needs a
+    // QueryClientProvider and this suite renders the page outside one.
+    useBulkDeleteLeads: () => ({ mutate: vi.fn(), isPending: false }),
   };
 });
 
