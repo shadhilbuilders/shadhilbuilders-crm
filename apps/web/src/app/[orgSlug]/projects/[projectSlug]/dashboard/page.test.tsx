@@ -87,6 +87,11 @@ const VISITS = { current: [] as unknown[] };
 const LEADS_STATE = { isLoading: false, error: null as unknown };
 const VISITS_STATE = { isLoading: false };
 
+// The two lead counts on the strip come from the LEADS envelope (the same
+// response as the rows), not from /dashboard/stats, so the card and the list it
+// opens can never be computed from different predicates. Controllable here.
+const ENVELOPE = { current: { overdueCount: 2, newTodayCount: 4 } };
+
 vi.mock('@/hooks/queries/crm', () => ({
   useLeads: vi.fn(() => ({
     data: LEADS.current,
@@ -96,7 +101,11 @@ vi.mock('@/hooks/queries/crm', () => ({
   // The page reads the SERVER total from the envelope (same react-query key as
   // useLeads, so in production this is one shared request) to avoid reporting the
   // loaded page as a queue size.
-  useLeadsEnvelope: vi.fn(() => ({ total: LEADS.current.length })),
+  useLeadsEnvelope: vi.fn(() => ({
+    total: LEADS.current.length,
+    overdueCount: ENVELOPE.current.overdueCount,
+    newTodayCount: ENVELOPE.current.newTodayCount,
+  })),
   useVisits: vi.fn(() => ({
     data: VISITS.current,
     isLoading: VISITS_STATE.isLoading,
@@ -569,21 +578,17 @@ describe('Work dashboard - one page, every action in place', () => {
     // now says why. The "N leads have no project" branch that briefly lived here is
     // GONE: `Lead.projectId` is NOT NULL now (T-LEAD-PROJECT-REQUIRED), so that
     // cause cannot occur. Pinned explicitly so it is not reintroduced.
-    const withStats = (kpis: Record<string, number>) => {
-      STATS.current = {
-        data: { kpis: { newLeadsToday: 1, visitsToday: 0, bookingsOnHold: 0, ...kpis } },
-        isLoading: false,
-        error: null,
-      };
+    const withOverdue = (count: number) => {
+      ENVELOPE.current = { ...ENVELOPE.current, overdueCount: count };
     };
 
     // (a) overdue > 0 -> the normal explanation.
-    withStats({ overdueLeads: 3 });
+    withOverdue(3);
     await mount();
     expect(html()).toContain('overdue first touch');
 
     // (b) overdue == 0 -> a clean bill of health, and no orphan wording.
-    withStats({ overdueLeads: 0 });
+    withOverdue(0);
     await mount();
     const clean = html();
     expect(clean).toContain('none overdue');
@@ -720,5 +725,62 @@ describe('Awaiting approval card - only lists bookings it can actually decide', 
 
     expect(approvals).toContain('Unit D-101');
     expect(approvals).not.toContain('Unit D-102');
+  });
+});
+
+// ── Count/list agreement (owner report, 2026-11-22) ──────────────────────────
+// Production showed "Today's visits 2" above an empty list. Both visits were
+// COMPLETED: the count included them, the list (correctly) only asks for
+// SCHEDULED. The class of bug is a count and the list beneath it computed from
+// different definitions, so these tests pin the card to the list.
+describe('Dashboard counts agree with the list beneath them', () => {
+  it("counts the work still ahead and names the finished ones", async () => {
+    ROLE.current = 'MANAGER';
+    STATS.current = {
+      data: { kpis: { newLeadsToday: 1, visitsToday: 2, visitsTodayOpen: 0, visitsTodayDone: 2, bookingsOnHold: 0 } },
+      isLoading: false,
+      error: null,
+    } as unknown as typeof STATS.current;
+    VISITS.current = [];
+    await mount();
+    const out = html();
+    // The number is the list's number...
+    expect(out).toMatch(/Today's visits[\s\S]{0,220}none scheduled|all done, 2 today/);
+    // ...and the finished work is still visible, not hidden.
+    expect(out).toContain('all done, 2 today');
+    expect(out).not.toContain('2 listed below');
+  });
+
+  it('says how many are listed AND how many are already done', async () => {
+    ROLE.current = 'MANAGER';
+    STATS.current = {
+      data: { kpis: { newLeadsToday: 1, visitsToday: 2, visitsTodayOpen: 1, visitsTodayDone: 1, bookingsOnHold: 0 } },
+      isLoading: false,
+      error: null,
+    } as unknown as typeof STATS.current;
+    VISITS.current = [
+      {
+        id: 'v-open',
+        leadId: 'l-open',
+        leadName: 'Ravi',
+        scheduledFor: '2026-09-16T10:30:00.000Z',
+        userName: 'Priya',
+        status: 'SCHEDULED',
+        leadState: 'VISIT_SCHEDULED',
+      },
+    ];
+    await mount();
+    expect(html()).toContain('1 listed below, 1 done');
+  });
+
+  it('does not offer the exec two cards holding one number', async () => {
+    ROLE.current = 'SALES_EXEC';
+    LEADS.current = [lead({ name: 'Only one loaded' })];
+    ENVELOPE.current = { overdueCount: 0, newTodayCount: 0 };
+    await mount();
+    const out = html();
+    // `My pipeline` uses the server total, not the loaded page.
+    expect(out).toContain('My pipeline');
+    expect(out).not.toContain('Leads to work');
   });
 });

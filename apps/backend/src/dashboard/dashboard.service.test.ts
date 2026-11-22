@@ -42,6 +42,8 @@ type MockTx = {
   };
   siteVisit: {
     count: Mock<(args: MockArgs) => Promise<number>>;
+    /** Today's visits grouped by status: OPEN vs DONE is the card's whole point. */
+    groupBy: Mock<(args: MockArgs) => Promise<Array<{ status: string; _count: { _all: number } }>>>;
     findMany: Mock<(args: MockArgs) => Promise<Array<{ status: string; scheduledFor: Date }>>>;
   };
   booking: {
@@ -104,6 +106,12 @@ function makeTx(overrides: {
     },
     siteVisit: {
       count: vi.fn(async () => 2),
+      // Two finished, one still to conduct - the shape that produced the owner's
+      // "count 2, list empty" report, so the mock carries both buckets.
+      groupBy: vi.fn(async () => [
+        { status: 'SCHEDULED', _count: { _all: 1 } },
+        { status: 'COMPLETED', _count: { _all: 2 } },
+      ]),
       findMany: vi.fn(async () => overrides.visitStatuses ?? []),
     },
     booking: {
@@ -377,5 +385,41 @@ describe('DashboardService.getOverviewStats', () => {
     // auditTimeline is the 90-day series backing the /overview interactive
     // area chart (7d/30d/90d ranges are filtered client-side).
     expect(stats.auditTimeline).toHaveLength(90);
+  });
+});
+
+// ── Today's visits: OPEN vs DONE (owner report, 2026-11-22) ───────────────────
+// Production showed "Today's visits 2" above an empty list: two COMPLETED visits
+// counted toward a number that reads as work waiting. The card now counts what
+// is still to conduct and names the finished ones in its subtitle, so the number
+// and the SCHEDULED-only list beside it cannot disagree.
+describe('DashboardService.getStats - visits today split', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    txCapture.current = makeTx({});
+  });
+
+  it('reports open, done and total so the card can lead with the open count', async () => {
+    const svc = new DashboardService({ $client: {} } as never);
+    const stats = await svc.getStats(adminActor, {});
+    // Mock: 1 SCHEDULED + 2 COMPLETED.
+    expect(stats.kpis.visitsTodayOpen).toBe(1);
+    expect(stats.kpis.visitsTodayDone).toBe(2);
+    expect(stats.kpis.visitsToday).toBe(3);
+  });
+
+  it('counts a NO_SHOW as done, not as work still ahead', async () => {
+    const tx = makeTx({});
+    tx.siteVisit.groupBy = vi.fn(async () => [
+      { status: 'NO_SHOW', _count: { _all: 2 } },
+      { status: 'CANCELLED', _count: { _all: 5 } },
+    ]);
+    txCapture.current = tx;
+    const svc = new DashboardService({ $client: {} } as never);
+    const stats = await svc.getStats(adminActor, {});
+    expect(stats.kpis.visitsTodayOpen).toBe(0);
+    expect(stats.kpis.visitsTodayDone).toBe(2);
+    // A withdrawn visit is not work that happens today, so it is in neither.
+    expect(stats.kpis.visitsToday).toBe(2);
   });
 });

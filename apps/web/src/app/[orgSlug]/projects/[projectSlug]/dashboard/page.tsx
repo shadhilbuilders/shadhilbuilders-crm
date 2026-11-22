@@ -60,7 +60,7 @@ import {
 // T-TOKEN-GATE (2026-09-28): recording a token now captures the amount received,
 // so the dashboard row opens this dialog instead of firing the transition inline.
 import { RecordTokenDialog, type RecordTokenTarget } from '@/components/bookings/RecordTokenDialog';
-import { KpiStrip, SectionCard } from '@/components/dashboard/dashboard-shared';
+import { KpiStrip, SectionCard, type Kpi } from '@/components/dashboard/dashboard-shared';
 import { todaysOpenVisits } from '@/lib/visit-status';
 import { TodayVisitsCard } from '@/components/dashboard/TodayVisitsCard';
 import { LeadQueueRow, type QueueAction } from '@/components/dashboard/LeadQueueRow';
@@ -90,6 +90,7 @@ import {
   useSessionUser,
 } from '@/lib/session';
 import { QUEUE_STATES_BY_ROLE, queueActionsFor } from '@/lib/queue-actions';
+import { isOverdue } from '@shadhil/api-types';
 import { useOrgSlug, useProjectId, useProjectSlug } from '@/lib/tenant-context';
 import { orderQueue } from '@/lib/work-queue';
 
@@ -327,17 +328,31 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
   //
   // Both definitions are now the shared `OVERDUE_AFTER_MIN` + isOverdue()
   // contract from @shadhil/api-types, so count and list cannot drift.
-  const overdueCount = stats?.kpis.overdueLeads ?? 0;
-  const newToday = stats?.kpis.newLeadsToday ?? 0;
-  const visitsToday = stats?.kpis.visitsToday ?? 0;
+  //
+  // SOURCE (2026-11-22, owner report: card 2, list empty). These three numbers
+  // used to come from /dashboard/stats, which is a DIFFERENT query from the list
+  // under them. The leads envelope already carries `overdueCount` and
+  // `newTodayCount` computed against the same WHERE as the rows it returns, so
+  // each card and its list are now two fields of one response and cannot drift.
+  const overdueCount = leadsEnvelope?.overdueCount ?? 0;
+  const newToday = leadsEnvelope?.newTodayCount ?? 0;
+  // Visits: the server splits today's visits the way this page reads them, so
+  // the card counts work still ahead and the completed ones are named in the
+  // subtitle instead of inflating the number above a SCHEDULED-only list.
+  const visitsTodayOpen = stats?.kpis.visitsTodayOpen ?? 0;
+  const visitsTodayDone = stats?.kpis.visitsTodayDone ?? 0;
   // NOTE: there is deliberately no "unassigned leads" counter here. One was added
   // (T-DASH-ORPHAN-EXPLAIN) to explain a zero when 141 leads belonged to no
   // project - but `Lead.projectId` is now NOT NULL (T-LEAD-PROJECT-REQUIRED), so
   // that state cannot exist. Kept as a note so the fallback is not reinvented.
 
-  // The "needs a call now" filter narrows to NEW only, because the 30-minute
-  // SLA governs NEW alone (lib/leads.ts is NEW-only by design and by test).
-  const queueShown = filter === 'overdue' ? ordered.filter((row) => row.status === 'NEW') : ordered;
+  // The 30-minute SLA governs NEW alone (isOverdue is NEW-only by design), so
+  // filtering to "overdue" must show the overdue rows, not the whole NEW lane:
+  // the card above it counts only the overdue ones, and a list of 40 under a
+  // count of 3 is the same lie in a different costume. Same predicate as the
+  // server's count (`isOverdue`, NEW + 30 minutes).
+  const queueShown =
+    filter === 'overdue' ? ordered.filter((row) => isOverdue(row as { status?: string; createdAt?: string })) : ordered;
 
   return (
     // T-DASH-MOBILE: 16px between sections on phones, 24px from 30rem up. The
@@ -366,7 +381,10 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
           items={[
             {
               label: isExec ? 'My pipeline' : 'Needs a call now',
-              value: isExec ? String(ordered.length) : String(overdueCount),
+              // `ordered.length` is the loaded page (limit 100) and silently
+              // under-reports above that; the envelope total is the same query's
+              // real count.
+              value: isExec ? String(queueTotal) : String(overdueCount),
               // A bare "0" reads as a broken counter, so a zero says WHY it is
               // zero. The "have no project" branch is gone with the constraint
               // that made it reachable - every lead belongs to a project now.
@@ -397,21 +415,32 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
             },
             {
               label: "Today's visits",
-              value: String(visitsToday),
-              sub: visits.length > 0 ? `${visits.length} listed below` : 'none scheduled',
+              value: String(visitsTodayOpen),
+              sub:
+                visitsTodayOpen > 0
+                  ? `${visits.length} listed below${visitsTodayDone > 0 ? `, ${visitsTodayDone} done` : ''}`
+                  : visitsTodayDone > 0
+                    ? `all done, ${visitsTodayDone} today`
+                    : 'none scheduled',
               onClick: () => setFilter((f) => (f === 'visits' ? 'all' : 'visits')),
               active: filter === 'visits',
               tone: 'today',
               Icon: LuCalendarCheck,
             },
-            {
-              label: isTelecaller ? 'In my queue' : 'Leads to work',
-              // Server total, NOT `ordered.length` - see `queueTotal`.
-              value: String(queueTotal),
-              sub: 'need action',
-              tone: 'pipeline',
-              Icon: LuListChecks,
-            },
+            // The exec already has "My pipeline" above, which is this same
+            // number. Two cards with one value made the strip look broken.
+            ...(isExec
+              ? []
+              : ([
+                  {
+                    label: isTelecaller ? 'In my queue' : 'Leads to work',
+                    // Server total, NOT `ordered.length` - see `queueTotal`.
+                    value: String(queueTotal),
+                    sub: 'need action',
+                    tone: 'pipeline',
+                    Icon: LuListChecks,
+                  },
+                ] as Kpi[])),
           ]}
         />
       )}

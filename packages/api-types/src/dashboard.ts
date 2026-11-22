@@ -80,7 +80,19 @@ export const DashboardStatsSchema = z.object({
   kpis: z.object({
     newLeadsToday: z.number().int().min(0),
     overdueLeads: z.number().int().min(0),
+    /**
+     * Visits today, split by whether the work is still ahead of you.
+     *
+     * One number could not serve two readers. A dashboard card sits next to a
+     * list of things to do, so a bare count of "visits today" that includes
+     * COMPLETED reads as work waiting when the list, correctly, shows none.
+     * `visitsToday = visitsTodayOpen + visitsTodayDone`; OPEN is SCHEDULED,
+     * DONE is COMPLETED or NO_SHOW. CANCELLED and RESCHEDULED count as neither,
+     * because a withdrawn visit is not work that happens today.
+     */
     visitsToday: z.number().int().min(0),
+    visitsTodayOpen: z.number().int().min(0),
+    visitsTodayDone: z.number().int().min(0),
     visitsThisWeek: z.number().int().min(0),
     bookingsOnHold: z.number().int().min(0),
     // % of visits in the last 7 days that were NO_SHOW. 0 when no outcome

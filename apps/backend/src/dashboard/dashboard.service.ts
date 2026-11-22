@@ -157,29 +157,36 @@ export class DashboardService {
       sevenDaysAgo.setHours(0, 0, 0, 0);
 
       // Visit where: role-scoped via parent Lead (SiteVisit has no projectId).
+      //
+      // MERGE, never reassign: this used to overwrite `visitWhere['lead']`, so
+      // every non-admin lost the project filter and read a team-wide count on a
+      // page whose list is project-scoped. Spreading keeps both conditions.
       const visitWhere: Record<string, unknown> = {};
       if (query.projectId !== undefined) {
         visitWhere['lead'] = { projectId: query.projectId };
       }
       if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
-        visitWhere['lead'] = { ownerId: actor.sub };
+        visitWhere['lead'] = { ...(visitWhere['lead'] as object), ownerId: actor.sub };
       } else if (actor.role === 'MANAGER') {
         const teamIds = await this.managerTeamIds(txClient, actor);
         visitWhere['lead'] = {
+          ...(visitWhere['lead'] as object),
           teamId: teamIds.length > 0 ? { in: teamIds } : '__no_team__',
         };
       }
 
       // Booking where: role-scoped via parent Lead (Booking has no projectId).
+      // Same merge rule as visitWhere above; reassigning dropped the project.
       const bookingWhere: Record<string, unknown> = {};
       if (query.projectId !== undefined) {
         bookingWhere['lead'] = { projectId: query.projectId };
       }
       if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
-        bookingWhere['lead'] = { ownerId: actor.sub };
+        bookingWhere['lead'] = { ...(bookingWhere['lead'] as object), ownerId: actor.sub };
       } else if (actor.role === 'MANAGER') {
         const teamIds = await this.managerTeamIds(txClient, actor);
         bookingWhere['lead'] = {
+          ...(bookingWhere['lead'] as object),
           teamId: teamIds.length > 0 ? { in: teamIds } : '__no_team__',
         };
       }
@@ -192,7 +199,7 @@ export class DashboardService {
         leadSources,
         leadsOverTime,
         teamPerformance,
-        visitsToday,
+        visitsTodayBuckets,
         visitsThisWeekBuckets,
         visitsLast7d,
         bookingsOnHold,
@@ -249,8 +256,12 @@ export class DashboardService {
           where: leadWhere,
           _count: { _all: true },
         }),
-        // visitsToday: visits scheduled today in scope.
-        txClient.siteVisit.count({
+        // visitsToday: today's visits, grouped by status so the caller can say
+        // how much is still ahead of you. A single count here was the bug the
+        // owner hit in production: it includes COMPLETED, so the card read "2"
+        // while the list beside it, which is SCHEDULED only, read empty.
+        txClient.siteVisit.groupBy({
+          by: ['status'],
           where: {
             ...visitWhere,
             // Withdrawn / replaced rows are not visits that happen today.
@@ -260,6 +271,7 @@ export class DashboardService {
               lt: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000),
             },
           },
+          _count: { _all: true },
         }),
         // visitsThisWeek: visits scheduled this week in scope, bucketed by day.
         this.visitsThisWeekBuckets(txClient, visitWhere, weekStart),
@@ -284,6 +296,15 @@ export class DashboardService {
       ]);
 
       const visitsThisWeek = visitsThisWeekBuckets.reduce((sum, b) => sum + b.count, 0);
+      // Split today's visits the way the dashboard reads them. The card sits
+      // above a SCHEDULED-only list, so its number has to be the OPEN count or
+      // the two disagree the moment anything is completed (seen in production:
+      // card 2, list empty). DONE is finished work, not withdrawn work.
+      const visitCountByStatus = (status: string): number =>
+        visitsTodayBuckets.find((b) => b.status === status)?._count._all ?? 0;
+      const visitsTodayOpen = visitCountByStatus('SCHEDULED');
+      const visitsTodayDone = visitCountByStatus('COMPLETED') + visitCountByStatus('NO_SHOW');
+      const visitsToday = visitsTodayOpen + visitsTodayDone;
 
       // Resolve owner names for teamPerformance.
       const ownerIds = teamPerformance.map((g) => g.ownerId);
@@ -307,6 +328,8 @@ export class DashboardService {
           newLeadsToday,
           overdueLeads,
           visitsToday,
+          visitsTodayOpen,
+          visitsTodayDone,
           visitsThisWeek,
           bookingsOnHold,
           noShowRate,
