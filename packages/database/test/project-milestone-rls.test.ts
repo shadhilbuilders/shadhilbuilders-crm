@@ -16,6 +16,11 @@ import { withRlsContext } from '../src/rls';
 import { createDirectPrismaClient } from '../src/test-db-isolation';
 import { DATABASE_AVAILABLE } from './setup';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const adminPrisma = createDirectPrismaClient();
 
 const ORG_ID = 'ceid01lpfe1esm8jwsxid41k28'; // seeded demo org
@@ -120,7 +125,7 @@ async function buildFixture(): Promise<void> {
       data: {
         id,
         name: `Lead ${phone}`,
-        phone,
+        ...leadPhoneFields(phone),
         ownerId: MGR,
         ownerType: 'MANAGER',
         teamId: TEAM,

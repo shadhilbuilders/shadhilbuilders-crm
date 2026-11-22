@@ -35,8 +35,11 @@ function tenant(suffix: string) {
 const A = tenant('a');
 const B = tenant('b');
 
-const PHONE = `9${Date.now().toString().slice(-9)}`;
-const E164 = `91${PHONE}`;
+// 2026-11-22: both columns hold the SAME canonical digits, enforced by the
+// Lead_phone_equals_phoneE164 CHECK. A fixture that makes them differ is now
+// an invalid row, which is the point of the constraint.
+const PHONE = `91${`9${Date.now().toString().slice(-9)}`}`;
+const E164 = PHONE;
 
 type CreateArgs = { create: (a: unknown) => Promise<unknown> };
 const db = OWNER as unknown as Record<
@@ -124,23 +127,30 @@ describe('Lead phone uniqueness is per organization', () => {
     expect(await insert(B, { phone: PHONE, phoneE164: E164 })).toBe('accepted');
   });
 
-  it('REJECTS the same phone twice in ONE organization', async () => {
-    expect(await insert(A, { phone: PHONE, phoneE164: null })).toBe(
-      'constraint:Lead_organizationId_phone_key',
+  it('rejects a second lead with the same phone in ONE organization', async () => {
+    // Phone and phoneE164 now hold the same canonical digits, so this is the
+    // phoneE164 index firing rather than a separate `phone` index.
+    expect(await insert(A, { phone: PHONE, phoneE164: E164 })).toBe(
+      'constraint:Lead_organizationId_phoneE164_projectId_key',
     );
   });
 
   it('REJECTS the same phoneE164 twice in ONE organization', async () => {
-    // Same number, different display formatting - still the same person.
-    expect(await insert(A, { phone: `${PHONE}0`, phoneE164: E164 })).toBe(
-      'constraint:Lead_organizationId_phoneE164_key',
+    expect(await insert(A, { phone: E164, phoneE164: E164 })).toBe(
+      'constraint:Lead_organizationId_phoneE164_projectId_key',
     );
   });
 
-  it('ACCEPTS many leads with no phoneE164 in one organization', async () => {
-    // phoneE164 is nullable and backfilled lazily; NULLs must not collide, or
-    // every legacy/imported lead would fight over one slot.
-    expect(await insert(A, { phone: `${PHONE}x1`, phoneE164: null })).toBe('accepted');
-    expect(await insert(A, { phone: `${PHONE}x2`, phoneE164: null })).toBe('accepted');
+  it('REFUSES a lead with no phoneE164 at all', async () => {
+    // 2026-11-22: the identity column is NOT NULL. A nullable identity key is
+    // a constraint that looks like it protects you and does not, because
+    // Postgres treats NULLs as distinct.
+    const result = await insert(A, { phone: `${PHONE}9`, phoneE164: null });
+    expect(result.startsWith('other:')).toBe(true);
+  });
+
+  it('REFUSES phone and phoneE164 that disagree', async () => {
+    const result = await insert(A, { phone: '9876500099', phoneE164: '919876500099' });
+    expect(result.startsWith('other:')).toBe(true);
   });
 });

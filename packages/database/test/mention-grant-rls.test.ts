@@ -46,6 +46,11 @@ import { withRlsContext, type RlsContext } from '../src/rls';
 // someone OTHER than the seeder, which is exactly the case a pooled seed fights.
 import { createDirectPrismaClient } from '../src/test-db-isolation';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const ORG = 'ceid01lpfe1esm8jwsxid41k28';
 const TAG = `mrls${Date.now().toString()}`;
 
@@ -108,7 +113,7 @@ beforeAll(async () => {
     data: {
       id: LEAD,
       name: 'MRLS Customer',
-      phone: `91${Date.now().toString().slice(-10)}`,
+      ...leadPhoneFields(`91${Date.now().toString().slice(-10)}`),
       state: 'NEW',
       ownerId: TC,
       ownerType: 'TELECALLER',

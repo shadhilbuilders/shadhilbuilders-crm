@@ -957,8 +957,17 @@ model Lead {
   // Consequence to keep in mind: the inbound WhatsApp webhook can no longer
   // read the org off the phone. It resolves per candidate org (it already
   // loops) and logs when a number matches in more than one.
+  /// What the person typed, canonicalised on the way in.
+  ///
+  /// IDENTITY RULE (2026-11-22): this and `phoneE164` hold the SAME canonical
+  /// E.164 digits, no `+`. Uniqueness keys on `phoneE164`; the CHECK constraint
+  /// `Lead_phone_equals_phoneE164` makes the two disagreeing impossible.
+  /// The `+` is added only when rendering or building a `tel:` link.
   phone               String
-  phoneE164           String?
+  /// The canonical, non-null identity of the subscriber. Never null: a lead
+  /// always has a phone number, and a nullable identity column protects
+  /// nothing (Postgres treats NULLs as distinct).
+  phoneE164           String
   email               String?
   source              String?
   state               LeadState     @default(NEW)
@@ -1012,8 +1021,10 @@ model Lead {
   facts             LeadFact[]
   customerUsers     User[]             @relation("CustomerLeadUser")
 
-  @@unique([organizationId, phone])
-  @@unique([organizationId, phoneE164])
+  /// Uniqueness is on the canonical column, SCOPED TO THE PROJECT: the same
+  /// person may be a lead for two projects (owner ruling 2026-11-22), and one
+  /// lead may book several units inside its project.
+  @@unique([organizationId, phoneE164, projectId])
   @@index([ownerId])
   @@index([coOwnerId])
   @@index([teamId])
@@ -1290,6 +1301,11 @@ model Booking {
   user         User         @relation("BookingCreatedBy", fields: [userId], references: [id], onDelete: Restrict)
   approvedBy   User?        @relation("BookingApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
 
+  /// One LIVE booking per unit, enforced by the partial unique index
+  /// `one_active_booking_per_unit` (migration 20260915060000) over
+  /// HOLD/TOKEN/APPROVED only - a cancelled or rejected booking releases the
+  /// unit so it can be booked again. Prisma cannot declare a partial unique
+  /// index, so it is not listed here and `prisma migrate` will not drop it.
   @@index([leadId])
   @@index([organizationId])
   @@index([unitId])

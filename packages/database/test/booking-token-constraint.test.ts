@@ -29,6 +29,11 @@ import { prisma } from '../src/index';
 import { createDirectPrismaClient } from '../src/test-db-isolation';
 import { withRlsContext } from '../src/rls';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const ORG = 'ceid01lpfe1esm8jwsxid41k28';
 const TAG = `tokchk${Date.now().toString()}`;
 const OWNER = createDirectPrismaClient();
@@ -82,7 +87,7 @@ beforeAll(async () => {
     data: {
       id: LEAD,
       name: 'Token Check Lead',
-      phone: '+910000000099',
+      ...leadPhoneFields('+910000000099'),
       state: 'NEGOTIATION',
       ownerId: USER,
       ownerType: 'TELECALLER',

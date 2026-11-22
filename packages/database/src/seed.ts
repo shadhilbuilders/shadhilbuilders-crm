@@ -745,11 +745,17 @@ async function main() {
 
   for (const lead of demoLeads) {
     await prisma.lead.upsert({
-      // T-PHONE-PER-ORG (2026-11-19): phone is unique per organization, so the
-      // lookup key is the composite one. Seeding by phone alone no longer
-      // compiles, and would have been wrong anyway - another org may hold the
-      // same customer.
-      where: { organizationId_phone: { organizationId: SEED_ORG_ID, phone: lead.phone } },
+      // 2026-11-22: uniqueness moved to phoneE164, so the composite key is
+      // that column. `phone` is kept in the create block below and must equal
+      // it - the DB CHECK constraint refuses the row otherwise, which is the
+      // point of re-seeding rather than hand-patching fixtures.
+      where: {
+        organizationId_phoneE164_projectId: {
+          organizationId: SEED_ORG_ID,
+          phoneE164: seedPhone(lead.phone),
+          projectId: metroHeights.id,
+        },
+      },
       update: {
         state: lead.state,
         name: lead.name,
@@ -759,7 +765,8 @@ async function main() {
       },
       create: {
         name: lead.name,
-        phone: lead.phone,
+        phone: seedPhone(lead.phone),
+        phoneE164: seedPhone(lead.phone),
         email: lead.email,
         source: lead.source,
         state: lead.state,
@@ -895,3 +902,18 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
+
+/**
+ * Canonical digits for a seeded demo number.
+ *
+ * Deliberately local: `@shadhil/api-types` depends on this package, so
+ * importing the shared parser here would make the dependency circular. The
+ * fixtures are Indian numbers written as bare 10-digit strings, and the seed
+ * refuses anything else rather than writing half a phone number.
+ */
+function seedPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (/^[6-9]\d{9}$/.test(digits)) return `91${digits}`;
+  if (/^91[6-9]\d{9}$/.test(digits)) return digits;
+  throw new Error(`seed fixture phone is not an Indian mobile: ${raw}`);
+}

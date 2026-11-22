@@ -37,6 +37,11 @@ import { createDirectPrismaClient } from '../src/test-db-isolation';
 
 import { DATABASE_AVAILABLE } from './setup';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 // The fixture needs the OWNER database role (bypass-RLS) - `shadhil`
 // via DIRECT_DATABASE_URL - not the non-owner `shadhil_app` role used
 // at runtime via DATABASE_URL + PgBouncer. Construct a local PrismaClient
@@ -380,7 +385,7 @@ async function buildFixture(): Promise<Fixture> {
     create: {
       id: leadAId,
       name: 'Fixture Lead A',
-      phone: '9900000001',
+      ...leadPhoneFields('9900000001'),
       state: 'NEW',
       teamId: teamAId,
       ownerId: teleAId,
@@ -395,7 +400,7 @@ async function buildFixture(): Promise<Fixture> {
     create: {
       id: leadBId,
       name: 'Fixture Lead B',
-      phone: '9900000002',
+      ...leadPhoneFields('9900000002'),
       state: 'NEW',
       teamId: teamBId,
       ownerId: teleBId,
@@ -414,7 +419,7 @@ async function buildFixture(): Promise<Fixture> {
     create: {
       id: SITE_VISIT_PROBE_LEAD_ID,
       name: 'Fixture Lead A (SiteVisit INSERT probe)',
-      phone: '9900000003',
+      ...leadPhoneFields('9900000003'),
       state: 'NEW',
       teamId: teamAId,
       ownerId: teleAId,
@@ -1230,7 +1235,7 @@ async function runCase(
           await tx.lead.create({
             data: {
               name: 'matrix-test',
-              phone: `99${String(Date.now()).slice(-8)}`,
+              ...leadPhoneFields(`99${String(Date.now()).slice(-8)}`),
               state: 'NEW',
               teamId: fixture.teamAId,
               ownerId: ctx.userId,
@@ -1888,7 +1893,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
             data: {
               id: coLeadId,
               name: 'Co-owned fixture lead',
-              phone: `91${1000000000 + Math.floor(Math.random() * 8999999999)}`,
+              ...leadPhoneFields(`91${1000000000 + Math.floor(Math.random() * 8999999999)}`),
               state: 'NEW',
               ownerId: fixture.teleAId,
               ownerType: 'TELECALLER',
