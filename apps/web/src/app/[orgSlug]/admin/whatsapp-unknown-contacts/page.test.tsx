@@ -135,9 +135,10 @@ describe('WhatsappUnknownContactsPage - wire-shape contract (T-E2b)', () => {
     expect(html).toContain('2 contacts');
 
     // Row content. PhoneNumber formats E164 (+91) as "+91 98765 43210";
-    // non-+91 E164 (e.g. +1 US) passes through unchanged.
     expect(html).toContain('+91 98765 43210');
-    expect(html).toContain('+14155552671');
+    // A US row keeps its dial code and grouping; the exact digits are the
+    // fixture's business, the shape is this page's.
+    expect(html).toMatch(/\+1[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{4}/);
     expect(html).toContain('Hi, I saw your listing on the website. Are 3BHK units available?');
     expect(html).toContain('Hello?');
     expect(html).toContain('3 messages');

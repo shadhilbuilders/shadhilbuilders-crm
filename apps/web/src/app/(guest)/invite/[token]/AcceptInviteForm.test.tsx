@@ -89,12 +89,13 @@ describe('AcceptInviteForm - the pinned email', () => {
 });
 
 describe('AcceptInviteForm - phone correction', () => {
-  it('prefills the phone from the invite in the 10-digit input form', () => {
+  it('prefills the phone from the invite as the stored canonical number', () => {
     const el = mount();
     const phone = el.querySelector<HTMLInputElement>('[data-qa="accept-phone"]');
-    // The stored form is 91XXXXXXXXXX; PhoneNumberInput caps at 10 digits, so a
-    // 12-char prefill would be truncated by the first keystroke.
-    expect(phone?.value).toBe('9876543210');
+    // Canonical digits, shown in the domestic national format. The field owns
+    // the country now, so a 12-char value is no longer truncated on the first
+    // keystroke (the reason the old input needed a shortened prefill).
+    expect(phone?.value.replace(/\D/g, '').replace(/^0+/, '')).toBe('9876543210');
   });
 });
 

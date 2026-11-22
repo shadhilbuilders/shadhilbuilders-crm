@@ -4,6 +4,11 @@
 // so per the repo rule the test targets the named export LeadEditFormBody.
 // Covers: prefilled fields, data-qa markers, labels visible (no
 // placeholder-as-label), save button state.
+//
+// 2026-11-22: the phone field is `IntlPhoneInput`, which owns the country. The
+// value crossing the boundary is the stored canonical DIGITS (never shortened
+// the way the old 10-digit-capped input required), and the country trigger
+// shows the region the existing number belongs to.
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -16,9 +21,22 @@ import { LeadEditFormBody, toPhoneInputValue } from './LeadEditDialog';
 const lead = {
   id: 'lead-1',
   name: 'Priya Sharma',
-  phone: '9876543210',
+  phone: '919876543210',
   email: 'priya@example.com',
 };
+
+/** The rendered `value` of the input carrying `data-qa`. */
+function inputValue(html: string, qa: string): string {
+  const input = new RegExp(`<input[^>]*data-qa="${qa}"[^>]*>`).exec(html)?.[0] ?? '';
+  return /value="([^"]*)"/.exec(input)?.[1] ?? '';
+}
+
+/** Digits only, minus the trunk prefix the domestic format prints. */
+function digitsOf(html: string, qa: string): string {
+  return inputValue(html, qa)
+    .replace(/\D/g, '')
+    .replace(/^0+/, '');
+}
 
 describe('LeadEditFormBody', () => {
   const noopSubmit = () => undefined;
@@ -26,8 +44,17 @@ describe('LeadEditFormBody', () => {
   it('renders prefilled name/phone/email from the lead row', () => {
     const html = renderToStaticMarkup(<LeadEditFormBody lead={lead} onSubmit={noopSubmit} />);
     expect(html).toContain('Priya Sharma');
-    expect(html).toContain('9876543210');
+    // The field is prefilled with the stored canonical digits; the domestic
+    // format renders them with the national trunk prefix (0).
+    expect(digitsOf(html, 'lead-edit-phone')).toBe('9876543210');
     expect(html).toContain('priya@example.com');
+  });
+
+  it('opens the phone field on the country the number already belongs to', () => {
+    const html = renderToStaticMarkup(<LeadEditFormBody lead={lead} onSubmit={noopSubmit} />);
+    // The trigger is always visible: a country is never a silent default.
+    expect(html).toContain('data-qa="lead-edit-phone-country"');
+    expect(html).toContain('+91');
   });
 
   it('renders visible labels (no placeholder-as-label) + data-qa markers', () => {
@@ -54,57 +81,42 @@ describe('LeadEditFormBody', () => {
     expect(html).not.toContain('data-qa="form-reset-button"');
     expect(html).not.toContain('Save changes');
   });
+
+  it('no longer claims the country code is added automatically', () => {
+    const html = renderToStaticMarkup(<LeadEditFormBody lead={lead} onSubmit={noopSubmit} />);
+    expect(html).not.toContain('10-digit');
+    expect(html).not.toContain('added automatically');
+  });
 });
 
 /**
- * Defect 1 regression (fixed 2026-11-18).
+ * Prefill contract (2026-11-22).
  *
- * The stored value is the digits-only normalized form (`919876543210`), but
- * PhoneNumberInput caps typing at 10 digits and sanitizes on every change.
- * Feeding the 12-digit stored value straight into the form rendered fine and
- * then truncated on the FIRST KEYSTROKE, so editing a lead's name silently
- * rewrote its phone number:
- *
- *   919876543210 --one keystroke--> 9198765432 --normalized--> 919198765432
- *
- * These tests pin the prefill conversion that removes the mismatch.
+ * The stored value crossing into the field is canonical digits. `IntlPhoneInput`
+ * carries the country itself, so nothing is shortened any more; the legacy bare
+ * mobile is lifted to canonical form because a bare national number has no
+ * country for the server to parse it in.
  */
-describe('toPhoneInputValue (Defect 1)', () => {
-  it('shortens the stored 12-digit form to the 10-digit local mobile', () => {
-    expect(toPhoneInputValue('919876543210')).toBe('9876543210');
+describe('toPhoneInputValue', () => {
+  it('returns canonical digits unchanged', () => {
+    expect(toPhoneInputValue('919876543210')).toBe('919876543210');
   });
 
-  it('leaves a plain 10-digit value alone', () => {
-    expect(toPhoneInputValue('9876543210')).toBe('9876543210');
+  it('lifts a legacy bare 10-digit mobile to canonical digits', () => {
+    expect(toPhoneInputValue('9876543210')).toBe('919876543210');
   });
 
-  it('leaves an explicit +91 value alone in digit form', () => {
-    // The + is stripped for the input, but the local part is what is shown.
-    expect(toPhoneInputValue('+919876543210')).toBe('9876543210');
+  it('drops the + from an explicit E.164 value', () => {
+    expect(toPhoneInputValue('+919876543210')).toBe('919876543210');
   });
 
-  it('does not shorten a foreign number (would corrupt it)', () => {
+  it('does not touch a foreign number (would corrupt it)', () => {
     expect(toPhoneInputValue('14155550123')).toBe('14155550123');
-  });
-
-  it('passes masked placeholders through untouched', () => {
-    expect(toPhoneInputValue('+919****3210')).toBe('+919****3210');
   });
 
   it('returns empty string for null/undefined/empty', () => {
     expect(toPhoneInputValue(null)).toBe('');
     expect(toPhoneInputValue(undefined)).toBe('');
     expect(toPhoneInputValue('')).toBe('');
-  });
-
-  it('round-trips: prefilled value, one keystroke appended, still the same person', () => {
-    // Simulate the real path: stored -> prefill -> user appends a digit ->
-    // PhoneNumberInput sanitizes -> server normalizes.
-    const stored = '919876543210';
-    const prefilled = toPhoneInputValue(stored);
-    const afterKeystroke = (prefilled + '9').replace(/\D/g, '').slice(0, 10);
-    // Appending to a 10-digit field keeps the FIRST 10, i.e. the original.
-    expect(afterKeystroke).toBe(prefilled);
-    expect(afterKeystroke.length).toBe(10);
   });
 });

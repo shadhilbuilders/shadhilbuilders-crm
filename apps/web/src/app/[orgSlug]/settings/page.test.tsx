@@ -209,10 +209,12 @@ describe('SettingsPage - profile', () => {
     await mount();
     const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;
 
-    // A 5-digit value is unambiguously mid-typing and invalid.
+    // 4 national digits is unambiguously mid-typing: the field reports the
+    // canonical digits it would send (91 + what was typed), which is below the
+    // 7-digit shape floor every country shares.
     await act(async () => {
       phone.focus();
-      setNativeValue(phone, '98765');
+      setNativeValue(phone, '9876');
     });
     // `onTouched` reveals the message on blur (a real focus/blur pair, or
     // jsdom does not dispatch it).
@@ -234,7 +236,7 @@ describe('SettingsPage - profile', () => {
 
     await act(async () => {
       phone.focus();
-      setNativeValue(phone, '98765');
+      setNativeValue(phone, '9876');
     });
     await act(async () => {
       phone.blur();
@@ -242,7 +244,7 @@ describe('SettingsPage - profile', () => {
     expect(document.querySelector('[data-qa="form-error-message-phone"]')).not.toBeNull();
 
     await act(async () => {
-      setNativeValue(phone, '9876543210');
+      setNativeValue(phone, '9876543201');
     });
     // reValidateMode is onChange by default: a valid value drops the message.
     expect(document.querySelector('[data-qa="form-error-message-phone"]')).toBeNull();

@@ -1,133 +1,133 @@
-// Phone-number helpers shared across the CRM, extracted from the
-// Shadhil landing page's lib/site.ts telUrl logic so every surface
-// (leads table, lead detail, WhatsApp unknown contacts) uses one
-// consistent dialer link + display format.
+// Phone helpers shared across the CRM (leads table, lead detail, invites,
+// WhatsApp unknown contacts).
+//
+// ONE IMPLEMENTATION (2026-11-22): parsing, canonicalisation, display
+// formatting and `tel:` links all live in `@shadhil/api-types/phone`. This
+// module is the CRM-facing adapter that keeps the names call sites already
+// import; it holds no rules of its own beyond a narrow legacy display bridge
+// (see `withDomesticCountry`) and a shape-only form validator.
 
-import { normalizePhoneDigits } from '@shadhil/api-types';
+import {
+  DOMESTIC_COUNTRY,
+  PHONE_ERRORS,
+  formatPhone as formatStoredPhone,
+  isCountryCode,
+  regionOf,
+  telHref,
+  type CountryCode,
+} from '@shadhil/api-types/phone';
 import { z } from 'zod';
 
+/** India's calling code, the one domestic assumption in the system. */
+const DOMESTIC_CALLING_CODE = '91';
+
 /**
- * Build a `tel:` href from a raw phone string. Strips everything but
- * `+` and digits so `"(+91) 98765 43210"` → `tel:+919876543210`.
- * Masked placeholders (contain `*`) yield an empty href (not dialable).
+ * Legacy display bridge for rows written before phones were stored
+ * canonically. Every seed lead - and many older rows - hold a BARE 10-digit
+ * Indian mobile; the shared parser deliberately refuses to guess a country
+ * from a bare national number, because that guess is what rewrote a US number
+ * into an Indian one.
  *
- * 2026-11-18 (user-phone rev 5): the digits-only STORED form
- * (`919876543210`, what `PhoneSchema` persists) now gains the `+`. Without
- * it the href was `tel:919876543210`, which a handset interprets as a local
- * number - the country code is not stripped, it is dialed as part of the
- * subscriber number. A bare 10-digit value keeps its existing local-dial
- * behaviour, because `tel:+9876543210` would be country code 9 and is not a
- * number anybody meant.
+ * Display is the one place the domestic reading is still safe, so it is
+ * applied here, named, and only for a shape that cannot be claimed by another
+ * country: exactly 10 digits starting 6-9 (the Indian mobile range).
+ */
+function withDomesticCountry(stored: string): string {
+  const digits = stored.replace(/\D/g, '');
+  if (/^[6-9]\d{9}$/.test(digits)) return `${DOMESTIC_CALLING_CODE}${digits}`;
+  return stored;
+}
+
+/**
+ * Build a `tel:` href from a stored phone value.
+ *
+ * Delegates to the shared `telHref`, which adds the `+` and refuses anything
+ * that is not a possible number. This wrapper keeps the local contract every
+ * call site already relies on: an EMPTY STRING (not null) when there is
+ * nothing dialable, so `<a href={telUrl(...)}>` never renders a null href.
+ *
+ * Masked placeholders are not numbers and yield `''`.
  */
 export function telUrl(phone: string): string {
-  if (phone.includes('*')) return '';
-  const digits = phone.replace(/[^+\d]/g, '');
-  if (digits.length === 0) return '';
-  // Already an explicit international number - trust the caller's `+`.
-  if (digits.startsWith('+')) return `tel:${digits}`;
-  // The normalized stored form (91 + a 10-digit Indian mobile).
-  if (/^91\d{10}$/.test(digits)) return `tel:+${digits}`;
-  // A bare 10-digit Indian mobile. Same mapping normalizePhoneDigits applies
-  // (6-9 followed by nine digits IS an Indian mobile), so the dialer gets a
-  // country code instead of guessing. Before 2026-11-19 this fell through to
-  // the raw link, which meant two leads with the same number dialled
-  // differently depending on whether it had been normalized yet.
-  if (/^[6-9]\d{9}$/.test(digits)) return `tel:+91${digits}`;
-  // Local 10-digit and unrecognised shapes: unchanged.
-  return `tel:${digits}`;
+  return telHref(withDomesticCountry(phone)) ?? '';
 }
 
 /**
- * Format a raw phone for display. Handles the shapes actually stored across
- * the app and falls back to the raw string for anything unknown or masked
- * (`*` placeholders are NOT real numbers and pass through):
- *   - `9876500009` (plain 10-digit Indian)   → `98765 00009`
- *   - `+919876543210` (E164, +91)            → `+91 98765 43210`
- *   - `919876543210` (stored normalized)     → `+91 98765 43210`
- *   - `+919****3210` (masked)                → `+919****3210`
+ * Format a stored phone for display, delegating to the shared formatter.
  *
- * The third shape is why this function was wrong until 2026-11-18: every
- * lead created through the API stores the digits-only normalized value
- * (`PhoneSchema` → `normalizePhoneDigits`), but only the `+`-prefixed form
- * was handled. Seed rows hold `9876500001` and rendered correctly, so the
- * bug was invisible in demo data and only showed on real leads.
+ * - canonical digits (91 + a 10-digit Indian mobile) -> `98765 43210`
+ * - a legacy bare 10-digit Indian mobile            -> `98765 00009`
+ * - a foreign number                                -> `+` and its digits
+ * - a masked placeholder or anything unparseable    -> passed through as-is
+ *
+ * Never throws: four surfaces call this inside a table row, and one bad row
+ * must not blank the list.
  */
 export function formatPhone(phone: string): string {
-  if (phone.includes('*')) return phone;
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) {
-    return `${digits.slice(0, 5)} ${digits.slice(5)}`;
-  }
-  // Indian, either explicit E164 (`+91…`) or the digits-only stored form.
-  if (digits.length === 12 && digits.startsWith('91')) {
-    return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
-  }
-  // Don't guess at other country codes - pass them through unchanged
-  // (the CRM mostly handles Indian numbers; foreign E164 stays raw so
-  // we never mis-format a number we don't recognize).
-  return phone;
+  return formatStoredPhone(withDomesticCountry(phone));
 }
 
 /**
- * Convert a STORED phone value into the 10-digit form `PhoneNumberInput`
- * expects, for prefill only.
+ * The stored value in the shape `IntlPhoneInput` takes: canonical E.164
+ * DIGITS with no `+`.
  *
- * WHY THIS EXISTS (Defect 1, fixed 2026-11-18): the stored value is the
- * digits-only normalized form (`919876543210`, what `PhoneSchema` persists),
- * but `PhoneNumberInput` caps typing at 10 digits and sanitizes with
- * `digitsOnly(value, 10)` on change. It renders a 12-char controlled value
- * untouched (React does not apply `maxLength` to a programmatic value), so
- * the field LOOKED right - and the FIRST KEYSTROKE truncated it:
- *
- *   919876543210 -> 9198765432 -> normalized -> 919198765432
- *
- * One character typed silently rewrote a lead's phone number. Prefilling the
- * 10-digit local form removes the mismatch, so typing appends to `9876543210`
- * and the round-trip is lossless.
- *
- * Only the exact `91` + 10-digit Indian mobile shape is shortened. Anything
- * else (international, masked, a plain 10-digit value, garbage) is returned
- * unchanged: guessing would be worse than showing the raw value.
+ * It used to strip the `91` country code so a 10-digit-capped input could hold
+ * an Indian mobile. `IntlPhoneInput` carries the country itself, so nothing is
+ * shortened any more - that shortening is what made a normalised lead number
+ * lose its country code on the first keystroke.
  */
 export function toPhoneInputValue(stored: string | null | undefined): string {
   const value = typeof stored === 'string' ? stored.trim() : '';
-  if (value.includes('*')) return value;
-  const digits = value.replace(/\D/g, '');
-  if (digits.length === 12 && digits.startsWith('91')) {
-    return digits.slice(2);
-  }
-  if (digits.length === 10) return digits;
-  return value;
+  // Same legacy bridge as the display helpers: a bare 10-digit mobile is
+  // opened as the Indian number it is, so the field neither shows the wrong
+  // flag nor sends digits the server would have to guess a country for.
+  // Canonical values pass through untouched.
+  const canonical = withDomesticCountry(value);
+  // Canonical form has no `+`; a few pre-normalisation rows still carry one.
+  return canonical.startsWith('+') ? canonical.slice(1) : canonical;
 }
+
 /**
- * Client-side phone rule for forms whose schema leaves `phone` unvalidated.
+ * The country a stored value should be opened in.
  *
- * WHY NOT `PhoneSchema` DIRECTLY (2026-11-19): `PhoneSchema` TRANSFORMS its
- * input (`'9876543210' → '919876543210'`). Used as a react-hook-form field
- * schema it would rewrite the value the user is typing - the field would
- * jump to 12 digits mid-keystroke, which is exactly the class of bug
- * `toPhoneInputValue` exists to undo. So this mirrors the RULE without the
- * transform: validate against the server's own normalizer, keep the value.
- *
- * DERIVED, NOT RE-DECLARED. The test below asserts this accepts/rejects the
- * same shapes as `normalizePhoneDigits` (which `PhoneSchema` itself calls),
- * so the inline message cannot drift from what the API will accept.
- *
- * `''` is ALLOWED here - clearing is handled by the caller (`'' → null` on
- * submit for the clearable endpoints). Whether the field is REQUIRED is the
- * field's own concern, not the format's.
+ * `regionOf` cannot answer this for the legacy bare-mobile shape (it would read
+ * a bare 10-digit Indian number as Iran), so the same domestic bridge that
+ * governs display governs the picker.
  */
+export function countryOfStored(stored: string | null | undefined): CountryCode | null {
+  const value = typeof stored === 'string' ? stored.trim() : '';
+  const digits = value.replace(/\D/g, '');
+  if (/^[6-9]\d{9}$/.test(digits)) return DOMESTIC_COUNTRY;
+  return regionOf(value);
+}
+
+// ---------------------------------------------------------------------------
+// Form-level validation
+// ---------------------------------------------------------------------------
+// SHAPE ONLY (2026-11-22). Country rules - the national prefix, whether the
+// digits are valid for the chosen country, how to read a bare number - live in
+// exactly one place: the shared parser (`parsePhone`), which runs on the
+// SERVER with the country the operator picked (`phoneCountry`). A form field
+// cannot know any of that, so it answers the only question it can: "is this
+// plausibly a phone number at all?". Every country shares that shape, so there
+// is nothing Indian left to hand-roll here.
+//
+// `''` is ALLOWED: clearing is the caller's decision, and requiring a value is
+// the field's own concern (see OptionalPhoneInputSchema).
 export const phoneFieldMessage = 'Enter a valid phone number';
+
+/** Digits (with at most one leading `+`) and the punctuation people type. */
+const PHONE_SHAPE = /^\+?[\d\s().-]+$/;
+/** E.164 caps a number at 15 digits; below 7 nothing is a phone number. */
+const PHONE_MIN_DIGITS = 7;
+const PHONE_MAX_DIGITS = 15;
 
 export function isValidPhoneInput(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed.length === 0) return true; // "empty" is the caller's decision
-  try {
-    normalizePhoneDigits(trimmed);
-    return true;
-  } catch {
-    return false;
-  }
+  if (!PHONE_SHAPE.test(trimmed)) return false;
+  const digits = trimmed.replace(/\D/g, '');
+  return digits.length >= PHONE_MIN_DIGITS && digits.length <= PHONE_MAX_DIGITS;
 }
 
 /** Zod-ready predicate for a phone field that keeps the typed value as-is. */
@@ -138,27 +138,32 @@ export function phoneInputIssue(value: string): string | null {
 /**
  * The field schema to drop into a form's zod object.
  *
- * Use this INSTEAD of `z.string().optional()` on every phone field that has
- * no server-transform step of its own. It is deliberately transform-free
- * (see `isValidPhoneInput` for why `PhoneSchema` cannot be used here).
+ * Deliberately transform-free: it validates and hands the value back
+ * unchanged, so react-hook-form revalidation cannot rewrite what the operator
+ * typed (the server canonicalises `phone` + `phoneCountry` on submit).
  *
- * `''` passes: a blank field means "not provided" (or "clear it", which the
- * caller maps to `null`), and marking it invalid would paint a red border on
- * an untouched optional field. It does NOT accept `undefined` - a field that
- * is absent from the payload is a different question from one left blank. For
- * the optional phone fields use `OptionalPhoneInputSchema`.
+ * It does NOT accept `undefined` - a field absent from the payload is a
+ * different question from one left blank. Optional phone fields use
+ * `OptionalPhoneInputSchema`.
  */
 export const PhoneInputSchema = z
   .string()
   .refine((value) => isValidPhoneInput(value), { message: phoneFieldMessage });
 
-/**
- * The same rule for a phone field the UI treats as OPTIONAL.
- *
- * Needed because the api-types DTOs mark phone `.optional()` (an omitted key
- * means "leave it alone"), and a schema test that builds a payload without a
- * `phone` key must still pass. Without this, adding the format rule silently
- * turned every optional phone into a required one - caught by the existing
- * CreateUserForm tests.
- */
+/** The same rule for a phone field the UI treats as OPTIONAL. */
 export const OptionalPhoneInputSchema = PhoneInputSchema.optional();
+
+/** The country a phone field starts on when the row does not say otherwise. */
+export const DEFAULT_PHONE_COUNTRY = DOMESTIC_COUNTRY;
+
+/**
+ * The country that travels WITH the digits.
+ *
+ * A phone number is only interpretable beside the country it was typed in, so
+ * every form keeps the pair together and sends `phoneCountry` alongside
+ * `phone`. Typed as `CountryCode`, not `string`, so the request body cannot
+ * accept a value the server would refuse.
+ */
+export const PhoneCountrySchema = z.custom<CountryCode>((value) => isCountryCode(value), {
+  message: PHONE_ERRORS.UNKNOWN_COUNTRY,
+});

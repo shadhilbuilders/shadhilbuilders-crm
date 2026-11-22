@@ -577,7 +577,12 @@ describe('UserDetailView - edit and delete actions', () => {
     // or the first keystroke truncates it (defect history in lib/phone.ts).
     expect(field('edit-user-name')?.value).toBe('Priya Sharma');
     expect(field('edit-user-email')?.value).toBe('priya@example.com');
-    expect(field('edit-user-phone')?.value).toBe('9876543210');
+    // The field is prefilled with the stored canonical digits and renders them
+    // in the domestic national format (trunk prefix 0), with the country in
+    // the trigger - so a keystroke cannot truncate the country code.
+    expect(field('edit-user-phone')?.value.replace(/\D/g, '').replace(/^0+/, '')).toBe(
+      '9876543210',
+    );
   });
 
   it('Delete confirms through the mutation and leaves the dead route', async () => {

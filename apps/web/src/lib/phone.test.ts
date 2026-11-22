@@ -1,142 +1,173 @@
 // @vitest-environment node
-// Unit tests for the phone helpers (lib/phone.ts), shared by the
-// PhoneNumber component and every phone-rendering surface.
+// Unit tests for the phone helpers (lib/phone.ts).
+//
+// Since 2026-11-22 these helpers are a THIN ADAPTER over
+// `@shadhil/api-types/phone`: parsing, canonicalisation and display live
+// there. What is pinned here is (a) the adapter's own contract - the shapes it
+// must keep working for the CRM's stored data, and (b) that the form rules are
+// shape-only, with no country knowledge left in the client.
 import { describe, expect, it } from 'vitest';
 
-import { formatPhone, telUrl } from './phone';
+import {
+  OptionalPhoneInputSchema,
+  PhoneInputSchema,
+  countryOfStored,
+  formatPhone,
+  isValidPhoneInput,
+  phoneFieldMessage,
+  telUrl,
+  toPhoneInputValue,
+} from './phone';
 
 describe('telUrl', () => {
-  it('builds a +91 tel: from a bare 10-digit Indian mobile', () => {
-    // 2026-11-19: this used to stay local-dial. But a 6-9 + 9-digit value IS an
-    // Indian mobile (that is exactly the mapping normalizePhoneDigits applies),
-    // and leaving it bare meant the same number dialled differently depending on
-    // whether the row had been normalized yet. The number is unchanged; only the
-    // dial string carries its country code.
-    expect(telUrl('9876543210')).toBe('tel:+919876543210');
-  });
-
-  it('strips spaces/dashes/parens', () => {
-    expect(telUrl('(+91) 98765-43210')).toBe('tel:+919876543210');
-  });
-
-  it('keeps an existing + in E164', () => {
-    expect(telUrl('+919876543210')).toBe('tel:+919876543210');
-  });
-
-  // 2026-11-18 (Defect 2): the digits-only STORED form must gain the `+`,
-  // otherwise a handset dials the country code as part of the subscriber
-  // number. Every API-created lead holds this shape.
-  it('adds the + to the digits-only stored form (91 + 10 digits)', () => {
+  it('adds the + and the country code to canonical stored digits', () => {
     expect(telUrl('919876543210')).toBe('tel:+919876543210');
   });
 
-  it('never invents a country code for a 10-digit number outside the mobile range', () => {
-    // The +91 rule above is narrow on purpose: only 6-9 leading digits are an
-    // Indian mobile. Anything else stays exactly as given, because guessing a
-    // country code here would dial a different number.
-    expect(telUrl('1234567890')).toBe('tel:1234567890');
+  it('dials a legacy bare 10-digit mobile as the Indian number it is', () => {
+    // Seed rows still hold this shape. Dialling it without a country code made
+    // a handset treat `91` as part of the subscriber number.
+    expect(telUrl('9876543210')).toBe('tel:+919876543210');
   });
 
-  it('returns empty href for masked placeholders (not dialable)', () => {
-    expect(telUrl('+919****3210')).toBe('');
-    expect(telUrl('+141****2671')).toBe('');
+  it('strips spaces/dashes/parens and trusts an explicit +', () => {
+    expect(telUrl('(+91) 98765-43210')).toBe('tel:+919876543210');
+    expect(telUrl('+919876543210')).toBe('tel:+919876543210');
   });
 
-  it('returns empty href for empty input', () => {
+  it('returns an EMPTY href (not null) for masked placeholders', () => {
+    expect(telUrl('919****3210')).toBe('');
+  });
+
+  it('returns an empty href for empty input', () => {
     expect(telUrl('')).toBe('');
   });
 
-  // PhoneNumber renders whatever the API returned; a malformed row must not
-  // crash the whole table, so telUrl stays tolerant rather than normalizing.
+  it('refuses a number no dialler could use instead of guessing', () => {
+    // 1234567890 is not an Indian mobile, and the shared parser will not read
+    // it as another country's number either - so there is nothing to dial.
+    expect(telUrl('1234567890')).toBe('');
+  });
+
   it('never throws on unparseable input', () => {
+    // PhoneNumber renders whatever the API returned; a malformed row must not
+    // crash the whole table.
     expect(() => telUrl('not-a-number')).not.toThrow();
     expect(telUrl('not-a-number')).toBe('');
   });
 });
 
 describe('formatPhone', () => {
-  it('formats a plain 10-digit Indian number', () => {
-    expect(formatPhone('9876500009')).toBe('98765 00009');
-  });
-
-  it('formats +91 E164', () => {
-    expect(formatPhone('+919876543210')).toBe('+91 98765 43210');
-  });
-
-  // Defect 2: the shape every API-created lead actually stores. Seed data
-  // used 10 digits, which is why this was invisible in demos.
-  it('formats the digits-only stored form (91 + 10 digits)', () => {
+  it('formats canonical digits in the domestic national format', () => {
+    // One display form for every row: the dial code is always visible, so a
+    // foreign lead never reads as a local number.
     expect(formatPhone('919876543210')).toBe('+91 98765 43210');
   });
 
-  it('passes unrecognized foreign E164 through unchanged', () => {
-    expect(formatPhone('+14155550123')).toBe('+14155550123');
+  it('formats a legacy bare 10-digit mobile the same way', () => {
+    expect(formatPhone('9876500009')).toBe('+91 98765 00009');
   });
 
-  it('passes a no-plus foreign number through unchanged', () => {
-    expect(formatPhone('14155550123')).toBe('14155550123');
+  it('formats an explicit +91 value', () => {
+    expect(formatPhone('+919876543210')).toBe('+91 98765 43210');
+  });
+
+  it('shows a foreign number with its country code', () => {
+    // Every number carries its dial code, so a US lead cannot read as local.
+    expect(formatPhone('14155550123')).toBe('+1 415 555 0123');
+    expect(formatPhone('+14155550123')).toBe('+1 415 555 0123');
   });
 
   it('passes masked placeholders through untouched', () => {
+    expect(formatPhone('919****3210')).toBe('919****3210');
     expect(formatPhone('+919****3210')).toBe('+919****3210');
-    expect(formatPhone('+141****2671')).toBe('+141****2671');
   });
 
   it('falls back to raw for unknown shapes', () => {
     expect(formatPhone('not-a-number')).toBe('not-a-number');
   });
+
+  it('renders an empty string for an absent value', () => {
+    expect(formatPhone('')).toBe('');
+  });
+});
+
+describe('toPhoneInputValue', () => {
+  // The field takes canonical digits now, so nothing is shortened: shortening
+  // is what made a normalised lead number lose its country code on the first
+  // keystroke (the Defect 1 corruption path).
+  it('returns canonical digits unchanged', () => {
+    expect(toPhoneInputValue('919876543210')).toBe('919876543210');
+  });
+
+  it('lifts a legacy bare mobile to canonical digits', () => {
+    expect(toPhoneInputValue('9876543210')).toBe('919876543210');
+  });
+
+  it('drops a leading + (the field stores digits, not a dial string)', () => {
+    expect(toPhoneInputValue('+919876543210')).toBe('919876543210');
+  });
+
+  it('keeps a foreign number as it is', () => {
+    expect(toPhoneInputValue('14155550123')).toBe('14155550123');
+  });
+
+  it('returns empty string for null/undefined/empty', () => {
+    expect(toPhoneInputValue(null)).toBe('');
+    expect(toPhoneInputValue(undefined)).toBe('');
+    expect(toPhoneInputValue('')).toBe('');
+  });
+});
+
+describe('countryOfStored', () => {
+  it('resolves the region of a canonical number', () => {
+    expect(countryOfStored('919876543210')).toBe('IN');
+    expect(countryOfStored('14155550123')).toBe('US');
+  });
+
+  it('reads a legacy bare mobile as domestic, not as a foreign country', () => {
+    // Parsed naively, a bare 10-digit Indian number resolves to +98 (Iran).
+    expect(countryOfStored('9876543210')).toBe('IN');
+  });
+
+  it('returns null when there is nothing to resolve', () => {
+    expect(countryOfStored('')).toBeNull();
+    expect(countryOfStored(null)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
-// PhoneInputSchema - the CLIENT-side field rule (2026-11-19)
+// Form rules - SHAPE ONLY
 // ---------------------------------------------------------------------------
-// The forms used to declare `phone: z.string().optional()`, so a mistyped
-// number was accepted locally and only rejected by the API as a toast. These
-// pin that (a) the rule matches what the server normalizer accepts, and
-// (b) it does NOT transform the value - transforming is what rewrote the
-// input mid-keystroke (Defect 1 / phone.ts).
-import {
-  OptionalPhoneInputSchema,
-  PhoneInputSchema,
-  isValidPhoneInput,
-  phoneFieldMessage,
-} from './phone';
-
+// Country rules run server-side (`parsePhone` with `phoneCountry`). The field
+// only refuses what no country could accept, so these expectations are about
+// shape and nothing else.
 describe('isValidPhoneInput', () => {
-  it('accepts the shapes the server normalizer accepts', () => {
+  it('accepts numbers from any country', () => {
     for (const value of [
-      '9876543210', // 10-digit Indian mobile
-      '09876543210', // leading 0
-      '919876543210', // already normalized
-      '+919876543210', // explicit E164
-      '14155550123', // international
+      '919876543210', // canonical Indian
+      '9876543210', // legacy bare Indian
+      '+919876543210', // explicit E.164
+      '+14155550123', // US
+      '+65 6123 4567', // Singapore, punctuation included
+      '61234567', // an 8-digit national number
     ]) {
       expect(isValidPhoneInput(value), value).toBe(true);
     }
   });
 
-  it('rejects a partial number being typed', () => {
-    // The floor is a full 10 digits: anything shorter is a number still being
-    // typed. It used to be 7 (the international fallback was `\d{7,15}`), which
-    // is how a 7-digit phone could be submitted.
-    for (const value of ['9', '98765', '987654', '9876543', '987654321']) {
+  it('rejects a value that is not a number at all', () => {
+    for (const value of ['abc', 'not-a-number', '98765abc', '--']) {
       expect(isValidPhoneInput(value), value).toBe(false);
     }
   });
 
-  it('rejects a 7-digit value instead of reading it as international', () => {
-    expect(isValidPhoneInput('9876543')).toBe(false);
-  });
-
-  it('rejects non-numeric garbage', () => {
-    for (const value of ['abc', 'not-a-number', '98765abc']) {
-      expect(isValidPhoneInput(value), value).toBe(false);
-    }
+  it('rejects values outside the E.164 digit range', () => {
+    expect(isValidPhoneInput('123456')).toBe(false); // 6 digits
+    expect(isValidPhoneInput('1234567890123456')).toBe(false); // 16 digits
   });
 
   it("treats an empty string as valid (blank is the caller's decision)", () => {
-    // The settings / create-user forms allow clearing a number; marking blank
-    // invalid would paint a red border on an untouched optional field.
     expect(isValidPhoneInput('')).toBe(true);
     expect(isValidPhoneInput('   ')).toBe(true);
   });
@@ -144,29 +175,20 @@ describe('isValidPhoneInput', () => {
 
 describe('PhoneInputSchema', () => {
   it('passes a valid number through WITHOUT transforming it', () => {
-    // The critical difference from PhoneSchema: the value the user typed
-    // comes back unchanged, so revalidation cannot rewrite the input.
+    // The critical difference from the wire `PhoneSchema`, which normalizes to
+    // `91XXXXXXXXXX`: revalidation must never rewrite what the operator typed.
     const result = PhoneInputSchema.safeParse('9876543210');
     expect(result.success).toBe(true);
     expect(result.success && result.data).toBe('9876543210');
   });
 
-  it('does not prepend 91 the way PhoneSchema does', () => {
-    const result = PhoneInputSchema.safeParse('+919876543210');
-    expect(result.success && result.data).toBe('+919876543210');
+  it('does not prepend a country code', () => {
+    const result = PhoneInputSchema.safeParse('+14155550123');
+    expect(result.success && result.data).toBe('+14155550123');
   });
 
-  it('fails a partial number with a readable message', () => {
-    const result = PhoneInputSchema.safeParse('98765');
-    expect(result.success).toBe(false);
-    expect(result.success === false && result.error.issues[0]?.message).toBe(phoneFieldMessage);
-  });
-
-  it('fails a 7-digit number, which used to be submitted as international', () => {
-    // The field-level rule every phone form resolver uses (lead create, lead
-    // edit, create user, settings). This is the behaviour the form submit hangs
-    // off, so pin it here and not only on the predicate.
-    const result = PhoneInputSchema.safeParse('9876543');
+  it('fails a malformed value with the shared field message', () => {
+    const result = PhoneInputSchema.safeParse('not-a-number');
     expect(result.success).toBe(false);
     expect(result.success === false && result.error.issues[0]?.message).toBe(phoneFieldMessage);
   });
@@ -174,13 +196,13 @@ describe('PhoneInputSchema', () => {
   it('allows the empty string so optional fields stay untouched', () => {
     expect(PhoneInputSchema.safeParse('').success).toBe(true);
   });
+
+  it('does not accept an ABSENT phone', () => {
+    expect(PhoneInputSchema.safeParse(undefined).success).toBe(false);
+  });
 });
 
 describe('OptionalPhoneInputSchema', () => {
-  // Regression (2026-11-19): substituting the format rule for the old
-  // `z.string().optional()` silently turned every OPTIONAL phone into a
-  // REQUIRED one. The CreateUserForm schema tests caught it; this pins the
-  // distinction at the source so the next swap cannot repeat it.
   it('accepts an ABSENT phone (omitted key)', () => {
     expect(OptionalPhoneInputSchema.safeParse(undefined).success).toBe(true);
   });
@@ -199,8 +221,6 @@ describe('OptionalPhoneInputSchema', () => {
   });
 
   it('differs from PhoneInputSchema only on undefined', () => {
-    // The required variant must NOT accept a missing key - that is the whole
-    // reason both exist.
     expect(PhoneInputSchema.safeParse(undefined).success).toBe(false);
     expect(OptionalPhoneInputSchema.safeParse(undefined).success).toBe(true);
     for (const value of ['', '9876543210', 'abcdefg']) {

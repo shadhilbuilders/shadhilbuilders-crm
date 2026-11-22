@@ -29,14 +29,25 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { useUpdateLead } from '@/hooks/queries/crm';
-import { toPhoneInputValue, PhoneInputSchema } from '@/lib/phone';
-import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
+import {
+  DEFAULT_PHONE_COUNTRY,
+  PhoneCountrySchema,
+  PhoneInputSchema,
+  countryOfStored,
+  toPhoneInputValue,
+} from '@/lib/phone';
+import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
+import type { CountryCode } from '@shadhil/api-types/phone';
 
 const FORM_ID = 'lead-edit-form';
 
 type LeadEditFormValues = {
   name: string;
   phone: string;
+  /** The country the number was typed in - sent beside `phone`. */
+  // Optional to match the schema's output type exactly; the form seeds it on
+  // mount and the picker keeps it set, so submit always has a country.
+  phoneCountry?: CountryCode;
   email: string;
 };
 
@@ -53,6 +64,7 @@ const LeadEditFormSchema = z.object({
     .min(1, 'Name is required')
     .max(120, 'Name must be at most 120 characters'),
   phone: PhoneInputSchema,
+  phoneCountry: PhoneCountrySchema.optional(),
   email: z.string(),
 });
 
@@ -60,14 +72,15 @@ const LeadEditFormSchema = z.object({
 export type LeadEditTarget = {
   id: string;
   name: string;
+  /** Stored canonical digits. `phoneE164` wins when the row carries both. */
   phone: string;
+  phoneE164?: string | null;
   email?: string | null;
 };
 
 /**
- * Convert a STORED phone value into the 10-digit form `PhoneNumberInput`
- * expects, for prefill only. See lib/phone.ts for the full rationale - this
- * re-export keeps the dialog's public surface stable for its tests.
+ * The stored value in the form `IntlPhoneInput` takes (canonical digits).
+ * Re-exported from lib/phone.ts so the dialog's public surface stays stable.
  */
 export { toPhoneInputValue } from '@/lib/phone';
 
@@ -100,9 +113,10 @@ export function LeadEditFormBody({
     resolver: zodResolver(LeadEditFormSchema),
     defaultValues: {
       name: lead.name,
-      // Prefill the 10-digit local form - see toPhoneInputValue. Feeding the
-      // stored 12-digit value here is the Defect 1 corruption path.
-      phone: toPhoneInputValue(lead.phone),
+      // Canonical digits, and the country the number already belongs to, so
+      // the trigger shows the right flag instead of the form's default.
+      phone: toPhoneInputValue(lead.phoneE164 ?? lead.phone),
+      phoneCountry: countryOfStored(lead.phoneE164 ?? lead.phone) ?? DEFAULT_PHONE_COUNTRY,
       email: lead.email ?? '',
     },
     // `onTouched`: flag the number while the user is in the field, clear it
@@ -138,10 +152,18 @@ export function LeadEditFormBody({
           name: 'phone',
           label: 'Phone',
           required: true,
-          description: '10-digit mobile number. +91 is added automatically.',
-          render: ({ field }) => (
-            <PhoneNumberInput
-              {...field}
+          render: ({ field, fieldState }) => (
+            <IntlPhoneInput
+              aria-invalid={fieldState.invalid}
+              id={field.name}
+              name={field.name}
+              value={field.value ?? ''}
+              onBlur={field.onBlur}
+              defaultCountry={DEFAULT_PHONE_COUNTRY}
+              onChange={(digits, country) => {
+                field.onChange(digits);
+                form.setValue('phoneCountry', country ?? DEFAULT_PHONE_COUNTRY);
+              }}
               placeholder="Enter phone number"
               data-qa="lead-edit-phone"
             />
@@ -175,7 +197,9 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
   const form = useForm<LeadEditFormValues>({
     defaultValues: {
       name: lead?.name ?? '',
-      phone: lead?.phone ?? '',
+      phone: toPhoneInputValue(lead?.phoneE164 ?? lead?.phone),
+      phoneCountry:
+        countryOfStored(lead?.phoneE164 ?? lead?.phone) ?? DEFAULT_PHONE_COUNTRY,
       email: lead?.email ?? '',
     },
     mode: 'onSubmit',
@@ -188,7 +212,9 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
     if (open && lead !== null) {
       form.reset({
         name: lead.name,
-        phone: lead.phone,
+        phone: toPhoneInputValue(lead.phoneE164 ?? lead.phone),
+        phoneCountry:
+          countryOfStored(lead.phoneE164 ?? lead.phone) ?? DEFAULT_PHONE_COUNTRY,
         email: lead.email ?? '',
       });
     }
@@ -205,7 +231,8 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
       {
         id: target.id,
         name: values.name.trim(),
-        phone: values.phone.replace(/\D/g, ''),
+        phone: values.phone,
+        phoneCountry: values.phoneCountry ?? DEFAULT_PHONE_COUNTRY,
         ...(values.email.trim().length > 0
           ? { email: values.email.trim().toLowerCase() }
           : { email: null }),

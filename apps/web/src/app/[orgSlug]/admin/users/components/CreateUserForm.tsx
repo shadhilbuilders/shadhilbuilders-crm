@@ -19,9 +19,10 @@ import { CreateUserDtoSchema } from '@shadhil/api-types';
 import { useCreateUser } from '@/hooks/queries/users';
 import type { Role } from '@/apis/client';
 import { PasswordInput } from '@/components/shared/PasswordInput';
-import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
+import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
 import { labelFor } from '@/lib/labels';
-import { OptionalPhoneInputSchema } from '@/lib/phone';
+import { DEFAULT_PHONE_COUNTRY, PhoneCountrySchema, OptionalPhoneInputSchema } from '@/lib/phone';
+import type { CountryCode } from '@shadhil/api-types/phone';
 import { CustomerLeadField } from './CustomerLeadField';
 
 /** Roles that cannot exist without a team (the service rejects them without
@@ -66,12 +67,15 @@ function roleNeedsTeam(role: Role | undefined): boolean {
  * error must land on `teamId`, which only exists while a staff role is
  * selected.
  */
-const CreateUserFormSchema = CreateUserDtoSchema.omit({ phone: true })
+const CreateUserFormSchema = CreateUserDtoSchema.omit({ phone: true, phoneCountry: true })
   // Validated inline (2026-11-19): a bare `z.string().optional()` let a
-  // mistyped number through to the API, which rejected it as a toast. See
-  // lib/phone.ts for why this is not `PhoneSchema` (that one transforms).
+  // mistyped number through to the API, which rejected it as a toast. The rule
+  // is shape-only now - the country rules run server-side with `phoneCountry`.
   // OPTIONAL, because a staff account is valid without a number.
-  .extend({ phone: OptionalPhoneInputSchema })
+  .extend({
+    phone: OptionalPhoneInputSchema,
+    phoneCountry: PhoneCountrySchema.optional(),
+  })
   .superRefine((values, ctx) => {
     if (roleNeedsTeam(values.role) && !values.teamId) {
       ctx.addIssue({
@@ -121,6 +125,7 @@ export function CreateUserForm({
       password: '',
       role: (creatableRoles[0] as Role | undefined) ?? 'TELECALLER',
       phone: '',
+      phoneCountry: DEFAULT_PHONE_COUNTRY,
     },
     // `onTouched` so a mistyped number is flagged while the user is still in
     // the field (and cleared as soon as it parses), rather than only after a
@@ -153,6 +158,7 @@ export function CreateUserForm({
       teamId?: string;
       customerLeadId?: string;
       phone?: string;
+      phoneCountry?: CountryCode;
     } = {
       name: values.name,
       email: values.email,
@@ -164,6 +170,8 @@ export function CreateUserForm({
     // only when the user actually typed one (empty string would be a 400).
     if (!roleNeedsLead(values.role) && values.phone) {
       payload.phone = values.phone;
+      // The digits only mean one number beside the country they were typed in.
+      payload.phoneCountry = values.phoneCountry;
     }
     // The missing-team case is already rejected by CreateUserFormSchema, which
     // is what renders the inline error under the Team picker. This guard only
@@ -254,9 +262,22 @@ export function CreateUserForm({
       type: 'custom',
       name: 'phone',
       label: 'Phone',
-      description: 'Optional. 10-digit mobile number. +91 is added automatically.',
-      render: ({ field }) => (
-        <PhoneNumberInput {...field} placeholder="9876543210" data-qa="create-user-phone" />
+      description: 'Optional.',
+      render: ({ field, fieldState }) => (
+        <IntlPhoneInput
+          aria-invalid={fieldState.invalid}
+          id={field.name}
+          name={field.name}
+          value={field.value ?? ''}
+          onBlur={field.onBlur}
+          defaultCountry={DEFAULT_PHONE_COUNTRY}
+          onChange={(digits, country) => {
+            field.onChange(digits);
+            form.setValue('phoneCountry', country ?? DEFAULT_PHONE_COUNTRY);
+          }}
+          placeholder="9876543210"
+          data-qa="create-user-phone"
+        />
       ),
     });
   }

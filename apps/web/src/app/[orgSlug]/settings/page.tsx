@@ -72,10 +72,16 @@ import { orgHref, projectHref } from '@/lib/nav';
 import { labelFor } from '@/lib/labels';
 
 import { PasswordInput } from '@/components/shared/PasswordInput';
-import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
+import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
-import { toPhoneInputValue, OptionalPhoneInputSchema } from '@/lib/phone';
+import {
+  DEFAULT_PHONE_COUNTRY,
+  PhoneCountrySchema,
+  countryOfStored,
+  toPhoneInputValue,
+  OptionalPhoneInputSchema,
+} from '@/lib/phone';
 
 // ---------------------------------------------------------------------------
 // Profile (name) - the client-side contract, derived from the SAME rule the
@@ -101,6 +107,9 @@ const ProfileFormSchema = z.object({
   // drift from the endpoint's. OPTIONAL: the profile field may be absent
   // (staff without a number), and blank still means "clear".
   phone: OptionalPhoneInputSchema,
+  // The country the number was typed in - it travels with the digits so the
+  // server can read a national number instead of guessing one.
+  phoneCountry: PhoneCountrySchema.optional(),
 });
 type ProfileFormValues = z.infer<typeof ProfileFormSchema>;
 
@@ -213,7 +222,7 @@ function ProfileSection({
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(ProfileFormSchema),
-    defaultValues: { name: initialName, phone: '' },
+    defaultValues: { name: initialName, phone: '', phoneCountry: DEFAULT_PHONE_COUNTRY },
     // `onTouched`, not `onSubmit`: the phone rule exists to catch a mistyped
     // number WHILE the user is in the field, and `onSubmit` would only reveal
     // it after a round-trip attempt. `onTouched` waits for the first blur (so
@@ -227,7 +236,11 @@ function ProfileSection({
   // the incoming value actually differs, so a re-render never clobbers edits.
   useEffect(() => {
     if (initialName !== form.getValues('name') && !form.formState.isDirty) {
-      form.reset({ name: initialName, phone: form.getValues('phone') });
+      form.reset({
+        name: initialName,
+        phone: form.getValues('phone'),
+        phoneCountry: form.getValues('phoneCountry'),
+      });
     }
   }, [initialName, form]);
 
@@ -238,8 +251,13 @@ function ProfileSection({
   useEffect(() => {
     if (form.formState.isDirty) return;
     const next = toPhoneInputValue(initialPhone);
-    if (next !== form.getValues('phone')) {
-      form.reset({ name: form.getValues('name'), phone: next });
+    const nextCountry = countryOfStored(initialPhone) ?? DEFAULT_PHONE_COUNTRY;
+    if (next !== form.getValues('phone') || nextCountry !== form.getValues('phoneCountry')) {
+      form.reset({
+        name: form.getValues('name'),
+        phone: next,
+        phoneCountry: nextCountry,
+      });
     }
   }, [initialPhone, form]);
 
@@ -248,12 +266,21 @@ function ProfileSection({
     // never sends one - the service rejects it, and the field is disabled.
     const phone = isCustomer ? undefined : values.phone ? values.phone : null;
     updateProfile.mutate(
-      { name: values.name, ...(phone === undefined ? {} : { phone }) },
+      {
+        name: values.name,
+        ...(phone === undefined ? {} : { phone }),
+        // Only beside a number: a cleared field sends no country.
+        ...(phone === undefined || phone === null ? {} : { phoneCountry: values.phoneCountry ?? DEFAULT_PHONE_COUNTRY }),
+      },
       {
         onSuccess: async (saved) => {
           toast.success('Profile updated');
           form.reset(
-            { name: saved.name, phone: toPhoneInputValue(saved.phone) },
+            {
+              name: saved.name,
+              phone: toPhoneInputValue(saved.phone),
+              phoneCountry: countryOfStored(saved.phone) ?? DEFAULT_PHONE_COUNTRY,
+            },
             {
               keepDirty: false,
             },
@@ -328,11 +355,20 @@ function ProfileSection({
       label: 'Phone',
       description: isCustomer
         ? 'This is the number on your booking record. Contact the project office to change it.'
-        : 'Optional. 10-digit mobile number. Clear the field to remove it.',
-      render: ({ field }) => (
-        <PhoneNumberInput
-          {...field}
+        : 'Optional. Clear the field to remove it.',
+      render: ({ field, fieldState }) => (
+        <IntlPhoneInput
+          aria-invalid={fieldState.invalid}
+          id={field.name}
+          name={field.name}
+          value={field.value ?? ''}
+          onBlur={field.onBlur}
           disabled={isCustomer}
+          defaultCountry={DEFAULT_PHONE_COUNTRY}
+          onChange={(digits, country) => {
+            field.onChange(digits);
+            form.setValue('phoneCountry', country ?? DEFAULT_PHONE_COUNTRY);
+          }}
           placeholder={isCustomer ? '-' : '9876543210'}
           data-qa="settings-profile-phone"
         />

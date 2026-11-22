@@ -29,11 +29,10 @@ import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { useSessionUser } from '@/lib/session';
 import { LEAD_SOURCES, labelFor } from '@/lib/labels';
-import { PhoneInputSchema } from '@/lib/phone';
+import { DEFAULT_PHONE_COUNTRY, PhoneCountrySchema, PhoneInputSchema } from '@/lib/phone';
 
 import { PageHeader } from '@/components/shared/PageHeader';
-import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
-import { normalizePhoneDigits } from '@shadhil/api-types';
+import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
 import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -63,6 +62,10 @@ const createLeadSchema = z.object({
   // `normalizePhoneDigits` PhoneSchema used, so the stored value is
   // byte-for-byte unchanged.
   phone: PhoneInputSchema,
+  // The country the digits were typed in. It travels with the number: the
+  // server parses `phone` in `phoneCountry` (a bare national number is refused
+  // rather than guessed), so the two are always written together.
+  phoneCountry: PhoneCountrySchema.optional(),
   // Email is optional. The form defaults it to '' (empty string) - but
   // .optional() only allows undefined/missing, not ''. So accept '' as
   // "not provided" via a union with z.literal('') (mirrors the convert
@@ -112,6 +115,7 @@ export default function NewLeadPage() {
     defaultValues: {
       name: '',
       phone: '',
+      phoneCountry: DEFAULT_PHONE_COUNTRY,
       email: '',
       source: 'WALK_IN',
       notes: '',
@@ -126,15 +130,10 @@ export default function NewLeadPage() {
   });
 
   function onSubmit(values: CreateLeadSchema) {
-    // `values.phone` is the VALIDATED but still human-shaped value (the field
-    // no longer transforms during validation - see the schema comment). The
-    // normalization is the same call PhoneSchema made, so the payload is
-    // identical to before: E.164 digits, no "+", no spaces.
-    const phone = normalizePhoneDigits(values.phone);
-    if (phone.length < 10) {
-      toast.error('Phone must be at least 10 digits');
-      return;
-    }
+    // `values.phone` is already canonical E.164 digits, no "+": that is what
+    // IntlPhoneInput reports, and the server re-parses it with `phoneCountry`
+    // rather than a second local normalizer.
+    const phone = values.phone;
     // T-LEAD-PROJECT-REQUIRED (2026-09-16): every lead needs a project. This form
     // only ever renders on a project-scoped route, so a missing projectId means
     // the routing is broken - say so instead of posting a lead that would be
@@ -147,6 +146,7 @@ export default function NewLeadPage() {
     const payload = {
       name: values.name.trim().replace(/\s+/g, ' '),
       phone,
+      phoneCountry: values.phoneCountry ?? DEFAULT_PHONE_COUNTRY,
       // T-LEAD-PROJECT-REQUIRED (2026-09-16): projectId is REQUIRED by the API and
       // NOT NULL in the DB, so this is no longer conditional. The route is
       // project-scoped, so a null here is a routing error, and the guard below
@@ -199,9 +199,21 @@ export default function NewLeadPage() {
       name: 'phone',
       label: 'Phone',
       required: true,
-      description: '10-digit mobile number. +91 is added automatically.',
-      render: ({ field }) => (
-        <PhoneNumberInput {...field} placeholder="9876543210" data-qa="lead-phone" />
+      render: ({ field, fieldState }) => (
+        <IntlPhoneInput
+          aria-invalid={fieldState.invalid}
+          id={field.name}
+          name={field.name}
+          value={field.value ?? ''}
+          onBlur={field.onBlur}
+          defaultCountry={DEFAULT_PHONE_COUNTRY}
+          onChange={(digits, country) => {
+            field.onChange(digits);
+            form.setValue('phoneCountry', country ?? DEFAULT_PHONE_COUNTRY);
+          }}
+          placeholder="9876543210"
+          data-qa="lead-phone"
+        />
       ),
     },
     {

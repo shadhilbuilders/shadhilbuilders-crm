@@ -31,9 +31,9 @@ import { z } from 'zod';
 import type { CreateInviteResult } from '@shadhil/api-types';
 import { useCreateInvite } from '@/hooks/queries/invites';
 import type { Role } from '@/apis/client';
-import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
+import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
 import { labelFor } from '@/lib/labels';
-import { OptionalPhoneInputSchema } from '@/lib/phone';
+import { DEFAULT_PHONE_COUNTRY, PhoneCountrySchema, OptionalPhoneInputSchema } from '@/lib/phone';
 
 import { CopyableLink } from './CopyableLink';
 import { InviteSendActions } from './InviteSendActions';
@@ -73,6 +73,8 @@ const InviteStaffFormSchema = z
       .min(1, 'Name is required')
       .max(120, 'Name must be at most 120 characters'),
     phone: OptionalPhoneInputSchema,
+    /** The country the number was typed in; the server parses `phone` in it. */
+    phoneCountry: PhoneCountrySchema.optional(),
     role: z.string().min(1, 'Select a role'),
     teamId: z.string().optional(),
   })
@@ -152,6 +154,7 @@ function InviteStaffDialogBody({
       email: '',
       name: '',
       phone: '',
+      phoneCountry: DEFAULT_PHONE_COUNTRY,
       role: (creatableRoles[0] as Role | undefined) ?? 'TELECALLER',
     },
     // onTouched matches CreateUserForm, so a mistyped number is flagged while
@@ -171,6 +174,7 @@ function InviteStaffDialogBody({
         email: '',
         name: '',
         phone: '',
+        phoneCountry: DEFAULT_PHONE_COUNTRY,
         role: (creatableRoles[0] as Role | undefined) ?? 'TELECALLER',
       });
     }
@@ -191,6 +195,7 @@ function InviteStaffDialogBody({
         ...(values.email.length > 0 ? { email: values.email } : {}),
         name: values.name,
         phone: values.phone as string,
+        phoneCountry: values.phoneCountry ?? DEFAULT_PHONE_COUNTRY,
         role: values.role as Role,
         ...(values.teamId !== undefined && values.teamId.length > 0
           ? { teamId: values.teamId }
@@ -222,8 +227,21 @@ function InviteStaffDialogBody({
       label: 'Phone',
       required: true,
       description: 'The invite link is sent to this number on WhatsApp.',
-      render: ({ field }) => (
-        <PhoneNumberInput {...field} placeholder="9876543210" data-qa="invite-phone" />
+      render: ({ field, fieldState }) => (
+        <IntlPhoneInput
+          aria-invalid={fieldState.invalid}
+          id={field.name}
+          name={field.name}
+          value={field.value ?? ''}
+          onBlur={field.onBlur}
+          defaultCountry={DEFAULT_PHONE_COUNTRY}
+          onChange={(digits, country) => {
+            field.onChange(digits);
+            form.setValue('phoneCountry', country ?? DEFAULT_PHONE_COUNTRY);
+          }}
+          placeholder="9876543210"
+          data-qa="invite-phone"
+        />
       ),
     },
     {

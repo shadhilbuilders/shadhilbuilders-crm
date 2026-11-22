@@ -30,10 +30,10 @@ import {
   type PublicInvitePreview,
 } from '@shadhil/api-types';
 import { PasswordInput } from '@/components/shared/PasswordInput';
-import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
+import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
 import { authClient } from '@/lib/auth-client';
 import { isPlaceholderEmail } from '@shadhil/api-types';
-import { toPhoneInputValue } from '@/lib/phone';
+import { DEFAULT_PHONE_COUNTRY, countryOfStored, toPhoneInputValue } from '@/lib/phone';
 
 type Props = {
   token: string;
@@ -50,10 +50,10 @@ export function AcceptInviteForm({ token, preview }: Props) {
     resolver: zodResolver(AcceptInviteFormSchema) as never,
     defaultValues: {
       name: preview.name,
-      // The stored form is `91XXXXXXXXXX`; PhoneNumberInput caps at 10 digits,
-      // so shorten it or the first keystroke truncates the country code (the
-      // exact bug toPhoneInputValue exists to undo).
+      // Canonical digits - the field carries the country itself, so nothing is
+      // shortened and no country code is lost on the first keystroke.
       phone: toPhoneInputValue(preview.phone),
+      phoneCountry: countryOfStored(preview.phone) ?? DEFAULT_PHONE_COUNTRY,
       password: '',
       confirmPassword: '',
     },
@@ -76,9 +76,10 @@ export function AcceptInviteForm({ token, preview }: Props) {
           name: values.name,
           password: values.password,
           // '' means "keep the invite's number" - send nothing rather than a
-          // blank string the schema would reject.
+          // blank string the schema would reject. A correction carries the
+          // country it was typed in, so the server reads the digits correctly.
           ...(values.phone !== undefined && values.phone.trim().length > 0
-            ? { phone: values.phone }
+            ? { phone: values.phone, phoneCountry: values.phoneCountry }
             : {}),
         }),
       });
@@ -136,8 +137,21 @@ export function AcceptInviteForm({ token, preview }: Props) {
       name: 'phone',
       label: 'Mobile number',
       description: 'Prefilled from your invite. Change it if it is wrong.',
-      render: ({ field }) => (
-        <PhoneNumberInput {...field} placeholder="9876543210" data-qa="accept-phone" />
+      render: ({ field, fieldState }) => (
+        <IntlPhoneInput
+          aria-invalid={fieldState.invalid}
+          id={field.name}
+          name={field.name}
+          value={field.value ?? ''}
+          onBlur={field.onBlur}
+          defaultCountry={DEFAULT_PHONE_COUNTRY}
+          onChange={(digits, country) => {
+            field.onChange(digits);
+            form.setValue('phoneCountry', country ?? DEFAULT_PHONE_COUNTRY);
+          }}
+          placeholder="9876543210"
+          data-qa="accept-phone"
+        />
       ),
     },
     {

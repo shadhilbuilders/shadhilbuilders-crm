@@ -20,8 +20,14 @@ import type { useChangeUserRole, useDeleteUser, useUpdateUser } from '@/hooks/qu
 import { useMemo } from 'react';
 import { labelFor } from '@/lib/labels';
 import type { Role } from '@/apis/client';
-import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
-import { OptionalPhoneInputSchema, toPhoneInputValue } from '@/lib/phone';
+import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
+import {
+  DEFAULT_PHONE_COUNTRY,
+  OptionalPhoneInputSchema,
+  PhoneCountrySchema,
+  countryOfStored,
+  toPhoneInputValue,
+} from '@/lib/phone';
 
 /**
  * The smallest shape both dialogs need. `UserRow` (the list) and
@@ -33,7 +39,9 @@ export type UserEditTarget = {
   name: string;
   email: string;
   role: Role;
+  /** Stored canonical digits; `phoneE164` wins when the row carries both. */
   phone?: string | null;
+  phoneE164?: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -48,11 +56,12 @@ export type UserEditTarget = {
  * only produce a string, so `null` cannot flow through React Hook Form.
  * `onSubmit` maps '' -> null (clear) and omits the key for CUSTOMER.
  */
-const EditUserFormSchema = UpdateUserDtoSchema.omit({ phone: true }).extend({
-  // Validated inline (2026-11-19) - see lib/phone.ts. The server rule is
-  // unchanged; this only surfaces its verdict under the field. OPTIONAL,
+const EditUserFormSchema = UpdateUserDtoSchema.omit({ phone: true, phoneCountry: true }).extend({
+  // Shape-only inline (see lib/phone.ts): the country rules run server-side
+  // with `phoneCountry`, which the field sets alongside the digits. OPTIONAL,
   // because a staff account is valid without a number.
   phone: OptionalPhoneInputSchema,
+  phoneCountry: PhoneCountrySchema.optional(),
 });
 type EditUserFormValues = z.infer<typeof EditUserFormSchema>;
 
@@ -73,12 +82,14 @@ function EditUserDialog({
       // A CUSTOMER's number is derived from their lead, so the field starts
       // empty AND is disabled below - editing it here would 400.
       //
-      // PREFILL IN 10-DIGIT FORM (2026-11-19): this passed the STORED value
-      // straight through, so a normalized `919876543210` (12 chars) sat in a
-      // field that caps typing at 10 - and the first keystroke truncated it
-      // into `919198765432`. That is the Defect 1 pattern documented in
-      // lib/phone.ts, still live on this dialog. Same helper as settings.
-      phone: target === null || target.role === 'CUSTOMER' ? '' : toPhoneInputValue(target.phone),
+      // Canonical digits, plus the country they already belong to: the field
+      // carries both, so nothing has to be guessed at submit time.
+      phone:
+        target === null || target.role === 'CUSTOMER'
+          ? ''
+          : toPhoneInputValue(target.phoneE164 ?? target.phone),
+      phoneCountry:
+        countryOfStored(target?.phoneE164 ?? target?.phone) ?? DEFAULT_PHONE_COUNTRY,
     },
     // `onTouched` so a mistyped number is flagged while the user is still in
     // the field, and cleared as soon as it parses.
@@ -97,6 +108,8 @@ function EditUserDialog({
         name: values.name,
         email: values.email,
         ...(phone === undefined ? {} : { phone }),
+        // Only meaningful beside a number: a cleared field sends no country.
+        ...(phone === undefined || phone === null ? {} : { phoneCountry: values.phoneCountry ?? DEFAULT_PHONE_COUNTRY }),
       },
       {
         onSuccess: () => {
@@ -137,11 +150,20 @@ function EditUserDialog({
       // (unbuilt) telephony provisioning actually needs one.
       description: isCustomer
         ? 'This buyer has no phone of their own - update it on their lead.'
-        : '10-digit mobile number. +91 is added automatically.',
-      render: ({ field }) => (
-        <PhoneNumberInput
-          {...field}
+        : undefined,
+      render: ({ field, fieldState }) => (
+        <IntlPhoneInput
+          aria-invalid={fieldState.invalid}
+          id={field.name}
+          name={field.name}
+          value={field.value ?? ''}
+          onBlur={field.onBlur}
           disabled={isCustomer}
+          defaultCountry={DEFAULT_PHONE_COUNTRY}
+          onChange={(digits, country) => {
+            field.onChange(digits);
+            form.setValue('phoneCountry', country ?? DEFAULT_PHONE_COUNTRY);
+          }}
           placeholder={isCustomer ? '-' : '9876543210'}
           data-qa="edit-user-phone"
         />

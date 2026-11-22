@@ -6,6 +6,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, qs, type Role } from '@/apis/client';
+import type { CountryCode } from '@shadhil/api-types/phone';
 
 export type ReportsToLine = {
   teamId: string;
@@ -53,6 +54,8 @@ export type CreateUserInput = {
   /** Staff contact number (2026-11-18). Omitted for CUSTOMER - a buyer's
    *  number lives on their lead, and the server rejects it here. */
   phone?: string;
+  /** The country `phone` was typed in; the server parses the digits in it. */
+  phoneCountry?: CountryCode;
 };
 
 const USERS_KEY = ['users'] as const;
@@ -232,11 +235,13 @@ export function useUpdateUser() {
       name,
       email,
       phone,
+      phoneCountry,
     }: {
       id: string;
       name?: string;
       email?: string;
       phone?: string | null;
+      phoneCountry?: CountryCode;
     }) =>
       api<BackendCreatedUser>(`/users/${id}`, {
         method: 'PATCH',
@@ -244,6 +249,7 @@ export function useUpdateUser() {
           ...(name !== undefined ? { name } : {}),
           ...(email !== undefined ? { email } : {}),
           ...(phone !== undefined ? { phone } : {}),
+          ...(phoneCountry !== undefined ? { phoneCountry } : {}),
         },
       }),
     onSuccess: () => {
@@ -284,11 +290,14 @@ export function useUpdateProfile() {
     mutationFn: ({
       name,
       phone,
+      phoneCountry,
       email,
       currentPassword,
     }: {
       name?: string;
       phone?: string | null;
+      /** The country `phone` was typed in; sent only with a number. */
+      phoneCountry?: CountryCode;
       /** Only ever a placeholder -> real change; the API refuses anything else. */
       email?: string;
       currentPassword?: string;
@@ -298,6 +307,7 @@ export function useUpdateProfile() {
         json: {
           ...(name !== undefined ? { name } : {}),
           ...(phone !== undefined ? { phone } : {}),
+          ...(phoneCountry !== undefined ? { phoneCountry } : {}),
           ...(email !== undefined ? { email, currentPassword } : {}),
         },
       }),
