@@ -220,6 +220,8 @@ Sending a template to a number that is not on WhatsApp wastes the attempt and le
 
 **Tests:** an outbound attempt that returns `131026` flips the state to `UNREACHABLE` and the composer renders disabled; an inbound message flips it back to `REACHABLE`; `131030` leaves it `UNKNOWN`; the banner copy never claims a check happened before the first send.
 
+**As built (2026-11-22).** `apps/backend/src/leads/whatsapp-reachability.ts` derives the three states from an inbound `Message` and the newest `OutboundMessage`, and `GET /leads/:id` carries the verdict as `whatsapp` on `LeadDetail`. The chat pane renders the banner in place of the composer when the verdict is `UNREACHABLE`, with the two escapes. `Send anyway` is local state for that render, and `Re-check` refetches the lead, which is where the verdict comes from. `UNKNOWN` says nothing, as the table above requires. Covered by six branch tests on the derivation and five render tests on the pane.
+
 **Depends on:** A4, because the state is keyed on `phoneE164`. A number that was silently rewritten to `91...` would produce a reachability verdict about a different person.
 
 ## Corrections forced by measurement

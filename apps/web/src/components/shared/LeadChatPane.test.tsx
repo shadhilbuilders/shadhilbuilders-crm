@@ -641,3 +641,78 @@ describe('LeadChatPane - read-only reader (mentioned, not the owner)', () => {
     expect(html).not.toContain('data-qa="chat-read-only"');
   });
 });
+
+// Phase C - WhatsApp reachability gate on the CUSTOMER composer.
+//
+// The Cloud API has no pre-flight lookup, so the verdict is evidence: an
+// inbound message, or Meta's 131026. When the server says UNREACHABLE, saying
+// so is the entire value of the feature - a template sent to a number that
+// cannot receive it is how a first contact dies without anyone noticing.
+describe('LeadChatPane - WhatsApp reachability', () => {
+  function renderPane(whatsapp?: {
+    state: 'REACHABLE' | 'UNREACHABLE' | 'UNKNOWN';
+    detail: string | null;
+  }) {
+    mockedUseMessages.mockReturnValue({ data: [], isLoading: false, error: null } as never);
+    // The reply-window gate replaces the composer too, and a previous test left
+    // it loading. Reset it here so these cases fail only for their own reason.
+    mockedThreadState.mockReturnValue({
+      data: {
+        leadId: 'lead-1',
+        lastInboundAt: new Date().toISOString(),
+        lastTemplateSentAt: null,
+        windowOpen: true,
+        windowExpiresAt: null,
+        canWriteThread: true,
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+    return renderToStaticMarkup(
+      <LeadChatPane leadId="lead-1" leadName="Priya Sharma" whatsapp={whatsapp} />,
+    );
+  }
+
+  it('replaces the composer with the reason when the number is not on WhatsApp', () => {
+    const html = renderPane({
+      state: 'UNREACHABLE',
+      detail: 'The last message to this number was not delivered. WhatsApp reports it is not on WhatsApp.',
+    });
+    expect(html).toContain('data-qa="chat-wa-unreachable"');
+    expect(html).toContain('This number is not on WhatsApp');
+    expect(html).toContain('not on WhatsApp');
+    // The composer is gone: an input that cannot deliver is worse than a
+    // statement of the problem.
+    expect(html).not.toContain('data-qa="chat-input"');
+  });
+
+  it('offers both escapes, because the verdict can be stale or wrong', () => {
+    const html = renderPane({ state: 'UNREACHABLE', detail: null });
+    expect(html).toContain('data-qa="chat-wa-send-anyway"');
+    expect(html).toContain('Send anyway');
+    expect(html).toContain('data-qa="chat-wa-recheck"');
+    expect(html).toContain('Re-check');
+    // Falls back to the server's wording, never to a bare "error".
+    expect(html).toContain('not delivered');
+  });
+
+  it('leaves the composer alone when the number is REACHABLE', () => {
+    const html = renderPane({ state: 'REACHABLE', detail: null });
+    expect(html).toContain('data-qa="chat-input"');
+    expect(html).not.toContain('data-qa="chat-wa-unreachable"');
+  });
+
+  it('does not warn on UNKNOWN - nobody has tried yet', () => {
+    // Most leads are UNKNOWN on day one. Warning there would train the
+    // operator to ignore the banner, which is the one state that matters.
+    const html = renderPane({ state: 'UNKNOWN', detail: null });
+    expect(html).toContain('data-qa="chat-input"');
+    expect(html).not.toContain('data-qa="chat-wa-unreachable"');
+  });
+
+  it('renders the ordinary composer when the lead has no verdict at all', () => {
+    const html = renderPane();
+    expect(html).toContain('data-qa="chat-input"');
+    expect(html).not.toContain('data-qa="chat-wa-unreachable"');
+  });
+});

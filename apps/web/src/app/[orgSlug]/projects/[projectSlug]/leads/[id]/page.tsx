@@ -100,7 +100,15 @@ export default function LeadDetailPage() {
               Cap the aside to the viewport + sticky so the composer is
               always visible and the scroller can't grow the page. */}
           <aside className="min-w-0 self-start overflow-hidden lg:sticky lg:top-24 lg:h-[calc(100dvh-14rem)]">
-            <LeadChatPane leadId={leadId} leadName={lead.name} />
+            <LeadChatPane
+              leadId={leadId}
+              leadName={lead.name}
+              whatsapp={lead.whatsapp}
+              onRecheckWhatsApp={() => {
+                // Re-reads the lead, which is where the verdict comes from.
+                void leadQuery.refetch();
+              }}
+            />
           </aside>
         </div>
       ) : (

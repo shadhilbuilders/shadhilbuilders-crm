@@ -361,9 +361,19 @@ export function withDateSeparators(
 export function LeadChatPane({
   leadId,
   leadName,
+  whatsapp,
+  onRecheckWhatsApp,
 }: {
   leadId: string | null;
   leadName?: string | null;
+  /**
+   * Whether this lead can receive WhatsApp at all, as the server knows it.
+   * The Cloud API has no pre-flight lookup, so this is evidence: an inbound
+   * message, or Meta telling us the send was undeliverable (131026).
+   */
+  whatsapp?: { state: 'REACHABLE' | 'UNREACHABLE' | 'UNKNOWN'; detail: string | null };
+  /** Re-fetch the lead, for the Re-check action. */
+  onRecheckWhatsApp?: () => void;
 }) {
   const { user } = useSessionUser();
   const [kind, setKind] = useState<Kind>('CUSTOMER');
@@ -376,6 +386,11 @@ export function LeadChatPane({
   useMessagesRealtime(leadId, kind);
   const activeProjectId = useProjectId();
   const [draft, setDraft] = useState('');
+  // Sending to a number Meta says is not on WhatsApp is the operator's call,
+  // not the app's: the verdict can be stale (they installed it this morning),
+  // so the banner asks rather than forbids. This is the one-key override,
+  // scoped to this render of this lead.
+  const [waSendAnyway, setWaSendAnyway] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // MEDIA (2026-09-17): attachment picked in the composer (not yet sent).
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
@@ -871,6 +886,49 @@ export function LeadChatPane({
                       AWAITING_CUSTOMER_REPLY_MESSAGE
                     : CLOSED_WINDOW_MESSAGE}
               </span>
+            </div>
+          ) : !isInternal && !waSendAnyway && whatsapp?.state === 'UNREACHABLE' ? (
+            // Phase C: Meta told us this number is not on WhatsApp (131026) and
+            // nothing has come in since. Saying so here is the whole point -
+            // a template sent to a number that cannot receive it is the most
+            // common way a first contact dies silently. Two escapes, because
+            // the verdict can be wrong or stale.
+            <div
+              className="border-destructive/30 bg-destructive/5 flex flex-col gap-2 rounded border p-3"
+              data-qa="chat-wa-unreachable"
+            >
+              <div className="flex items-start gap-2">
+                <LuCircleAlert className="text-destructive mt-0.5 size-4 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium">This number is not on WhatsApp</p>
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    {whatsapp.detail ??
+                      'The last message to this number was not delivered. WhatsApp reports it is not on WhatsApp.'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 pl-6">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setWaSendAnyway(true)}
+                  data-qa="chat-wa-send-anyway"
+                >
+                  Send anyway
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onRecheckWhatsApp?.()}
+                  disabled={!onRecheckWhatsApp}
+                  data-qa="chat-wa-recheck"
+                >
+                  <LuRefreshCw className="size-3.5" />
+                  Re-check
+                </Button>
+              </div>
             </div>
           ) : (
             <InputGroup className="h-10 items-center gap-1">
