@@ -232,6 +232,8 @@ describe('list - active-project narrowing (2026-11-08)', () => {
     // plus the org-level exception arm (2026-11-21).
     expect(where).toMatchObject({
       OR: [
+        // 2026-11-23: the column written at emit time is the first arm.
+        { projectId: 'proj-1' },
         { leadId: { in: ['l-1'] } },
         { unitId: { in: ['unit-1'] } },
         { type: { in: ['feedback.created'] } },
@@ -267,6 +269,7 @@ describe('list - active-project narrowing (2026-11-08)', () => {
     // harmless for them - the arm admits the type, NOT excludes it back out).
     expect(where).toEqual({
       OR: [
+        { projectId: 'proj-1' },
         { leadId: { in: ['l-1'] } },
         { unitId: { in: ['unit-1'] } },
         { type: { in: ['feedback.created'] } },

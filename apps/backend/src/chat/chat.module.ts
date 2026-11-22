@@ -16,6 +16,7 @@ import { UsersModule } from '../users/users.module';
 
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
+import { InboundChatNotifierService } from './inbound-chat-notifier.service';
 
 @Module({
   // T-MENTION-TARGET (2026-09-29): ChatService injects UsersService to bound
@@ -24,7 +25,10 @@ import { ChatService } from './chat.service';
   // and the bound silently disappears in production while tests stay green.
   imports: [UsersModule],
   controllers: [ChatController],
-  providers: [ChatService],
-  exports: [ChatService],
+  // InboundChatNotifierService is exported for the WhatsApp webhook: an inbound
+  // customer message has to reach the lead's owner and co-owner, and the
+  // webhook is where that message is created.
+  providers: [ChatService, InboundChatNotifierService],
+  exports: [ChatService, InboundChatNotifierService],
 })
 export class ChatModule {}

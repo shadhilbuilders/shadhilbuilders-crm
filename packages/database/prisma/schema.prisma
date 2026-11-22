@@ -1368,6 +1368,11 @@ model Notification {
   // a lead nor a unit would be invisible under that filter. Deliberately no
   // relation field, same as leadId - the inbox narrows by id set.
   unitId         String?
+  // Denormalized from the anchor (Lead.projectId, or the Unit's project), for
+  // the same reason leadId is: the inbox narrows to the active project, and
+  // resolving that through a join on every read was the whole reason the
+  // project filter had to materialise a set of lead ids first (2026-11-23).
+  projectId      String?
   read           Boolean  @default(false)
   createdAt      DateTime @default(now())
 
@@ -1378,6 +1383,7 @@ model Notification {
   @@index([organizationId])
   @@index([userId, createdAt])
   @@index([unitId])
+  @@index([userId, projectId, createdAt])
 }
 
 // ────────────────────────────────────────────────────────────────────────────

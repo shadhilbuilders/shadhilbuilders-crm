@@ -7,11 +7,15 @@
 // the chat/leads paths.
 import { Module } from '@nestjs/common';
 
+import { ChatModule } from '../chat/chat.module';
 import { WhatsAppClient } from '../whatsapp/whatsapp.client';
 
 import { WebhooksController } from './webhooks.controller';
 
 @Module({
+  // An inbound customer message notifies the lead's owner and co-owner, and
+  // this controller is where that message is created (2026-11-23).
+  imports: [ChatModule],
   controllers: [WebhooksController],
   providers: [
     // Construct once from env (same factory the WhatsappModule uses) so the

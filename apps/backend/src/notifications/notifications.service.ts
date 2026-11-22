@@ -58,6 +58,8 @@ export interface NotificationRow {
    * immediately invisible.
    */
   unitId: string | null;
+  /** Project this row belongs to; null for org-level events and legacy rows. */
+  projectId: string | null;
   read: boolean;
   createdAt: string;
 }
@@ -167,6 +169,13 @@ export class NotificationsService {
         ),
       ]);
       baseWhere['OR'] = [
+        // Fast path (2026-11-23): the column written at emit time.
+        { projectId: dto.projectId },
+        // Both id-set arms STAY. They are not redundant with the column: a lead
+        // can be handed to another project after the notification was written,
+        // and the reader who opens it now works in the NEW project. Following
+        // the lead is the correct behaviour, so the column is an extra match,
+        // never a replacement.
         { leadId: { in: projectLeads.map((l: { id: string }) => l.id) } },
         { unitId: { in: projectUnits.map((u) => u.project_unit_ids) } },
         // Org-level events carry neither anchor; keep them reachable.
@@ -197,6 +206,7 @@ export class NotificationsService {
             body: true,
             leadId: true,
             unitId: true,
+            projectId: true,
             read: true,
             createdAt: true,
           },
@@ -231,6 +241,7 @@ export class NotificationsService {
         body: r.body,
         leadId: r.leadId,
         unitId: r.unitId,
+        projectId: r.projectId,
         read: r.read,
         createdAt: r.createdAt.toISOString(),
       })),
@@ -308,6 +319,12 @@ export class NotificationsService {
       /** Site-update notifications (2026-11-08) anchor to a unit instead of a
        *  lead: an engineer photographs a villa, not a buyer's enquiry. */
       unitId?: string;
+      /**
+       * The project this row belongs to (2026-11-23). Written to the column the
+       * inbox filters on. Optional: when omitted it is resolved from leadId or
+       * unitId, so no caller has to know the shape of the anchor.
+       */
+      projectId?: string;
       /** Present for booking notifications so the push deep-links to the
        *  booking page (`/bookings/{bookingId}`) rather than the lead's. */
       bookingId?: string;
@@ -328,6 +345,7 @@ export class NotificationsService {
       throw new BadRequestException('recipientSub is required');
     }
     const organizationId = payload.organizationId ?? (await this.resolveRecipientOrg(recipientSub));
+    const projectId = await this.resolveProjectId(recipientSub, organizationId, payload);
     return withRlsContext(
       this.client,
       { userId: recipientSub, role: 'TELECALLER', organizationId },
@@ -341,6 +359,7 @@ export class NotificationsService {
             body: payload.body,
             ...(payload.leadId !== undefined ? { leadId: payload.leadId } : {}),
             ...(payload.unitId !== undefined ? { unitId: payload.unitId } : {}),
+            ...(projectId !== null ? { projectId } : {}),
             read: false,
           },
           select: {
@@ -350,6 +369,7 @@ export class NotificationsService {
             body: true,
             leadId: true,
             unitId: true,
+            projectId: true,
             read: true,
             createdAt: true,
           },
@@ -389,11 +409,59 @@ export class NotificationsService {
           body: created.body,
           leadId: created.leadId,
           unitId: created.unitId,
+          projectId: created.projectId,
           read: created.read,
           createdAt: created.createdAt.toISOString(),
         };
       },
     );
+  }
+
+  /**
+   * The project a notification belongs to (2026-11-23).
+   *
+   * An explicit `projectId` wins. Otherwise it follows the anchor: lead ->
+   * project, unit -> phase -> project. Best-effort by design - a row whose
+   * anchor has been deleted keeps NULL and behaves exactly as it did before the
+   * column existed (visible in the unfiltered inbox, hidden under a project
+   * filter), because a notification failing to emit would be worse.
+   *
+   * Read under the RECIPIENT's context: if they cannot see the lead, they have
+   * no business carrying a project id for it.
+   */
+  private async resolveProjectId(
+    recipientSub: string,
+    organizationId: string,
+    payload: { leadId?: string; unitId?: string; projectId?: string },
+  ): Promise<string | null> {
+    if (payload.projectId !== undefined) return payload.projectId;
+    if (payload.leadId === undefined && payload.unitId === undefined) return null;
+    try {
+      return await withRlsContext(
+        this.client,
+        { userId: recipientSub, role: 'TELECALLER', organizationId },
+        async (tx) => {
+          const client = tx as unknown as PrismaClient;
+          if (payload.leadId !== undefined) {
+            const lead = await client.lead.findFirst({
+              where: { id: payload.leadId, organizationId },
+              select: { projectId: true },
+            });
+            if (lead !== null) return lead.projectId;
+          }
+          if (payload.unitId !== undefined) {
+            const unit = await client.unit.findFirst({
+              where: { id: payload.unitId, organizationId },
+              select: { phase: { select: { projectId: true } } },
+            });
+            return unit?.phase.projectId ?? null;
+          }
+          return null;
+        },
+      );
+    } catch {
+      return null;
+    }
   }
 
   /**

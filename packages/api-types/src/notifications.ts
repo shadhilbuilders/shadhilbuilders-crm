@@ -117,6 +117,13 @@ export const NotificationEventSchema = z.object({
   leadId: z.string().cuid2().nullable().optional(),
   /** Site-update notifications anchor to a unit, not a lead (2026-11-08). */
   unitId: z.string().nullable().optional(),
+  /**
+   * The project this row belongs to, denormalized so the inbox can filter on an
+   * equality instead of resolving the project's lead ids on every read. Null
+   * only for rows written before the column existed and for org-level events
+   * (`feedback.created`), which belong to no project.
+   */
+  projectId: z.string().nullable().optional(),
   read: z.boolean().default(false),
   createdAt: z.string().datetime({ offset: true }),
 });

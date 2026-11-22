@@ -19,6 +19,11 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   'booking.transition': 'Booking update',
   'visit.scheduled': 'Visit booked',
   'visit.outcome': 'Visit outcome',
+  // Chat (2026-11-23): a customer wrote to a lead, or a teammate mentioned you
+  // in an internal note. Both land in this inbox, so both need a plain phrase
+  // instead of the raw type string.
+  'chat.message': 'New message',
+  'chat.mention': 'Mention',
   // Org-level (2026-11-21): a public feedback submission, triaged from the
   // admin feedback inbox.
   'feedback.created': 'New feedback',

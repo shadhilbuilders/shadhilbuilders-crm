@@ -13,7 +13,7 @@
 // chat.service.send.test.ts). This is slower than mock-based
 // testing but proves the RLS + migration actually work - a mock
 // would let us skip the schema and the policies.
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { WebhooksController } from './webhooks.controller';
@@ -743,5 +743,93 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     process.env['WA_WEBHOOK_VERIFY_TOKEN'] = 'test-token';
     expect(() => controller.verify('subscribe', 'wrong-token', 'CHALLENGE')).toThrow();
     delete process.env['WA_WEBHOOK_VERIFY_TOKEN'];
+  });
+});
+
+// ── Inbound notifications (2026-11-23) ────────────────────────────────
+// An inbound customer message used to create the Message row and nothing else:
+// only someone already looking at that lead ever learned about it. These pin the
+// WIRING - who gets told, and what the notification says - against a spy; the
+// notifier's own behaviour (dedupe, media wording, push) is unit-tested in
+// chat/inbound-chat-notifier.service.test.ts.
+describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - notifies the lead owner', () => {
+  const envelope = (from: string, externalId: string, message: Record<string, unknown>) => ({
+    object: 'whatsapp_business_account',
+    entry: [
+      {
+        changes: [
+          {
+            field: 'messages',
+            value: {
+              metadata: { phone_number_id: '123456' },
+              messages: [{ from, id: externalId, timestamp: '1700000000', ...message }],
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  it('tells the owner and the co-owner, with the project id', async () => {
+    const notifier = {
+      notifyInbound: vi.fn(async (_payload: Record<string, unknown>) => undefined),
+    };
+    const controller = new WebhooksController(undefined, undefined, notifier as never);
+
+    await controller.whatsappInbound(
+      envelope(knownPhone, `wamid.test.${Date.now()}.notify`, {
+        type: 'text',
+        text: { body: 'Is the villa still available?' },
+      }),
+    );
+
+    expect(notifier.notifyInbound).toHaveBeenCalledTimes(1);
+    expect(notifier.notifyInbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        projectId: TEST_PROJECT_ID,
+        leadId: knownLeadId,
+        recipientSubs: [TEST_USER_ID, null],
+        body: 'Is the villa still available?',
+        mediaKind: null,
+      }),
+    );
+  });
+
+  it('carries the media kind so an image is not a silent notification', async () => {
+    const notifier = {
+      notifyInbound: vi.fn(async (_payload: Record<string, unknown>) => undefined),
+    };
+    const controller = new WebhooksController(undefined, undefined, notifier as never);
+
+    await controller.whatsappInbound(
+      envelope(knownPhone, `wamid.test.${Date.now()}.notifymedia`, {
+        type: 'image',
+        image: { id: 'media-1', mime_type: 'image/jpeg' },
+      }),
+    );
+
+    const call = notifier.notifyInbound.mock.calls[0]?.[0] as {
+      body: string;
+      mediaKind: string | null;
+    };
+    expect(call.body).toBe('');
+    expect(call.mediaKind).toBe('image');
+  });
+
+  it('does not notify for an unknown number - there is no lead to alert about', async () => {
+    const notifier = {
+      notifyInbound: vi.fn(async (_payload: Record<string, unknown>) => undefined),
+    };
+    const controller = new WebhooksController(undefined, undefined, notifier as never);
+
+    await controller.whatsappInbound(
+      envelope(unknownPhone, `wamid.test.${Date.now()}.notifyunknown`, {
+        type: 'text',
+        text: { body: 'hello?' },
+      }),
+    );
+
+    expect(notifier.notifyInbound).not.toHaveBeenCalled();
   });
 });

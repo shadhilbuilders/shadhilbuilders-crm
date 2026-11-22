@@ -48,6 +48,7 @@ import { prisma as barePrisma, withRlsContext } from '@shadhil/database';
 import { listOrganizationIds } from '../common/cron-orgs';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import type { StorageProvider } from '../storage/storage.provider';
+import { InboundChatNotifierService } from '../chat/inbound-chat-notifier.service';
 import { WhatsAppClient } from '../whatsapp/whatsapp.client';
 
 import { WhatsappSignatureGuard } from './whatsapp-signature.guard';
@@ -127,6 +128,12 @@ export class WebhooksController {
     @Optional()
     @Inject(STORAGE_PROVIDER)
     private readonly storage?: StorageProvider,
+    // 2026-11-23: inbound customer messages now alert the lead's owner and
+    // co-owner (inbox + push). @Optional() so the DB-backed text-path test can
+    // still construct the controller without the chat module.
+    @Optional()
+    @Inject(InboundChatNotifierService)
+    private readonly chatNotifier?: InboundChatNotifierService,
   ) {}
 
   // ── GET handshake ─────────────────────────────────────────────────
@@ -363,7 +370,13 @@ export class WebhooksController {
     // match and log both, because silence here would look like a routing bug.
     const orgIds = await this.webhookOrgIds();
     let owningOrgId = process.env['PUBLIC_ORG_ID'] ?? '';
-    let lead: { id: string; name: string | null } | null = null;
+    let lead: {
+      id: string;
+      name: string | null;
+      ownerId: string;
+      coOwnerId: string | null;
+      projectId: string;
+    } | null = null;
     const matchedOrgIds: string[] = [];
     for (const candidateOrgId of orgIds) {
       const hit = await withRlsContext(
@@ -376,7 +389,15 @@ export class WebhooksController {
         (tx) =>
           tx.lead.findFirst({
             where: { phoneE164, organizationId: candidateOrgId },
-            select: { id: true, name: true },
+            // owner/co-owner are the two people this lead belongs to, and an
+            // inbound message has to reach both of them.
+            select: {
+              id: true,
+              name: true,
+              ownerId: true,
+              coOwnerId: true,
+              projectId: true,
+            },
           }),
       );
       if (hit !== null) {
@@ -395,7 +416,11 @@ export class WebhooksController {
       );
     }
 
-    return withRlsContext(
+    // Filled INSIDE the transaction, consumed after it commits: the
+    // notification must describe a row that actually exists, and an emit for a
+    // rolled-back insert would be a lie the recipient cannot check.
+    let stored: { body: string; mediaType: string | null; filename: string | null } | null = null;
+    const outcome = await withRlsContext(
       barePrisma,
       {
         userId: 'CRON_SERVICE',
@@ -452,6 +477,7 @@ export class WebhooksController {
             mediaType,
             mediaFilename,
           );
+          stored = { body, mediaType, filename: mediaFilename };
           return 'message';
         }
 
@@ -541,6 +567,39 @@ export class WebhooksController {
         return 'unknown-contact-message';
       },
     );
+
+    // 4) The customer wrote to us. Tell the two people this lead belongs to
+    //    (owner, co-owner) in the inbox and on their phones. Outside the
+    //    transaction, best-effort: a notification failure must not turn a
+    //    delivered message into a webhook error Meta will retry forever.
+    // TS cannot see an assignment made inside the callback, so it believes
+    // `stored` is still null; the cast states the type without inventing a
+    // value. `stored` is only ever set on the branch that returns 'message'.
+    const captured = stored as {
+      body: string;
+      mediaType: string | null;
+      filename: string | null;
+    } | null;
+    if (outcome === 'message' && lead !== null && captured !== null) {
+      const target = lead;
+      await this.chatNotifier
+        ?.notifyInbound({
+          organizationId: owningOrgId,
+          projectId: target.projectId,
+          leadId: target.id,
+          leadName: target.name,
+          recipientSubs: [target.ownerId, target.coOwnerId],
+          body: captured.body,
+          // Meta's kind (image/video/audio/document) names the notification;
+          // the stored mime type is only the fallback.
+          mediaKind: mediaInfo?.type ?? null,
+          mimeType: captured.mediaType,
+          filename: captured.filename,
+        })
+        .catch(() => undefined);
+    }
+
+    return outcome;
   }
 
   /** Download an inbound media message from Meta + persist via storage.
