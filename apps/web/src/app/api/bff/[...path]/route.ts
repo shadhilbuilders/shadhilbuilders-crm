@@ -6,7 +6,7 @@
 // verifies the session against the DB, mints the shared-secret HS256 JWT via
 // issueJwt() from @shadhil/auth (same claim shape better-auth's jwt() plugin
 // emits - NestJS verifyJwt accepts both), forwards the request to NestJS,
-// and streams the JSON back.
+// and streams the response back (byte ranges included: see relayResponse).
 //
 // Client hooks in src/apis/* call /api/bff/* exclusively, so no browser code
 // ever handles a raw JWT.
@@ -22,6 +22,10 @@ import { readSessionCookie } from '@/lib/session-cookie';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest, ctx: RouteContext<'/api/bff/[...path]'>) {
+  return forward(request, ctx);
+}
+
+export async function HEAD(request: NextRequest, ctx: RouteContext<'/api/bff/[...path]'>) {
   return forward(request, ctx);
 }
 
@@ -98,34 +102,69 @@ async function forward(
 
   const upstream = await fetch(target, {
     method: request.method,
-    headers: {
-      Authorization: `Bearer ${jwt}`,
-      'Content-Type': request.headers.get('content-type') ?? 'application/json',
-    },
+    headers: buildUpstreamHeaders(request, jwt),
     body: request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.text(),
     cache: 'no-store',
+    // A seek or a closed tab aborts the browser request; without this the old
+    // range keeps downloading from the backend for nothing.
+    signal: request.signal,
   });
 
-  const upstreamBody = await upstream.arrayBuffer();
-  const upstreamContentType = upstream.headers.get('content-type') ?? 'application/json';
+  return relayResponse(upstream);
+}
 
-  // MEDIA (2026-09-17): preserve the exact response bytes. JSON responses can
-  // go through `.text()`, but a proxied GET /api/media/:key returns binary
-  // (image/document bytes) - re-serializing to UTF-8 via .text() would corrupt
-  // non-ASCII bytes. Detect binary content-types and echo the raw ArrayBuffer.
-  const isBinary =
-    !upstreamContentType.includes('application/json') && !upstreamContentType.includes('text/');
+/** Headers the browser sent that the backend needs to answer a byte range. */
+const FORWARDED_REQUEST_HEADERS = ['range', 'if-range'] as const;
 
-  const body =
-    isBinary && upstreamBody.byteLength > 0
-      ? Buffer.from(upstreamBody)
-      : Buffer.from(new TextDecoder().decode(upstreamBody));
+function buildUpstreamHeaders(request: NextRequest, jwt: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${jwt}`,
+    'Content-Type': request.headers.get('content-type') ?? 'application/json',
+  };
+  for (const name of FORWARDED_REQUEST_HEADERS) {
+    const value = request.headers.get(name);
+    if (value !== null)
+      headers[name.replace(/(^|-)([a-z])/g, (_m, d, c) => d + c.toUpperCase())] = value;
+  }
+  return headers;
+}
 
-  return new NextResponse(new Uint8Array(body), {
-    status: upstream.status,
-    headers: {
-      'Content-Type': upstreamContentType,
-      'Cache-Control': 'no-store',
-    },
+/** Response headers worth relaying: what a <video> element needs to seek and cache correctly. */
+const RELAYED_RESPONSE_HEADERS = [
+  'content-range',
+  'accept-ranges',
+  'content-disposition',
+  'etag',
+  'last-modified',
+] as const;
+
+/** Statuses that must not carry a body (a Response constructed with one throws). */
+const NULL_BODY_STATUSES: ReadonlySet<number> = new Set([101, 204, 205, 304]);
+
+/**
+ * Relay the upstream response without buffering it: a 14 MiB clip streams
+ * through in chunks, and 206/Content-Range survive. `Cache-Control` stays
+ * `no-store` - media is per-user and reached through short-lived signed reads.
+ */
+function relayResponse(upstream: Response): NextResponse {
+  const headers = new Headers({
+    'Content-Type': upstream.headers.get('content-type') ?? 'application/json',
+    'Cache-Control': 'no-store',
   });
+  for (const name of RELAYED_RESPONSE_HEADERS) {
+    const value = upstream.headers.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  // fetch() has already decoded a content-encoded body, so the upstream length
+  // would be wrong for the bytes we send. Only relay it for identity encoding.
+  const length = upstream.headers.get('content-length');
+  if (length !== null && !upstream.headers.has('content-encoding')) {
+    headers.set('Content-Length', length);
+  }
+
+  if (NULL_BODY_STATUSES.has(upstream.status)) {
+    headers.delete('Content-Type');
+    return new NextResponse(null, { status: upstream.status, headers });
+  }
+  return new NextResponse(upstream.body, { status: upstream.status, headers });
 }

@@ -164,6 +164,27 @@ missing from RLS) is not a defect: OWNER travels as ADMIN at the RLS layer.
 
 Known gaps 1, 2, 3, 5 and 8 are closed or decided by the above.
 
+## Step 6: landed 2026-11-23
+
+- **Suite first.** `apps/web/src/app/api/bff/[...path]/route.test.ts` (auth gate, JSON POST,
+  error passthrough, non-ASCII, 204, empty 200, PDF bytes, encoded media key, HEAD) was run
+  against the unchanged proxy: 8 green, 2 red. The two reds were real defects, not test
+  mistakes: a 204 threw (`Response` constructor rejects a body on 204) and there was no `HEAD`
+  export. Both are fixed by the change.
+- **Streaming.** The proxy no longer buffers: `Range` and `If-Range` go up, the upstream body is
+  relayed as a stream, and `Content-Range`, `Accept-Ranges`, `ETag`, `Last-Modified` and
+  `Content-Disposition` come back. `Cache-Control` stays `no-store`. `Content-Length` is relayed
+  only for identity encoding. The browser's abort signal is passed upstream, so a seek cancels
+  the old read. `route.range.test.ts` covers this.
+- **Backend media route.** It had no Range support, so the 206 could not exist. `.mp4` keys now
+  stream through `readStream` with `parseRangeHeader` (single `bytes=` ranges, including `0-`
+  and suffix `-N`; multi-range or malformed headers are ignored and get a full 200). Access
+  (`assertReadable`) runs before any byte is read. Every other key keeps the buffered, sniffed
+  path, so images and PDFs are unchanged. Content-Type is `video/mp4` because `record` already
+  verified the container.
+- **Not covered here:** a live 206 end to end through a running web + API pair. That is the
+  Playwright check in step 7.
+
 ## Known gaps: ten items, checked before the flag flips
 
 Found by auditing the plan against the code after the gate closed. Items 1 to 4 block step 5 as written; the rest are named risks with a decision attached rather than silent assumptions.
