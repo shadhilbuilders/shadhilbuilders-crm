@@ -236,7 +236,11 @@ jobs:
       # it to a different org reproduces exactly the 7 failures CI reported, and
       # `ceid01lpfe1esm8jwsxid41k28` (the org the seed creates - see the same
       # value in the e2e job) makes them pass.
-      - run: pnpm test --concurrency=1
+      # `--concurrency=1` lives in the root `test` script (package.json), so the
+      # command here must NOT repeat it: turbo exits with "the argument
+      # '--concurrency' cannot be used multiple times" and the whole job dies
+      # before a single test runs (CI red from 89bc504 onward).
+      - run: pnpm test
         env:
           DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
           DATABASE_URL: postgresql://shadhil_app:${{ env.SHADHIL_APP_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
