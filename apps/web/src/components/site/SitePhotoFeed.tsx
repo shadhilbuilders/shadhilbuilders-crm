@@ -143,11 +143,25 @@ function UploadingCard({
 
 /** Play glyph + duration over the poster. Decorative: the button's name carries both. */
 /** Staff-facing words for a delivery outcome; null when there is nothing to say. */
-function deliveryNoteOf(row: {
-  whatsappStatus?: keyof typeof DELIVERY_WORDS | null;
-}): string | null {
+function deliveryNoteOf(
+  row: {
+    whatsappStatus?: keyof typeof DELIVERY_WORDS | null;
+    whatsappReadAt?: string | null;
+  },
+  now: Date,
+): string | null {
   const status = row.whatsappStatus;
-  return status === null || status === undefined ? null : (DELIVERY_WORDS[status] ?? null);
+  if (status === null || status === undefined) return null;
+  const words = DELIVERY_WORDS[status];
+  if (words === null || words === undefined) return null;
+  // A read is the one outcome where WHEN matters: "Read by buyer" a minute ago
+  // and read last Tuesday lead to different next calls. Same day-terms helper
+  // the capture time uses, so the row never mixes two date styles.
+  if (status === 'READ' && row.whatsappReadAt !== null && row.whatsappReadAt !== undefined) {
+    const when = relativeCaptureTime(row.whatsappReadAt, now);
+    if (when !== '') return `${words}, ${when}`;
+  }
+  return words;
 }
 
 const DELIVERY_WORDS = {
@@ -183,7 +197,7 @@ function PhotoCard({
   actions?: ReactNode;
 }) {
   const isVideo = photo.kind === 'VIDEO';
-  const deliveryNote = deliveryNoteOf(photo);
+  const deliveryNote = deliveryNoteOf(photo, now);
   const alt =
     photo.caption.trim().length > 0
       ? `Unit ${unitLabel}, "${photo.caption}"`

@@ -55,6 +55,22 @@ describe('staff delivery status', () => {
     expect(card({ whatsappStatus: 'SENT' })).not.toContain('Delivered to buyer');
   });
 
+  it('says WHEN a read happened, and says nothing when the stamp is missing', () => {
+    // A read is the one outcome where the time changes the next call: read this
+    // morning means call now, read last week means they are ignoring you.
+    const withStamp = card({
+      whatsappStatus: 'READ',
+      whatsappReadAt: new Date(NOW.getTime() - 60_000).toISOString(),
+    });
+    expect(withStamp).toContain('Read by buyer, Today,');
+
+    // Old rows (and any receipt without a parsable timestamp) keep the plain
+    // words rather than rendering an empty or "Invalid Date" tail.
+    const noStamp = card({ whatsappStatus: 'READ', whatsappReadAt: null });
+    expect(noStamp).toContain('Read by buyer');
+    expect(noStamp).not.toContain('Read by buyer,');
+  });
+
   it('explains a closed window without sounding like an error', () => {
     const html = card({ whatsappStatus: 'SKIPPED_WINDOW' });
     expect(html).toContain('Not sent: buyer window closed');

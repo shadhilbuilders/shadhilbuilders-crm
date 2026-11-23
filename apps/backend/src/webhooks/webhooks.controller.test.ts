@@ -645,31 +645,38 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
         },
       ],
     });
-    const delivered = () =>
-      withRlsContext(runtimePrisma as unknown as PrismaClient, admin, async (tx) => {
-        const row = await tx.siteUpdateDelivery.findUnique({
+    const deliveryRow = () =>
+      withRlsContext(runtimePrisma as unknown as PrismaClient, admin, async (tx) =>
+        tx.siteUpdateDelivery.findUnique({
           where: { id: seeded.deliveryId },
-          select: { status: true },
-        });
-        return row?.status;
-      });
+          select: { status: true, readAt: true },
+        }),
+      );
+    const delivered = async () => (await deliveryRow())?.status;
 
     try {
       await controller.whatsappInbound(receipt('delivered'));
       expect(await delivered()).toBe('DELIVERED');
+      // Delivered is not read: the stamp appears with the read receipt only.
+      expect((await deliveryRow())?.readAt).toBeNull();
 
       await controller.whatsappInbound(receipt('read'));
       expect(await delivered()).toBe('READ');
+      // Meta's own timestamp (2023-11-14T22:13:20Z), not our processing time:
+      // the read happened on the phone, and the row says when that was.
+      expect((await deliveryRow())?.readAt?.toISOString()).toBe('2023-11-14T22:13:20.000Z');
 
       // Out-of-order and duplicated receipts are normal from Meta. A late
       // "delivered" must not un-read a message the buyer has already opened.
       await controller.whatsappInbound(receipt('delivered'));
       expect(await delivered()).toBe('READ');
+      expect((await deliveryRow())?.readAt?.toISOString()).toBe('2023-11-14T22:13:20.000Z');
 
       // A contradictory later receipt cannot rewrite what happened either: the
       // failed-from-SENT transition is not open once the buyer has read it.
       await controller.whatsappInbound(receipt('failed'));
       expect(await delivered()).toBe('READ');
+      expect((await deliveryRow())?.readAt?.toISOString()).toBe('2023-11-14T22:13:20.000Z');
     } finally {
       await withRlsContext(runtimePrisma as unknown as PrismaClient, admin, async (tx) => {
         // Deleting the message cascades to the outbox row; the delivery row is

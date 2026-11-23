@@ -287,6 +287,7 @@ export class WebhooksController {
     tx: { $executeRawUnsafe: (query: string, ...values: unknown[]) => Promise<number> },
     wamid: string,
     receipt: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED',
+    receivedAt: Date,
   ): Promise<void> {
     // From-states per receipt. A lookup table, not string building: every value
     // is a literal in this file, so nothing here can be influenced by the
@@ -303,27 +304,35 @@ export class WebhooksController {
       FAILED: "d.status = 'SENT'",
     };
     const errorCode = receipt === 'FAILED' ? `, "errorCode" = 'SEND_FAILED'` : '';
+    // The stamp is written in the same statement as the status, from Meta's own
+    // timestamp: the read happened on the phone, not when this worker drained
+    // the webhook. The from-state guard still applies, so the first read stands
+    // and a replayed receipt cannot move the time.
+    const readStamp = receipt === 'READ' ? `, "readAt" = $3::timestamptz` : '';
     await tx.$executeRawUnsafe(
       `UPDATE "SiteUpdateDelivery" d
-          SET "status" = $1::"SiteUpdateDeliveryStatus"${errorCode}
+          SET "status" = $1::"SiteUpdateDeliveryStatus"${errorCode}${readStamp}
          FROM "OutboundMessage" o
         WHERE o."siteUpdateDeliveryId" = d.id
           AND o."wamid" = $2
           AND ${from[receipt]}`,
       receipt,
       wamid,
+      // Unused (and never bound into the SQL) for every other receipt.
+      ...(receipt === 'READ' ? [receivedAt.toISOString()] : []),
     );
   }
 
   /** Meta accepted, delivered, read or refused a message we sent. */
   private async handleStatusUpdate(
-    status: { id?: string; status?: string; recipient_id?: string },
+    status: { id?: string; status?: string; recipient_id?: string; timestamp?: string | number },
     metadata: { phone_number_id?: string } | undefined,
   ): Promise<boolean> {
     if (!status.id || !status.status) return false;
     // Captured before the closures below: narrowing on `status.id` does not
     // survive into an async callback, and the wamid is the whole correlation.
     const wamid = status.id;
+    const receiptAt = metaTimestampToDate(status.timestamp);
     const ourStatus = mapMetaStatus(status.status);
     if (ourStatus === null) {
       // Unknown Meta status (e.g. a new one they add). Log and ignore.
@@ -349,7 +358,7 @@ export class WebhooksController {
             wamid,
           );
           if (outboxUpdated === 0) return 0;
-          await this.reportToDelivery(tx, wamid, ourStatus);
+          await this.reportToDelivery(tx, wamid, ourStatus, receiptAt);
           return outboxUpdated;
         },
       );
@@ -718,6 +727,17 @@ function extractMedia(message: {
     return { type: 'document', mediaId: message.document.id, filename: message.document.filename };
   }
   return null;
+}
+
+/**
+ * Meta sends `timestamp` as epoch SECONDS, in a string. Falls back to now for
+ * anything unparseable: a read stamped with the wrong time is worse than one
+ * stamped with our processing time, and either beats no stamp at all.
+ */
+function metaTimestampToDate(raw: string | number | undefined): Date {
+  const seconds = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) return new Date();
+  return new Date(seconds * 1000);
 }
 
 /**

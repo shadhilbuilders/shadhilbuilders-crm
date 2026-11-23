@@ -16,13 +16,15 @@ Read first, in this order:
   `SITE_UPDATE_WHATSAPP` switch are now COMMITTED on `main` in that order (four commits, then the
   switch). Nothing is pushed: local `main` is ahead of `origin/main`, and pushing is the deploy.
 - Backend: 2176 tests green across 121 files. Database: 301 green across 15 files, including
-  `consent-rls.test.ts`. Web: 1896 green across 181 files plus the two receipt labels. `tsc` and
+  `consent-rls.test.ts`. Web: 1896 green across 181 files plus the four staff-row receipt cases
+  (delivered, read, read-with-time, read-without-time). `tsc` and
   `eslint` clean in both apps.
-- Five migrations are applied to dev and test: `20261123160000_site_update_delivery_no_buyer`,
+- Six migrations are applied to dev and test: `20261123160000_site_update_delivery_no_buyer`,
   `20261123200000_site_update_delivery_no_consent`,
   `20261123193000_site_update_delivery_skipped_disabled`,
   `20261123194500_outbound_message_site_update_delivery`,
-  `20261123201000_site_update_delivery_receipts`. The Prisma client is regenerated in the
+  `20261123201000_site_update_delivery_receipts`,
+  `20261123202500_site_update_delivery_read_at`. The Prisma client is regenerated in the
   build and is not committed; run `pnpm --filter @shadhil/database generate` after pulling.
 
 ## Do not break these
@@ -67,6 +69,11 @@ dist/main.js`; the repo-root `.env` already sets `MEDIA_STORAGE=imagekit`, so pa
   (DELIVERED from SENT, READ from SENT or DELIVERED, FAILED from SENT), because receipts arrive
   out of order and Meta retries them: a late "delivered" must not un-read a message the buyer
   already opened. SENT means "Meta accepted"; DELIVERED and READ are what happened on the phone.
+- A read is stamped: `SiteUpdateDelivery.readAt` is written from Meta's own `timestamp` (epoch
+  seconds) in the same UPDATE as the status, so it records when the phone opened it, not when the
+  worker drained the webhook. The from-state guard means the first read stands; a replayed receipt
+  cannot move the time. The timeline sends it as `whatsappReadAt` and the staff row renders
+  "Read by buyer, Today 4:12 pm" with the same day-terms helper as the capture time.
 - A skipped delivery queues no outbox row, so nothing exists to retry. Re-sending a
   `SKIPPED_DISABLED` or `SKIPPED_NO_*` batch is NOT implemented: the row records that it was
   skipped, and a re-send feature would have to rebuild the message from the stored row.

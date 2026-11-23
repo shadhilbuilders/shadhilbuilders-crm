@@ -59,6 +59,8 @@ export type TimelinePhoto = {
     | 'SKIPPED_DISABLED'
     | 'FAILED'
     | null;
+  /** When the buyer opened it (staff only, ISO). Only meaningful with READ. */
+  whatsappReadAt?: string | null;
 };
 
 export type TimelineResponse = {

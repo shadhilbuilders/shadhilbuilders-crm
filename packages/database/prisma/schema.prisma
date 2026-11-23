@@ -1998,6 +1998,14 @@ model SiteUpdateDelivery {
   errorCode      String?
   attempts       Int                      @default(0)
   sentAt         DateTime?
+  /**
+   * When the buyer opened the message, from Meta's own receipt timestamp
+   * (2026-11-23). READ alone says it happened; this says when, which is the
+   * question a staff member chasing a buyer actually asks. Null until a read
+   * receipt arrives, and never overwritten - the status transition is
+   * forward-only, so the first read is the read.
+   */
+  readAt         DateTime?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
 
