@@ -34,7 +34,8 @@
     "docker:down": "docker compose --env-file .env -f docker/docker-compose.yml down",
     "docker:logs": "docker compose --env-file .env -f docker/docker-compose.yml logs -f",
     "docker:restart": "docker compose --env-file .env -f docker/docker-compose.yml restart",
-    "db:policies": "docker exec -i shadhil-postgres psql -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 < packages/database/prisma/rls/policies.sql"
+    "db:policies": "docker exec -i shadhil-postgres psql -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 < packages/database/prisma/rls/policies.sql",
+    "prepare": "node scripts/install-git-hooks.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",

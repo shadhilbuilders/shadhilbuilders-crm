@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Prettier gate for staged files.
+#
+# CI opens the Lint job with `pnpm format:check`. Nothing caught drift before
+# that step, so an unformatted file landed on main and turned the run red one
+# push later, while also masking `pnpm lint` and `database generate` behind it.
+# This closes the gap at the only place it can be closed cheaply: before commit.
+#
+# Check only, never --write. A silent reformat inside a commit is a surprise;
+# a blocked commit that prints the exact fix command is not.
+#
+# Bypass with `git commit --no-verify`. Skip is deliberate, not convenient:
+# the file will then fail CI.
+
+set -uo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root" || exit 0
+
+# Same extensions as `format:check`. .prettierignore still applies, because
+# prettier reads it for whatever files we hand it.
+ext_re='\.(ts|tsx|js|jsx|json|css|md|mdx)$'
+
+files=()
+while IFS= read -r -d '' path; do
+  if printf '%s' "$path" | grep -Eq "$ext_re"; then
+    files+=("$path")
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+if [ ${#files[@]} -eq 0 ]; then
+  exit 0
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node not on PATH, cannot reach prettier. Skipping format check."
+  exit 0
+fi
+
+# A clone that never installed cannot run prettier. Warn instead of blocking
+# every commit in a broken tree.
+if ! pnpm exec prettier --version >/dev/null 2>&1; then
+  echo "pre-commit: prettier is not installed (run \`pnpm install\`). Skipping format check."
+  exit 0
+fi
+
+if pnpm exec prettier --check --ignore-unknown "${files[@]}"; then
+  exit 0
+fi
+
+cat <<'EOF'
+
+pre-commit: prettier disagrees with the staged files named above.
+
+Fix them and re-stage, then commit again:
+
+    pnpm exec prettier --write <file> && git add <file>
+
+Do not reach for `pnpm format`: it rewrites the whole tree, and the committed
+style does not match the root config everywhere. Format only what you touched.
+EOF
+
+exit 1
