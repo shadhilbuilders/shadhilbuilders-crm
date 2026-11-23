@@ -27,11 +27,15 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+
 import type { Response } from 'express';
 import { z } from 'zod';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
 import { MediaAccessService } from './media-access.service';
+import { parseRangeHeader, resolveSuffix } from './parse-range';
 import { MAX_UPLOAD_BYTES } from './storage.limits';
 import { sniffMime, reconcileUploadMime } from './sniff-mime';
 import { STORAGE_PROVIDER } from './storage.tokens';
@@ -134,6 +138,12 @@ export class MediaController {
     // (2) a session could read a photo hidden from them just by holding the
     // key. 404 either way - a 403 would confirm the key exists.
     await this.mediaAccess.assertReadable(req.user!, decoded);
+    // Video clips stream with byte ranges so a <video> can seek; everything else
+    // keeps the buffered path below (its Content-Type comes from the bytes).
+    if (decoded.toLowerCase().endsWith('.mp4')) {
+      await this.streamVideo(req, res, decoded);
+      return;
+    }
     const data = await this.storage.read(decoded);
     if (data === null) throw new NotFoundException('Media not found');
     // Write the raw bytes directly to the response (no StreamableFile envelope,
@@ -150,6 +160,37 @@ export class MediaController {
     res.setHeader('Content-Length', String(data.length));
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.end(data);
+  }
+
+  /** Stream a clip: honours a single `Range`, answers 206/416, ends if the client leaves. */
+  private async streamVideo(req: AuthedRequest, res: Response, key: string): Promise<void> {
+    const parsed = parseRangeHeader(req.headers.range);
+    let range;
+    if (parsed.kind === 'range') range = parsed.range;
+    if (parsed.kind === 'suffix') {
+      const info = await this.storage.stat(key);
+      if (info === null) throw new NotFoundException('Media not found');
+      range = resolveSuffix(parsed.length, info.size);
+    }
+    const object = await this.storage.readStream(key, range);
+    if (object === null) throw new NotFoundException('Media not found');
+
+    res.status(object.status);
+    for (const [name, value] of Object.entries(object.headers)) res.setHeader(name, value);
+    // Stored clips are verified MP4 at record time; the provider's type is advisory.
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    if (object.body === null) {
+      res.end();
+      return;
+    }
+    try {
+      await pipeline(Readable.fromWeb(object.body as never), res);
+    } catch {
+      // A seek or a closed tab destroys the response mid-stream: not an error.
+      res.destroy();
+    }
   }
 }
 
