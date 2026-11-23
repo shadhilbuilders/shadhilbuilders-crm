@@ -31,7 +31,7 @@ export function PortalHeader({ name }: { name?: string | null }) {
   return (
     <header
       data-qa="portal-header"
-      className="portal-hairline-b sticky top-0 z-40 bg-(--portal-paper) px-4 pt-[calc(max(0.5rem,env(safe-area-inset-top))+min(1.5rem,env(safe-area-inset-top)))] pb-1.5 sm:px-10"
+      className="portal-hairline-b sticky top-0 z-40 bg-(--portal-paper) px-4 pt-[calc(max(0.5rem,env(safe-area-inset-top))+min(2rem,env(safe-area-inset-top)))] pb-1.5 sm:px-10"
     >
       {/* TIGHTENED (2026-11-09): the taller logo pushed the header from 77px to
           93px. `py-3` on the inner row plus the plate's own `py-1.5` stacked

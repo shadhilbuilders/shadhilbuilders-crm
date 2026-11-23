@@ -47,13 +47,14 @@ export function GuestTopBar() {
     >
       {/* T-SafeArea: the row below the inset is the guest bar's CONTENT BAND.
           h-19 (4.75rem) gave the brand lockup 8px of air either side, less than
-          the app header now gives its controls, so `min(0.25rem, ...)` adds a
-          quarter rem of band - clamped to 0 wherever there is no top inset, the
-          same idiom as AppHeader in this bar's own units. Measured in Chromium:
-          4.75rem with no inset (desktop and Safari tabs unchanged), 5rem at a
-          59px inset, which lifts the lockup from 8px of air either side to 10px,
-          matching AppHeader's controls. */}
-      <div className="container mx-auto flex h-[calc(4.75rem+min(1.5rem,env(safe-area-inset-top)))] w-full max-w-7xl items-center justify-between gap-3 px-4">
+          the app header gives its controls, so the clamped term below adds band -
+          clamped to 0 wherever there is no top inset, the same idiom as
+          AppHeader in this bar's own units. It is 2rem, the same amount every
+          top bar in the app now uses (AppHeader, the portal header and the site
+          capture header), so all four breathe alike. Measured in Chromium:
+          4.75rem with no inset (desktop and Safari tabs unchanged), 6.75rem at
+          a 59px inset. */}
+      <div className="container mx-auto flex h-[calc(4.75rem+min(2rem,env(safe-area-inset-top)))] w-full max-w-7xl items-center justify-between gap-3 px-4">
         <div className="flex h-15 min-w-0 items-center gap-2" data-qa="guest-brand">
           {/* Transparent lockup (logo.png - tight 4% padding, wordmark +
               tagline) on a FIXED LIGHT chip: the PNG's navy letters are

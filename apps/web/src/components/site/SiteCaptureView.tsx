@@ -141,9 +141,22 @@ export function SiteCaptureView({
       }}
     >
       <div className="bg-background flex min-h-dvh flex-col" data-qa="site-capture-screen">
-        {/* Sticky header: the back chevron is the only exit - no Close button. */}
-        {/* viewportFit 'cover': pad the top by the notch inset, as AppHeader does. */}
-        <header className="bg-background/95 border-border sticky top-0 z-20 border-b pt-[env(safe-area-inset-top)] backdrop-blur">
+        {/* Sticky header: the back chevron is the only exit - no Close button.
+            OPAQUE, and the inset is padded the same way AppHeader pads it.
+            (2026-11-22) Both were wrong on an installed iPhone:
+              - `bg-background/95` + `backdrop-blur` let the photo feed show
+                through, so the bar read as a patchy smear: blurred where a
+                card sat under it, plain where the white gutter did. Every
+                other top bar in the app (AppHeader, GuestTopBar, the portal
+                header) is opaque for exactly this reason.
+              - a bare `pt-[env(safe-area-inset-top)]` left the row flush
+                against the status bar and the bottom border with no air.
+                The clamped `+min(2rem,...)` is the same breathing room
+                AppHeader carries, one step larger: this row carries a title,
+                a subtitle and two stacked badges, so it needs the air more.
+                It resolves to 0 where there is no inset, so desktop and
+                Android are untouched. */}
+        <header className="bg-background border-border sticky top-0 z-20 border-b pt-[calc(max(0px,env(safe-area-inset-top))+min(2rem,env(safe-area-inset-top)))]">
           <div className="flex min-h-14 items-center gap-2 px-2">
             <IconButton
               as={Link}
@@ -247,9 +260,11 @@ export function SiteCaptureView({
           </p>
         </main>
 
-        {/* Sticky bar, above the safe area. Read-only viewers get no capture bar. */}
+        {/* Sticky bar, above the safe area. Read-only viewers get no capture bar.
+            Opaque for the same reason as the header: a photo scrolling under a
+            95%-opaque strip ghosts through it. */}
         {canCapture ? (
-          <footer className="bg-background/95 border-border sticky bottom-0 z-20 border-t px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+          <footer className="bg-background border-border sticky bottom-0 z-20 border-t px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">
             <div className="flex items-center gap-2">
               {/* The camera path is a PLAIN input: FileUploadProps does not expose
               `capture`, and without capture="environment" an iPhone shows the

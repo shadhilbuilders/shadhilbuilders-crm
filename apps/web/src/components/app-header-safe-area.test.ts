@@ -16,8 +16,9 @@
 //      `env(safe-area-inset-top)` itself; nothing above it can pad for it.
 //   2. the reserved inset must ALSO appear in the box height. box-sizing is
 //      border-box, so the inset is otherwise taken OUT of the content band.
-//   3. the extra `min(1.5rem, env(safe-area-inset-top))` term is the breathing room
-//      requested from a real device. min() clamps it to 0 where there is no
+//   3. the extra `min(2rem, env(safe-area-inset-top))` term is the breathing room
+//      requested from a real device, the same amount on every top bar.
+//      min() clamps it to 0 where there is no
 //      inset, which is what keeps desktop, Android and Safari tabs unchanged.
 //      Both halves of that are asserted below, because dropping either the clamp
 //      or the term is a silent visual regression on one side or the other.
@@ -48,12 +49,30 @@ describe('iOS top-bar safe area', () => {
 
   it('the app header keeps a 4rem band below the inset, plus one clamped rem of air', () => {
     expect(header).toContain(
-      'min-h-[calc(4rem+env(safe-area-inset-top)+min(1.5rem,env(safe-area-inset-top)))]',
+      'min-h-[calc(4rem+env(safe-area-inset-top)+min(2rem,env(safe-area-inset-top)))]',
     );
   });
 
   it('the guest bar carries the same clamp in its own units', () => {
-    expect(guestBar).toContain('h-[calc(4.75rem+min(1.5rem,env(safe-area-inset-top)))]');
+    expect(guestBar).toContain('h-[calc(4.75rem+min(2rem,env(safe-area-inset-top)))]');
+  });
+
+  it('every other top bar in the app breathes by the same 2rem', () => {
+    // One number, four bars: dropping it back to 1.5rem on any of them makes
+    // that screen sit 8px tighter against the status bar than the rest.
+    for (const [name, path] of [
+      ['PortalHeader', 'src/components/portal/portal-header.tsx'],
+      ['SiteCaptureView', 'src/components/site/SiteCaptureView.tsx'],
+    ] as const) {
+      const src = read(path);
+      expect(src, `${name} does not reserve the inset`).toContain('env(safe-area-inset-top)');
+      expect(src, `${name} does not carry the shared 2rem of air`).toContain(
+        'min(2rem,env(safe-area-inset-top))',
+      );
+      expect(src, `${name} still carries the old 1.5rem`).not.toContain(
+        'min(1.5rem,env(safe-area-inset-top))',
+      );
+    }
   });
 
   it('the inset is in the HEIGHT of both bars, not only in their padding', () => {

@@ -159,6 +159,27 @@ describe('SiteCaptureView chrome', () => {
     expect(html).toContain('Structure');
   });
 
+  it('protects= both bars are opaque and the header pads the notch inset with air', () => {
+    // Reported on an installed iPhone: the header looked half-blurred (the feed
+    // showed through the 95%-opaque, backdrop-blurred surface as a patchy smear)
+    // and the row sat flush against the status bar and the border.
+    //
+    // `env(safe-area-inset-*)` is 0 in jsdom, desktop Chrome and Playwright, so
+    // the contract is asserted on the class string - the same reason
+    // app-header-safe-area.test.ts pins AppHeader this way.
+    const html = render();
+    const header = html.match(/<header[^>]*>/)?.[0] ?? '';
+    expect(header).toContain('sticky top-0');
+    expect(header).toContain('env(safe-area-inset-top)');
+    expect(header).toContain('min(2rem,env(safe-area-inset-top))');
+    expect(header).not.toContain('backdrop-blur');
+    expect(header).not.toMatch(/bg-background\/\d/);
+
+    const footer = html.match(/<footer[^>]*>/)?.[0] ?? '';
+    expect(footer).toContain('sticky bottom-0');
+    expect(footer).not.toMatch(/bg-background\/\d/);
+  });
+
   it('keeps the primary action on the sticky bar and full width', () => {
     const html = render();
     const take = html.match(/<button[^>]*data-qa="site-take-photo"[^>]*>/)?.[0] ?? '';
