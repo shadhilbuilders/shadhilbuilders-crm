@@ -21,6 +21,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { verifyPoolMode } from '@shadhil/database';
 import { AppModule } from './app.module';
 import { assertBootEnv } from './boot-env';
+import { readSiteVideoConfig } from './customer-progress/site-video.config';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap(): Promise<void> {
@@ -28,6 +29,9 @@ async function bootstrap(): Promise<void> {
   // A misconfigured container exits with the full list of gaps, not a
   // half-initialized Nest app failing on the first Redis call.
   const env = assertBootEnv();
+  // Site update video: when SITE_VIDEO_CAPTURE=true both storage caps are
+  // required, and a bad value exits here with the full list of problems.
+  readSiteVideoConfig();
 
   // Eng review A5: fail fast if POOL_MODE != 'session' (otherwise RLS breaks).
   // Set POOL_MODE=transaction only after a careful migration plan; the boot
