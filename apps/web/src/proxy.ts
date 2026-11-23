@@ -66,7 +66,12 @@ export default function proxy(request: NextRequest): NextResponse {
 
   if (!hasSessionCookie(request.cookies)) {
     const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('next', pathname);
+    // PATHNAME **AND QUERY** (2026-11-23). Saving only the pathname silently
+    // dropped every query-dependent destination: a buyer opening a WhatsApp
+    // site-update link (`/portal?photo=<id>`) landed on the portal's default
+    // unit instead of their update, because `?photo=` never survived the login
+    // bounce. `search` already begins with '?', so it is appended verbatim.
+    loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }
 

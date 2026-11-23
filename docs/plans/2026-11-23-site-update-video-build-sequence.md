@@ -74,7 +74,7 @@ A 45 second clip at 2.5 Mbps measured 13.61 MB, which is 13.0 MiB, so the 14MiB 
 | 4   | `UnitUpdateSummary` behind existing call sites, alias populated                                                                                                                                                                                                                                                                           | web typecheck and the units-grid tests green with no visual change                                                                                                                                                      |
 | 5   | Routes: upload-auth, record, cancel, coded errors with `retryable`, `deletePhoto` deleting both keys, **poster generated client-side and uploaded private through the same signed folder**, **mapper `mediaUrl` returns the poster for video rows**                                                                                       | one service test per code; a delete test asserting two storage deletes; a video row whose `mediaUrl` is its poster, not its clip; a public poster rejected like a public clip                                           |
 | 6   | BFF: regression suite first (JSON POST, 204, HEAD, PDF), then streaming with `Range` in and 206 out                                                                                                                                                                                                                                       | the suite green before the change (204 is broken today, so this step fixes it) and a 206 asserted through `/api/bff/media/...`                                                                                          |
-| 7   | UI: recorder with pinned codecs, picker, tiles, lightbox, server-wrapper flag, delete the `lastPhotoStage` alias in the commit that kills its last reader                                                                                                                                                                                 | the design's `data-qa` inventory in the DOM; Playwright records, seeks and sees 206; denied camera falls back; ffprobe on the recorded file shows Baseline or Main, no B-frames, AAC when audio is on, moov before mdat |
+| 7   | UI: recorder with pinned codecs, picker, tiles, lightbox, server-wrapper flag, delete the `lastPhotoStage` alias in the commit that kills its last reader (done: alias deleted, readers on `lastRecordedStage`)                                                                                                                           | the design's `data-qa` inventory in the DOM; Playwright records, seeks and sees 206; denied camera falls back; ffprobe on the recorded file shows Baseline or Main, no B-frames, AAC when audio is on, moov before mdat |
 | 8   | WhatsApp: `SiteUpdateDelivery` writes, deep-link send that survives a signed-out buyer, staff status                                                                                                                                                                                                                                      | window closed sends the template path; no template is `SKIPPED_WINDOW`, not a silent drop                                                                                                                               |
 
 Steps 1 to 4 change no behaviour a user can see. That is deliberate: the risky structural work lands before any pixel moves.
@@ -185,20 +185,166 @@ Known gaps 1, 2, 3, 5 and 8 are closed or decided by the above.
 - **Not covered here:** a live 206 end to end through a running web + API pair. That is the
   Playwright check in step 7.
 
+## Step 7: built 2026-11-23 (uncommitted)
+
+Landed in the working tree, all behind `SITE_VIDEO_CAPTURE` (server wrapper `page.tsx` passes
+`videoEnabled`; flag off renders the photo-only bar, asserted by test):
+
+- `ApiError.retryable`; `lib/site-video/*`: error copy, recorder reducer, codec/camera support,
+  poster (always a JPEG, placeholder on failure), uploader with session reuse on Retry,
+  `RecorderEngine` (releases every track; 45 s ceiling; sub-second take discarded), gallery file
+  validation (MP4 brand only, size, 1-45 s), flag reader.
+- `SiteRecorder` sheet (record, review with stage and caption, upload progress from real bytes,
+  Retry only for server-flagged retryable errors, camera-denied fallback to the picker),
+  Video target in the capture bar, video tile (poster, play glyph, duration, "Video, N seconds"),
+  lightbox player (no autoplay, `preload="none"`, download fallback), empty-state copy.
+- Permissions-Policy `camera=(self), microphone=(self)` on the site routes only.
+
+Deviations from the design table, deliberate: permission states are an inline panel, not an
+`AlertDialog`; the caption is the library `Textarea` like the photo note dialog, not `InputGroup`;
+the gallery video goes through a hidden `accept="video/mp4"` input rather than the overflow menu,
+so the existing Gallery button and its markers are untouched.
+
+Done since: the Playwright run (`apps/web/src/test/e2e/site-video.spec.ts`: record with a fake
+camera, save, 200 and 206 through the BFF, ffprobe h264 Baseline/Main with no B-frames, no audio
+track, moov before mdat, camera denied falls back to the picker). It caught a real bug: the
+per-upload advisory lock used `$queryRaw` on a `void` column, which Prisma's adapter cannot read,
+so every record returned 503; now `$executeRaw`. The buyer portal hero, list thumbnails and
+lightbox show a clip as its poster with a play cue and play it in the lightbox
+(`portal-video.test.tsx`). The 8-photos/1-video cap needs no new code: a clip is saved one per
+recorder session and the photo note keeps its own cap of 8, so the two never mix.
+
+Also done since. The `lastPhotoStage` alias is GONE: every reader moved to
+`lastRecordedStage` (the newest row of ANY kind that recorded a stage), and the four surfaces that
+built a row without the summary - unit create, unit update, the assignment read-back - now load
+it, so no screen lost its stage. `plots()` deliberately does not: the plot map never reads a stage.
+The audio toggle was UNREACHABLE: the sheet auto-started the camera on open, so the `idle` state
+that owns the switch and the Record button never rendered, and a MediaRecorder's tracks are fixed
+once it starts anyway. The sheet now opens on `idle`; Record starts the camera. Measured on this
+build's Chromium 2026-11-23: `video/mp4;codecs=avc1` is supported, `avc1,mp4a.40.2` is NOT, and
+asking for audio anyway records a SILENT clip with an Opus track. So `supportsAudio()` gates the
+switch on the AAC-muxing type: where it cannot mux, the screen says "Audio unavailable" and never
+asks for a microphone. The iPhone `.mov` refusal now says what to do about it
+("iPhone videos are HEVC. Record it in the app, or export it as MP4 first."), in the client and
+the server, and the route is `force-dynamic`, so the flag does not bake at build time.
+
+Not done: the device gate. Only a fake camera has been exercised, so every row of the table below
+is still unproven: no real MP4 from a phone, no Safari, no throttled 3G, no WhatsApp in-app
+browser. The AAC-when-audio-on ffprobe assertion exists and runs, but no device here can produce
+that file; it needs an Android Chrome or iPhone Safari run.
+
+## Step 8: built 2026-11-23 (uncommitted)
+
+The buyer-facing WhatsApp leg, on top of the existing outbox rather than a second Meta client.
+
+`site-update-delivery.service.ts` decides what to send, in a pure `planDelivery()` that a test
+drives without a DB, network or clock: inside the 24h window freeform media is allowed, outside it
+only an approved template is, and with no template configured the row is `SKIPPED_NO_TEMPLATE`
+instead of a guaranteed Meta refusal. A non-MP4 clip is never sent as a video: it goes as its
+poster, which is exactly why step 5 made the poster mandatory. The decision inputs are the buyer's
+last inbound (the same `isServiceWindowOpen` the chat composer uses), the row's recorded
+`mimeType`, and the storage `stat` for a purged clip.
+
+ONE MESSAGE PER BATCH, not per row. The delivery row's unique `(organizationId, batchId)` is the
+guard, and a unique violation is treated as "already recorded" rather than pre-checked - a
+pre-check loses the race when six photos are saved in one note. Photos carry no `batchId` on the
+wire, so the batch is the capture instant (`photo-<takenAt>`), which the six rows of one note
+share.
+
+TWO BUGS THE RUNTIME RUN CAUGHT, both invisible to unit tests:
+
+1. **The row could not be written at all.** The first version used the bare Prisma client, and
+   `SiteUpdateDelivery` is FORCE ROW LEVEL SECURITY with staff-gated writes, so every insert was
+   refused with 42501. The delivery write now runs inside the SAME `withRlsContext` transaction
+   that writes the update, which also means a message is never queued about a row that rolled
+   back. Verified end to end: a recorded clip now leaves a delivery row behind.
+2. **"No buyer" was recorded as FAILED.** The e2e unit has no booking, so the row said delivery
+   failed - sending support after a phantom bug. The enum gained `SKIPPED_NO_BUYER` (migration
+   `20261123160000_site_update_delivery_no_buyer`), and the staff row says "Not sent: no buyer on
+   this unit".
+
+The deep link (gap 6) is `site-update-link.ts`: `<web origin>/portal?unit=&photo=`, built with the
+SAME origin resolution as invite links so it cannot point at the API host. A signed-out buyer is
+bounced to `/login?next=<path>`, and `isSafeNextPath` accepts only same-origin absolute paths, so
+they land back on the update. Ids are URL-encoded, so one cannot smuggle a second parameter. No
+origin configured means the message goes out WITHOUT a link and the log names the variable; it
+never emits a relative link.
+
+Staff status is on the row: the timeline DTO gains `whatsappStatus` for a staff viewer only (one
+batched query per page), and the feed renders it in words ("Sent to buyer", "Not sent: buyer
+window closed"), never as an enum. Null - buyer view, pre-step-8 row, no delivery row - renders
+nothing rather than an ambiguous "not sent".
+
+Meta fetches template media itself, so `StorageProvider` gained `shareUrl(key)`: a signed,
+short-lived URL (ImageKit's `signedOriginalUrl`, the same one `read`/`readStream` use) minted at
+SEND time from the row's own `mediaKey` and never stored. `WhatsAppClient`'s template header type
+now covers video and image, not just documents.
+
+TWO templates, not one. Meta fixes a template's HEADER TYPE at approval, so a VIDEO-header
+template rejects an image parameter and vice versa - one name could never serve both a clip and a
+poster. `WA_TEMPLATE_SITE_UPDATE_VIDEO` and `WA_TEMPLATE_SITE_UPDATE_IMAGE` are chosen by what the
+send actually has, and a blank variable means "not approved yet" (`SKIPPED_NO_TEMPLATE`), never a
+doomed call. The template path also had no link until now: the URL button is
+`/portal?photo={{1}}` (Meta allows one variable, and it must end the URL), sent as its own
+component carrying the row id. It is opt-in per template name (`hasUrlButton`), because a button
+component sent to a body-only template is a Meta 132000. The portal already resolves the unit from
+the photo id.
+
+The body greets by FIRST NAME (owner decision 2026-11-23). A template parameter can never be
+omitted - Meta validates the count before it reads the text - so "send it without the name" is not
+expressible: the slot always carries a string, and a neutral fallback is a greeting that still
+reads (`Hello {{1}},` with "Asha", or "there"). `greetingName()` takes the first word and refuses
+anything that is not plainly a name (titles like "Sir", digits, emails, initials, empty), because
+`Lead.name` is whatever a staff member typed. The freeform path uses the same opening, so a buyer
+who gets one of each does not see two different companies. The engineer's note is body variable
+`{{3}}`, with a neutral line when empty, so the template never needs re-approving for it.
+
+Body and button variables share one row object, which exposed a real bug: the old code stringified
+EVERY key as a body parameter, so the button's `photo` value would have been a fourth body
+parameter against a three-variable template (Meta 132000). `bodyVars()` now sends numbered keys
+only; named keys travel in their own component.
+
+The PLOT NUMBER travels inside the villa value (owner decision 2026-11-23), not as a fourth slot:
+`Unit.plotNumber` is nullable and a template parameter can never be omitted, so a "plot {{n}}" slot
+would print "plot " or "plot null" for a villa entered before it was placed on the layout.
+`villaLabel()` yields `A-101 (plot 37)`, or `A-101` alone, so ONE approved template covers both and
+the wording can change later without a re-approval.
+
+An empty note is NOT an empty message. The web client omits `caption`, and the server then GENERATES
+one (`Phase A November 2026`) for the timeline, so `caption` is never blank downstream - which meant
+the note slot would have quoted that date stamp to the buyer as if the engineer had written it. The
+row keeps the generated caption (it is a fine timeline title); the delivery now receives
+`hasNote: false` and says "Your site team has posted a new update." instead, on both the template and
+the freeform path.
+
+APPROVED AS **MARKETING**, not the UTILITY it was submitted as (2026-11-23). Two consequences, both
+handled rather than discovered in production. Each delivered template is billed (the freeform path
+inside the 24h window stays free). And Meta requires marketing opt-in, so `site-update-consent.ts`
+reads the newest `Consent` row for the lead: granted sends, denied and NEVER-ASKED both skip with
+`SKIPPED_NO_CONSENT`. "Never asked" deliberately does not read as yes - that is the population most
+likely to complain, and complaints are what damage the sender number's quality rating. The gate
+applies to the template path only, because a freeform reply in the window is not marketing.
+Migrations `20261123160000` and `20261123200000` add `SKIPPED_NO_BUYER` and `SKIPPED_NO_CONSENT`.
+
+Not done, and each needs a real Meta account to prove: the two site-update templates are awaiting
+approval (names are in `.env.example`), nothing exercises a real 131047 refusal, and the freeform
+media-plus-link message has not been sent to a phone. The unit tests cover the decisions; the
+network path is proven only as far as the outbox row.
+
 ## Known gaps: ten items, checked before the flag flips
 
 Found by auditing the plan against the code after the gate closed. Items 1 to 4 block step 5 as written; the rest are named risks with a decision attached rather than silent assumptions.
 
-- [ ] **1. Poster production is unspecified.** Nothing in the current body says how the frame is made, yet the CHECK makes `posterKey` mandatory for a live video. Fix: canvas grab at about one second, `toBlob('image/jpeg', 0.8)`, max 1280px wide, fall back to the first decodable frame, and a failed poster never blocks the save. **Step 5.**
-- [ ] **2. The poster would land public.** Images go through `/api/media` base64, which stores them public, leaking exactly the frame the private-video decision protects. Fix: the poster uploads private through the same signed folder and the record route verifies both objects. **Step 5.**
-- [ ] **3. `mediaUrl` points at the clip.** `progress-photo.mapper.ts:165` is `mediaUrlFor(row.key)`, so a video row renders its MP4 into every `<img>`. Fix: `kind === 'VIDEO' ? mediaUrlFor(posterKey) : mediaUrlFor(key)`, with a mapper test using a video row. **Step 5.**
+- [x] **1. Poster production is specified and built. (closed in step 5)** `poster.ts` grabs a frame, `toBlob('image/jpeg', 0.8)`, and a grey placeholder is uploaded when no frame scores - so a failed poster never blocks the save. **Step 5.** (was: Poster production is unspecified. Nothing in the current body says how the frame is made, yet the CHECK makes `posterKey` mandatory for a live video. Fix: canvas grab at about one second, `toBlob('image/jpeg', 0.8)`, max 1280px wide, fall back to the first decodable frame, and a failed poster never blocks the save. **Step 5.**
+- [x] **2. The poster lands private. (closed in step 5)** `verifyPoster` refuses any object whose `stat().isPrivate` is false, exactly like the clip (`site-video-verify.ts:86`). **Step 5.** (was: The poster would land public. Images go through `/api/media` base64, which stores them public, leaking exactly the frame the private-video decision protects. Fix: the poster uploads private through the same signed folder and the record route verifies both objects. **Step 5.**
+- [x] **3. `mediaUrl` is the poster. (closed in step 5)** `imageUrlFor` returns `posterKey` for a VIDEO row and `key` otherwise (`progress-photo.mapper.ts:186-189`). **Step 5.** (was: `mediaUrl` points at the clip. `progress-photo.mapper.ts:165` is `mediaUrlFor(row.key)`, so a video row renders its MP4 into every `<img>`. Fix: `kind === 'VIDEO' ? mediaUrlFor(posterKey) : mediaUrlFor(key)`, with a mapper test using a video row. **Step 5.**
 - [x] **4. Local dev cannot upload a real clip. (closed in step 2)** `createUploadAuth` returns `{transport:'inline', maxBytes}` with no number, against a 13.6MB clip and a historical 8MB inline ceiling. Fix: name the number, either 16MB inline for local or a short dev fixture, and say which. **Steps 2 and 7.**
-- [ ] **5. `upload-auth` is unthrottled.** `ThrottlerModule` is imported only in `users.module.ts:12`, not globally, and each token is reusable for 600s. Fix: throttle the route, or record the acceptance in the plan's decision table. **Step 5.**
-- [ ] **6. The deep link's return path has no mechanism.** No `callbackUrl`/`redirectTo` exists in `apps/web`, and an unvalidated target is an open redirect. Fix: same-origin portal paths only, allowlisted, and state where the target travels. **Step 8.**
-- [ ] **7. iPhone library clips always fail.** A Photos recording is `.mov`, refused by design, so iOS supports in-app recording only. Fix: say so in the capture copy and in the device gate row, not only in the failure table. **Step 7.**
-- [ ] **8. The server trusts `durationMs`.** Container and bytes are verified, duration is not, so a client can claim 20s for a 45s clip. Fix: accept it and record the decision, or read the `mvhd` duration from the first range read. **Step 5.**
-- [ ] **9. The flag needs a dynamic page.** A server wrapper reading `SITE_VIDEO_CAPTURE` makes the route dynamic; if it is cached today the flag bakes at build time. Fix: confirm the route's caching mode in step 7. **Step 7.**
-- [ ] **10. No flag-off test.** Nothing proves capture reverts to today's single Photo button. Fix: one e2e case with the flag off asserting the Video target is absent. **Step 7.**
+- [x] **5. `upload-auth` is throttled. (closed in step 5)** `uploadAuth` calls `limiter.consume({organizationId, userId, projectId})` before issuing any grant, and the limiter fails closed. **Step 5.** (was: `upload-auth` is unthrottled. `ThrottlerModule` is imported only in `users.module.ts:12`, not globally, and each token is reusable for 600s. Fix: throttle the route, or record the acceptance in the plan's decision table. **Step 5.**
+- [x] **6. The deep link's return path has no mechanism. (closed in step 8)** The link is `<web origin>/portal?unit=&photo=` and a signed-out buyer is bounced by the proxy to `/login?next=<path>`, where `isSafeNextPath` accepts only same-origin absolute paths - so the target travels in `next` and an open redirect is refused. `site-update-link.ts` reuses the invite link's origin resolution. **Step 8.**
+- [x] **7. iPhone library clips always fail. (closed in step 7)** A Photos recording is `.mov`, refused by design, so iOS supports in-app recording only. The refusal now names HEVC and says "Record it in the app, or export it as MP4 first.", in `errors.ts` and `site-video.errors.ts`. The device gate row still has to be run on a real iPhone. **Step 7.**
+- [x] **8. The server trusts `durationMs`. (accepted 2026-11-23)** Container, bytes and size are verified; `durationMs` is not, so a client could claim 20s for a 45s clip. **Decision: accept it, with the reason on the record.** The real limits are enforced where a lie cannot reach them - the 14MiB cap is checked against the stored object, `1..45s` is a DB CHECK, and the recorder stops at 45s - while `durationMs` is display metadata on a timeline tile. Reading `mvhd` from the first range read was rejected on evidence: Chrome records fragmented MP4, where `mvhd` duration is commonly 0 and the real timing is in the fragments, so a probe would have to guess and a wrong probe refuses a valid clip. Comment at the check in `site-video.service.ts:196`. **Step 5.** (was: The server trusts `durationMs`. Container and bytes are verified, duration is not, so a client can claim 20s for a 45s clip. Fix: accept it and record the decision, or read the `mvhd` duration from the first range read. **Step 5.**)
+- [x] **9. The flag needs a dynamic page. (closed in step 7)** `site/[unitId]/page.tsx` exports `dynamic = 'force-dynamic'`, so the flag is read per request and cannot bake at build time. **Step 7.**
+- [x] **10. No flag-off test. (closed in step 7)** `site-video-flag-off.spec.ts` asserts the photo-only screen (no Video target, no hidden video input, no recorder) and reads `videoEnabled` out of the rendered payload, so on a flag-on server it SKIPS instead of failing for the wrong reason. Verified both ways: it passes against a server started with `SITE_VIDEO_CAPTURE=false` and skips against one started with `true`. **Step 7.**
 
 ## Order that is not negotiable
 

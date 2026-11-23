@@ -168,9 +168,18 @@ describe('NewLeadPage - team picker for multi-team managers', () => {
       ],
     });
     await mount();
-    const fieldWrapper = container?.querySelector('[data-qa="form-field-teamId"]');
-    expect(fieldWrapper).not.toBeNull();
-    expect(fieldWrapper?.textContent).toContain('Team');
+    // RETRY, do not assert once (2026-11-23). `mount()` awaits `act`, so the
+    // render is complete - but this suite runs 41 files in parallel and, on a
+    // loaded machine, a scheduled follow-up render can still land between the
+    // query and the assertion. It failed exactly once that way (while a dev
+    // server was running) and passed on every rerun, which is the signature of
+    // an eager assertion rather than a product bug.
+    const fieldWrapper = await vi.waitFor(() => {
+      const el = container?.querySelector('[data-qa="form-field-teamId"]');
+      expect(el).not.toBeNull();
+      return el as Element;
+    });
+    expect(fieldWrapper.textContent).toContain('Team');
     // The Select's options render into a portal on open (Base UI), so
     // they aren't in the static tree - the hidden form-value carrier
     // defaulting to the sentinel is the synchronously-checkable contract
@@ -178,7 +187,9 @@ describe('NewLeadPage - team picker for multi-team managers', () => {
     // the data layer by the `managedTeams` filter itself (only rows
     // where `managerId === user.id` reach the `options` prop at all -
     // team-c would never be passed to the Select in the first place).
-    expect(container?.querySelector('#teamId[role="combobox"]')).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(container?.querySelector('#teamId[role="combobox"]')).not.toBeNull();
+    });
   });
 
   it("the Team field's hidden form value defaults to the sentinel (let the backend pick), not a specific team", async () => {

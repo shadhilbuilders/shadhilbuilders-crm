@@ -35,6 +35,22 @@ describe('proxy session gate', () => {
     );
   });
 
+  it('keeps the QUERY STRING in next, so a deep link survives login', () => {
+    // The WhatsApp site-update link is /portal?photo=<id>. Saving only the path
+    // sent the buyer to their portal's default unit, not the update they were
+    // told about - measured on the invite/portal flow, fixed 2026-11-23.
+    const res = proxy(req('/portal?photo=row-9'));
+    expect(res.headers.get('location')).toBe(
+      'https://crm.shadhilbuilders.in/login?next=%2Fportal%3Fphoto%3Drow-9',
+    );
+  });
+
+  it('preserves a multi-parameter query intact', () => {
+    const res = proxy(req('/portal?unit=u1&photo=row-9'));
+    const loc = new URL(res.headers.get('location') as string);
+    expect(loc.searchParams.get('next')).toBe('/portal?unit=u1&photo=row-9');
+  });
+
   it('serves the plot-layout artwork to anonymous requests (SW precache)', () => {
     // The service worker precaches this from /login with no session; a redirect
     // there caches login HTML under the SVG URL and breaks the plot map in prod.

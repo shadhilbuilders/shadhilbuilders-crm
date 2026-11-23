@@ -474,6 +474,25 @@ UC1 resolved: the direction stays video. UC2 resolved: the update is also delive
 now section 15 of the plan, added after phase 1 was published and before the design snapshot.
 UC3 stays open for the approval gate: signed URLs are now in scope for the WhatsApp leg only.
 
+**Consent capture (2026-11-23, implemented the same day).** The templates were approved as
+MARKETING, and the gate `site-update-consent.ts` reads the newest MARKETING row on the Consent
+ledger. Until now nothing wrote that ledger, so every outside-window send recorded
+`SKIPPED_NO_CONSENT` - the gate worked and the feature could not fire. One path was built end to
+end: a staff action on the lead, `POST /api/leads/:id/consent`, with `source` naming how the buyer
+agreed (default `call_verbal`, the way a builder's sales team actually obtains it). Reasons:
+
+- It is the path that needs nothing that does not exist. The booking form is not in the CRM's
+  write path yet, and an inbound WhatsApp button reply needs a template with a quick-reply button
+  approved, which none of the three approved templates has.
+- The ledger is append-only, so a later opt-out beats an earlier opt-in without rewriting history,
+  which is what DPDP asks for and what the send decision already assumed.
+- A repeat click writes nothing (`changed: false`), because two rows for one agreement would push
+  the real moment out of the "when did they agree" answer.
+
+Still open, and stated rather than implied: the booking-form checkbox and the inbound WhatsApp
+button reply are the other two capture points the handoff named, and neither exists. A lead with
+no row stays `never-asked`, which is a non-send by design.
+
 ### Design phase (2)
 
 Voices: hermes in-host subagent (completed, INPUT hash matched, read the 128KB design methodology to
