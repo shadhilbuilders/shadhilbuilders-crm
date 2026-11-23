@@ -50,7 +50,7 @@ fi
 
 cat <<'EOF'
 
-pre-commit: prettier disagrees with the staged files named above.
+pre-commit: prettier disagrees with the file(s) staged for this commit.
 
 Fix them and re-stage, then commit again:
 
@@ -58,6 +58,10 @@ Fix them and re-stage, then commit again:
 
 Do not reach for `pnpm format`: it rewrites the whole tree, and the committed
 style does not match the root config everywhere. Format only what you touched.
+
+The check reads each file as it sits on disk, because that is the only way it
+picks up the right prettier config per directory. A half-staged edit is caught
+too, so the fix above applies to the working copy either way.
 EOF
 
 exit 1
