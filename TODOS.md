@@ -281,39 +281,53 @@ migration plus a backfill for a problem two indexed lookups solve.
 
 ## Test health
 
-### `auto-assign.service.test.ts` flakes on the shared test database
+### `auto-assign.service.test.ts` failed once and would not reproduce
 
 **What:** `autoAssignLeads = false → manager owns the lead (pending) > routes to the creating
-team manager with ownerType MANAGER` failed once in a full backend run (one file, one test,
-2175/2176 green), then passed alone (25/25) and in the next full run (2176/2176). Nothing in
-that run touched leads, teams or assignment.
+team manager with ownerType MANAGER` failed once in a full backend run (1 failed | 2175 passed),
+then passed alone (25/25) and in seven further full runs.
 
-**Why it matters:** this suite runs against a shared database and other specs seed the same
-fixture org, teams and managers. A single flaky spec costs a full re-run to tell apart from a
-real failure, and the cheap habit it teaches is to re-run until green, which is how a real
-regression gets waved through.
+**Repro attempts, all clean (2026-11-23):** four sequential full suites (2176/2176 each) and
+three CONCURRENT full suites against the same test database (3-way contention, the condition the
+vitest config already documents as load-sensitive). The auto-assign spec did not fail once in any
+of them.
 
-**Evidence:** the failing run's assertion text was not captured. Recorded facts: the test name
-above, `apps/backend/src/leads/auto-assign.service.test.ts:435`, `1 failed | 2175 passed`.
+**Both original hypotheses were wrong, and reading the code disproved them:**
 
-**Likely mechanism, unconfirmed.** Two candidates, both visible in the file:
+1. "TEAM_B's flag is set false and never restored, so a later test inherits it" - the fixture
+   teams are `auto-team-b-${RUN_TAG}`, unique per run. There is nothing to inherit.
+2. "The phone is `Date.now()`-derived, so a leftover row collides and `create()` returns an older
+   lead with a different owner" - `create()` THROWS on a duplicate phone (`BadRequestException`),
+   it never returns an existing lead; and the duplicate check is scoped to
+   `organizationId + projectId`, with `PROJECT_ID` also per-run. Phones here cannot collide.
 
-1. The test sets `TEAM_B.autoAssignLeads = false` and never restores it. Anything that creates a
-   lead in TEAM_B afterwards in the same run sees manager-owns instead of auto-assign. That is a
-   within-file ordering dependency, so it should be deterministic - unless a second vitest process
-   shares the database, which is exactly what happened while the web suite was running.
-2. `phone: '+9199' + ((Date.now() + 300) % 1e8)` is a millisecond-derived number, and the clean-up
-   in `afterAll` does not run if a run is killed. A leftover row with the same phone can make
-   `service.create` return a pre-existing lead, whose `ownerId` is whatever assigned it the first
-   time.
+**What the concurrency run did prove:** three simultaneous suites produce 11-14 failures, in
+sibling specs, all of the same shape - specs that count global rows or mutate shared ledgers:
 
-**Fix:** restore `autoAssignLeads` in `afterEach`; build the phone from `RUN_TAG` (already defined
-in the file) instead of a millisecond offset so a leftover row cannot collide; and on the next
-occurrence capture the assertion text rather than only the summary line.
+    site-video-ledger.db.test.ts        shared org/project ledger bytes
+    overdue-alerts.processor.test.ts    "expected 3 to be 1" (global reminder rows)
+    visit-reminders / visits.notifications   shared pending-row counts
+    outbound.cron.test.ts               shared outbox rows
 
-**Effort:** S.
-**Priority:** P2. It hides real failures and it already cost one full re-run. The durable version
-of this is per-file isolation (own org, or a transaction that rolls back), which is a bigger job
-worth doing once rather than per spec.
+That is per-file isolation (own org, or a rollback transaction), not one spec's bug. The
+auto-assign suite was NOT among them, which is why it stays a separate question.
+
+**Remaining hypothesis:** a load-sensitive transient during the one run that had a web
+`tsc --noEmit` and a prettier pass in flight. `vitest.config.ts` documents exactly this class for
+this suite (30s timeouts exist because of it), and the failing run's output was filtered by a
+`grep -E "Test Files|Tests |FAIL"`, so the error text was thrown away rather than unreadable.
+Next occurrence: capture `vitest run 2>&1 | tail -60` before summarising.
+
+**Changed (2026-11-23):** the spec now asserts `{ ownerId, ownerType }` as a pair, read back from
+the row. `ownerType` was never asserted on this path (the file said so in a comment), so
+`ownerId === MGR_B` alone would also pass if another path landed on the same user. A recurrence
+now reports what the row actually was.
+
+**Fix:** if it recurs, take the captured error first. If it is a timeout, the answer is fewer
+workers or a longer connect timeout for the test pool, not a retry in the spec.
+
+**Effort:** S (diagnose) / M (per-file isolation across the suites above).
+**Priority:** P2 for the isolation work: it is the same failure class in five specs, and it is
+what turns "run it again" into a habit.
 
 ## Completed

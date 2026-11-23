@@ -451,9 +451,24 @@ describe('autoAssignLeads = false → manager owns the lead (pending)', () => {
     } as unknown as Parameters<LeadsService['create']>[1]);
     LEAD_IDS.push(lead.id);
 
-    expect(lead.ownerId).toBe(MGR_B);
-    // ownerName comes back as the manager because ownerType=MANAGER.
-    // (We assert ownerId; the ownerType is exercised by the service's audit metadata.)
+    // Assert the PAIR, and read it back from the row rather than trusting the
+    // return value. ownerId alone also passes if some other path landed on the
+    // same user; ownerType is what proves the `creating-team-off` branch ran.
+    //
+    // This spec failed once during a full run that had a web type-check and a
+    // prettier pass in flight, then passed alone and in every run since
+    // (TODOS.md, "Test health"). The pair also means a recurrence says what the
+    // row actually was instead of only which expectation broke.
+    const row = await seed((db) =>
+      db.lead.findUnique({
+        where: { id: lead.id },
+        select: { ownerId: true, ownerType: true },
+      }),
+    );
+    expect({ ownerId: row?.ownerId, ownerType: row?.ownerType }).toEqual({
+      ownerId: MGR_B,
+      ownerType: 'MANAGER',
+    });
   });
 
   it('a managerless team does NOT auto-own (falls back, no crash)', async () => {
