@@ -29,16 +29,23 @@ const mocks = vi.hoisted(() => ({
     auditLog: { create: vi.fn() },
     $queryRaw: vi.fn(),
     $executeRawUnsafe: vi.fn(),
+    $executeRaw: vi.fn(),
   },
   storageDelete: vi.fn(),
 }));
 
-vi.mock('@shadhil/database', () => ({
-  rlsContextFrom: vi.fn((a: unknown) => a),
-  withRlsContext: vi.fn(async (_c: unknown, _ctx: unknown, cb: (t: unknown) => unknown) =>
-    cb(mocks.tx),
-  ),
-}));
+vi.mock('@shadhil/database', async (importOriginal) => {
+  // Keep the real `Prisma` (sql tag) so the ledger credit builds its statement;
+  // only the RLS wrappers are faked.
+  const actual = await importOriginal<typeof import('@shadhil/database')>();
+  return {
+    ...actual,
+    rlsContextFrom: vi.fn((a: unknown) => a),
+    withRlsContext: vi.fn(async (_c: unknown, _ctx: unknown, cb: (t: unknown) => unknown) =>
+      cb(mocks.tx),
+    ),
+  };
+});
 
 import { CustomerProgressService, UpdatePhotoSchema } from './customer-progress.service';
 
@@ -58,6 +65,8 @@ const PHOTO = {
   unitId: 'unit-1',
   key: `${ORG}/abc/site.jpg`,
   posterKey: null as string | null,
+  sizeBytes: null as number | null,
+  unit: { phase: { projectId: 'proj-1' } },
   caption: 'Foundation October 2026',
 };
 
@@ -247,6 +256,26 @@ describe('deletePhoto - video rows (site update video, step 5)', () => {
       data: { before: { key: string; posterKey: string } };
     };
     expect(audit.data.before).toMatchObject({ key: VIDEO.key, posterKey: VIDEO.posterKey });
+  });
+
+  it('protects= deleting a video credits the clip bytes back to both ledgers in the same transaction', async () => {
+    mocks.tx.progressPhoto.findFirst.mockResolvedValue({ ...VIDEO, sizeBytes: 5_000_000 });
+
+    await svc().deletePhoto(actor('ADMIN'), 'photo-1');
+
+    // One statement for the org ledger, one for the project ledger.
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(2);
+    const sql = mocks.tx.$executeRaw.mock.calls
+      .map((c) => (c[0] as { strings: string[] }).strings.join('?'))
+      .join('\n');
+    expect(sql).toContain('"StorageUsage"');
+    expect(sql).toContain('"ProjectStorageUsage"');
+    expect(sql).toContain('GREATEST');
+  });
+
+  it('fails_when= a photo delete touches the ledgers', async () => {
+    await svc().deletePhoto(actor('ADMIN'), 'photo-1');
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
   });
 
   it('fails_when= a failed clip delete stops the poster delete', async () => {

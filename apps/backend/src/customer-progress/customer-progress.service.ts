@@ -29,6 +29,7 @@ import { reconcileUploadMime } from '../storage/sniff-mime';
 import { PrismaService } from '../prisma/prisma.module';
 import { PortalNotifier } from '../customer-portal/portal-notifier.service';
 import { SiteUpdateNotifier } from './site-update-notifier.service';
+import { creditLedgers } from './site-video-ledger';
 import { withRlsContext, rlsContextFrom, type PrismaClient, type RlsTx } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 
@@ -165,7 +166,7 @@ export class CustomerProgressService {
    * unit's project (resolved THROUGH Phase - Unit has no projectId).
    * RLS is the second wall; this is the messaging wall (RLS deny is silent).
    */
-  private async assertUnitAccess(
+  async assertUnitAccess(
     actor: JwtPayload,
     unitId: string,
   ): Promise<{ projectId: string; unitNumber: string }> {
@@ -522,6 +523,9 @@ export class CustomerProgressService {
     key: string | null;
     /** A video's poster object; null for a photo and after a purge. */
     posterKey: string | null;
+    /** Server-verified clip bytes charged to the ledgers; null for a photo or a purged row. */
+    sizeBytes: number | null;
+    projectId: string;
     caption: string;
     stage: string | null;
   }> {
@@ -532,14 +536,17 @@ export class CustomerProgressService {
         unitId: true,
         key: true,
         posterKey: true,
+        sizeBytes: true,
         caption: true,
         stage: true,
+        unit: { select: { phase: { select: { projectId: true } } } },
       },
     });
     // No row here means either "does not exist" or "the write policy hides it".
     // Both answer 404 - a 403 would confirm a row the caller may not know about.
     if (photo === null) throw new NotFoundException('Photo not found.');
-    return photo;
+    const { unit, ...rest } = photo;
+    return { ...rest, projectId: unit.phase.projectId };
   }
 
   async updatePhoto(
@@ -603,6 +610,17 @@ export class CustomerProgressService {
       // deleteMany (not delete) so an RLS-denied row is a 0-count instead of a
       // P2025 throw that would look like a server fault.
       if (deleted.count === 0) throw new NotFoundException('Photo not found.');
+
+      // Give a video's bytes back to both ledgers in the SAME transaction as the
+      // row delete: a delete that committed without the credit would leave the
+      // cap permanently tighter than reality.
+      if (photo.sizeBytes !== null) {
+        await creditLedgers(
+          tx,
+          { organizationId: actor.organizationId, projectId: photo.projectId },
+          photo.sizeBytes,
+        );
+      }
 
       // Audit BEFORE the bytes go: the row is the audit's only anchor, and a
       // storage failure must not lose the record of the delete. Key + unit are
