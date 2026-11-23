@@ -25,7 +25,7 @@ import { cronContextFor, listOrganizationIds } from '../common/cron-orgs';
 import { PrismaService } from '../prisma/prisma.module';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import type { StorageProvider } from '../storage/storage.provider';
-import { WhatsAppClient, WhatsAppSendError } from './whatsapp.client';
+import { WhatsAppClient, WhatsAppSendError, type TemplateHeaderComponent } from './whatsapp.client';
 
 /** Cap on retry attempts before marking the row FAILED. After
  *  MAX_ATTEMPTS failures, we don't try again. */
@@ -101,6 +101,13 @@ export class OutboundService {
       mediaKey?: string;
       mediaType?: string;
       mediaFilename?: string;
+      /**
+       * A PUBLIC, short-lived URL for a TEMPLATE's media header. Meta fetches
+       * these bytes itself, so it cannot use `mediaKey` (which is private and
+       * read server-side). Minted at send time by the caller's provider
+       * `shareUrl`, never stored: an expiring link must not be persisted.
+       */
+      templateMediaLink?: string;
     },
     // RLS-scoped client/transaction override. The chat service enqueues
     // from INSIDE a withRlsContext(tx) block (which sets app.user_id etc.
@@ -242,7 +249,30 @@ export class OutboundService {
     try {
       if (row.sendType === 'TEMPLATE') {
         const templateName = this.resolveTemplateName(row);
-        const vars = (row.templateVars as Record<string, string> | null) ?? {};
+        // A template whose media header Meta must fetch: the link is minted
+        // HERE, at send time, from the row's own mediaKey, so it is always
+        // fresh and never stored. A video header is MP4-only; anything else
+        // goes as an image, which is the poster.
+        const shareLink =
+          row.mediaKey !== null &&
+          row.mediaKey !== undefined &&
+          this.storage?.shareUrl !== undefined
+            ? this.storage.shareUrl(row.mediaKey)
+            : null;
+        const header: TemplateHeaderComponent | undefined =
+          shareLink === null
+            ? undefined
+            : row.mediaType?.startsWith('video/')
+              ? { type: 'header', parameters: [{ type: 'video', video: { link: shareLink } }] }
+              : { type: 'header', parameters: [{ type: 'image', image: { link: shareLink } }] };
+        const allVars = (row.templateVars as Record<string, string> | null) ?? {};
+        // BODY VARIABLES ONLY. A row's vars carry the button's value too (the
+        // site-update templates put the row id under `photo`), and sending that
+        // as a body parameter is a Meta 132000 "number of parameters does not
+        // match" - measured as the tempting bug here, since the old code
+        // stringified EVERY key. So named keys are excluded from the body and
+        // reached by their own component.
+        const vars = bodyVars(allVars);
         // Map the row's `templateVars` (the chat service populates
         // this with the right keys for the template) into the
         // ordered Meta `parameters` array. The order of values
@@ -261,10 +291,24 @@ export class OutboundService {
         const parameters = Object.entries(vars)
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([, text]) => ({ type: 'text' as const, text }));
+        // The URL button's variable, when this template HAS one. Sending a
+        // button component to a template without a URL button is a Meta 132000
+        // ("number of parameters does not match"), so it is opt-in per
+        // template name, never sent blind.
+        const button = hasUrlButton(templateName)
+          ? {
+              type: 'button' as const,
+              sub_type: 'url' as const,
+              index: '0',
+              parameters: [{ type: 'text' as const, text: buttonValue(templateName, allVars) }],
+            }
+          : undefined;
         const delivery = await this.whatsapp.sendTemplateMessage(
           await this.threadPhone(row),
           templateName,
           parameters,
+          header,
+          button,
         );
         // Meta can return HTTP 200 with message_status: 'failed' in
         // the body (the "soft failure" case - recipient not on the
@@ -461,6 +505,53 @@ export class OutboundService {
     }
     return { ok: true, wamid: delivery.wamid };
   }
+}
+
+/**
+ * The two approved site-update templates (build-sequence step 8). TWO, not one,
+ * because Meta fixes a template's HEADER TYPE at approval: a VIDEO template
+ * rejects an image header parameter and an IMAGE template rejects a video one.
+ * The send picks the template by what media it actually has.
+ */
+export const SITE_UPDATE_TEMPLATE_VIDEO =
+  process.env['WA_TEMPLATE_SITE_UPDATE_VIDEO'] || 'shadhil_site_update_video';
+export const SITE_UPDATE_TEMPLATE_IMAGE =
+  process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'] || 'shadhil_site_update_image';
+
+/**
+ * Which of our templates carry a URL button, and what its variable is.
+ *
+ * The site-update templates do: `…/portal?photo={{1}}`, whose variable is the
+ * saved row's id. Everything else (chat reply, visit follow-up, reminder,
+ * welcome) has a body-only layout, so sending a button component to them is a
+ * Meta 132000.
+ */
+export function hasUrlButton(templateName: string): boolean {
+  return templateName === SITE_UPDATE_TEMPLATE_VIDEO || templateName === SITE_UPDATE_TEMPLATE_IMAGE;
+}
+
+export function buttonValue(templateName: string, vars: Record<string, string>): string {
+  if (hasUrlButton(templateName)) {
+    // `photo` is the row id the delivery recorded; the portal opens it.
+    return vars['photo'] ?? vars['1'] ?? '';
+  }
+  return '';
+}
+
+/**
+ * The body parameters from a row's vars: NUMBERED keys only, in numeric order.
+ *
+ * The site-update templates keep the URL button's value in the same object under
+ * a named key (`photo`), and Meta rejects a body with more parameters than the
+ * approved template declares (132000). So named keys are never body parameters -
+ * they travel in their own component.
+ */
+export function bodyVars(allVars: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(allVars)) {
+    if (/^\d+$/.test(key)) out[key] = value;
+  }
+  return out;
 }
 
 /** Map a MIME type to the Meta message media type, or null if unsupported. */

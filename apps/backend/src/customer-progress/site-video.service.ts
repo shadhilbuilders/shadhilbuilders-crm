@@ -8,7 +8,7 @@
 // transaction, so a cap failure or a save failure leaves nothing half-done.
 import { basename } from 'node:path';
 
-import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, forwardRef } from '@nestjs/common';
 import { withRlsContext, rlsContextFrom } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 
@@ -20,6 +20,9 @@ import { MAX_VIDEO_BYTES } from '../storage/storage.limits';
 import { sniffMime } from '../storage/sniff-mime';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import { buildCaption, CustomerProgressService } from './customer-progress.service';
+import { SiteUpdateDelivery } from './site-update-delivery.provider';
+import type { RlsClient } from './site-update-delivery.service';
+import { villaLabel } from './site-update-villa';
 import { readTimelinePage, type TimelinePhotoDto } from './progress-photo.mapper';
 import { SITE_VIDEO_CONFIG, type SiteVideoConfig } from './site-video.config';
 import { siteVideoError } from './site-video.errors';
@@ -52,10 +55,12 @@ export interface RecordResult {
 
 /** Serialise record/cancel/discard of ONE upload id for the rest of this transaction. */
 async function lockUpload(
-  tx: { $queryRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<unknown> },
+  tx: { $executeRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<unknown> },
   uploadId: string,
 ): Promise<void> {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`sitevideo:${uploadId}`}))`;
+  // $executeRaw, not $queryRaw: the function returns `void`, which Prisma's
+  // driver adapter cannot deserialize as a result column (503 on every record).
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sitevideo:${uploadId}`}))`;
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -72,6 +77,10 @@ export class SiteVideoService {
     @Inject(CustomerProgressService) private readonly progress: CustomerProgressService,
     @Inject(SiteVideoRateLimiter) private readonly limiter: SiteVideoRateLimiter,
     @Inject(SITE_VIDEO_CONFIG) private readonly config: SiteVideoConfig,
+    // Buyer-facing WhatsApp leg (step 8). Optional so the service still
+    // constructs in tests and in a deployment without the outbox; the save
+    // never depends on it.
+    @Optional() @Inject(SiteUpdateDelivery) private readonly delivery?: SiteUpdateDelivery,
   ) {}
 
   private get client() {
@@ -184,6 +193,16 @@ export class SiteVideoService {
     const { projectId } = await this.progress.assertUnitAccess(actor, unitId);
     this.requireIssuedUploadId(actor, unitId, dto.uploadId);
     this.assertKeysInFolder(actor.organizationId, dto);
+    // DURATION IS CLIENT-CLAIMED, AND THAT IS ACCEPTED (plan gap 8, closed
+    // 2026-11-23). The server verifies the container, the bytes and the size;
+    // `durationMs` is trusted after this ceiling check, because it is display
+    // metadata only. The real limits are enforced elsewhere and cannot be
+    // talked around: the 14MiB cap is checked against the stored object, the
+    // 1..45s range is a DB CHECK, and the recorder stops itself at 45s. Reading
+    // `mvhd` from the first range was the alternative and was rejected: Chrome
+    // records fragmented MP4, where `mvhd` duration is commonly 0 and the real
+    // timing lives in the fragments - a probe would have to guess, and a wrong
+    // probe rejects a valid clip, which is a worse failure than a wrong label.
     if (dto.durationMs > MAX_VIDEO_DURATION_MS) {
       throw siteVideoError('VIDEO_TOO_LONG', { maxMs: MAX_VIDEO_DURATION_MS });
     }
@@ -195,13 +214,39 @@ export class SiteVideoService {
     const size = await this.verifyUpload(actor, unitId, dto);
     const takenAt = new Date(dto.takenAt);
     const caption = dto.caption ?? buildCaption(phase.name, takenAt);
+    // The generated caption is a timeline TITLE, not the engineer's words. The
+    // row keeps it; the WhatsApp note slot must not quote it to the buyer.
+    const hasNote = dto.caption !== undefined;
 
     try {
-      const photo = await this.insertRow(actor, unitId, projectId, dto, caption, takenAt, size);
+      const photo = await this.insertRow(
+        actor,
+        unitId,
+        projectId,
+        dto,
+        caption,
+        hasNote,
+        takenAt,
+        size,
+      );
       return { photo, replayed: false };
     } catch (err) {
       return this.settleInsertFailure(err, actor, unitId, dto);
     }
+  }
+
+  /** The villa's door number, for a message the buyer must recognise. */
+  /**
+   * How the villa is named to the buyer: `A-101 (plot 37)`, or just the door
+   * number when no plot is set. Folded into the villa's own template value
+   * because `plotNumber` is nullable and a template slot can never be empty.
+   */
+  private async unitLabel(actor: JwtPayload, unitId: string): Promise<string> {
+    const unit = await this.client.unit.findFirst({
+      where: { id: unitId, organizationId: actor.organizationId },
+      select: { unitNumber: true, plotNumber: true },
+    });
+    return unit === null ? unitId : villaLabel(unit.unitNumber, unit.plotNumber);
   }
 
   /** DELETE /units/:unitId/videos/pending/:uploadId - idempotent, folder-scoped. */
@@ -340,6 +385,7 @@ export class SiteVideoService {
     projectId: string,
     dto: RecordVideoDto,
     caption: string,
+    hasNote: boolean,
     takenAt: Date,
     size: number,
   ): Promise<TimelinePhotoDto> {
@@ -397,6 +443,26 @@ export class SiteVideoService {
       });
       const photo = page.photos[0];
       if (photo === undefined) throw new Error('recorded video row not readable back');
+
+      // Buyer-facing WhatsApp leg (step 8), INSIDE this transaction:
+      // SiteUpdateDelivery is FORCE RLS with staff-gated writes, so this is the
+      // only context that may write it. It never throws - a delivery fault must
+      // not undo a recorded clip - so awaiting it here is safe.
+      if (this.delivery !== undefined) {
+        await this.delivery.recordAndSend({
+          organizationId: actor.organizationId,
+          unitId,
+          unitLabel: await this.unitLabel(actor, unitId),
+          batchId: dto.batchId,
+          rowId: photo.id,
+          kind: 'VIDEO',
+          takenAt: takenAt.toISOString(),
+          stage: dto.stage ?? null,
+          caption,
+          hasNote,
+          tx: tx as unknown as RlsClient,
+        });
+      }
       return photo;
     });
   }

@@ -18,7 +18,7 @@
 // because the id-based facts (who uploaded it, does this viewer lead the
 // project) are not on the wire DTO and must not be: the buyer portal consumes
 // this same shape and has no business receiving staff authority flags.
-import type { RlsTx } from '@shadhil/database';
+import type { RlsTx, SiteUpdateDeliveryStatus } from '@shadhil/database';
 
 export const PAGE_SIZE = 50;
 
@@ -69,6 +69,14 @@ export interface TimelinePhotoDto {
    * RLS context, so a wrong value here cannot grant anything.
    */
   canMutate: boolean;
+  /**
+   * Staff only (step 8): how the buyer-facing WhatsApp send for this row's
+   * BATCH ended, so support can answer "the buyer says they never got it"
+   * without opening the database. Null for the buyer's own timeline (they do
+   * not need our delivery bookkeeping), for a row saved before step 8, and for
+   * a batch with no delivery row at all.
+   */
+  whatsappStatus?: SiteUpdateDeliveryStatus | null;
 }
 
 export interface TimelineResponseDto {
@@ -271,6 +279,7 @@ export async function readTimelinePage(
       durationMs: true,
       hasAudio: true,
       archivedAt: true,
+      batchId: true,
     },
   });
 
@@ -299,7 +308,43 @@ export async function readTimelinePage(
     ]),
   );
 
-  const photos = page.map((r) => toTimelinePhotoDto(r, labelById.get(r.id) ?? null, args.scope));
+  // Delivery status, staff only, ONE query for the page (step 8). The buyer's
+  // own timeline omits it: it is our bookkeeping, not their record.
+  const deliveryByBatch = new Map<string, SiteUpdateDeliveryStatus>();
+  if (args.scope.viewer !== null) {
+    const batches = [...new Set(page.map((r) => r.batchId).filter((b): b is string => b !== null))];
+    if (batches.length > 0) {
+      // Optional delegate: a row read through a narrower client than the full
+      // Prisma one (a test double, or a future read replica without this table)
+      // must still render the timeline - the status is a courtesy, and its
+      // absence must never blank a feed of photos.
+      const delegate = (
+        tx as unknown as {
+          siteUpdateDelivery?: {
+            findMany(
+              a: unknown,
+            ): Promise<Array<{ batchId: string; status: SiteUpdateDeliveryStatus }>>;
+          };
+        }
+      ).siteUpdateDelivery;
+      const deliveries =
+        delegate === undefined
+          ? []
+          : await delegate.findMany({
+              where: { organizationId: args.organizationId, batchId: { in: batches } },
+              select: { batchId: true, status: true },
+            });
+      for (const d of deliveries) deliveryByBatch.set(d.batchId, d.status);
+    }
+  }
+
+  const photos = page.map((r) => ({
+    ...toTimelinePhotoDto(r, labelById.get(r.id) ?? null, args.scope),
+    whatsappStatus:
+      args.scope.viewer === null || r.batchId === null
+        ? null
+        : (deliveryByBatch.get(r.batchId) ?? null),
+  }));
   const last = page[page.length - 1];
   return {
     photos,

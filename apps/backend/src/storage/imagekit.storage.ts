@@ -345,6 +345,15 @@ export class ImageKitStorage implements StorageProvider {
     };
   }
 
+  /**
+   * The same signed original URL `read`/`readStream` use, exposed for the ONE
+   * caller that needs a third party to fetch the bytes (Meta's template media
+   * header). It expires; it is never stored or rendered in the app.
+   */
+  shareUrl(key: string): string | null {
+    return this.signedOriginalUrl(key);
+  }
+
   publicUrl(key: string): string | null {
     if (!key) return null;
     // key is an imagekit filePath and normally begins with '/'. Prepend the

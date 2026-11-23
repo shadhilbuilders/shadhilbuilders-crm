@@ -129,6 +129,8 @@ export type {
   Verification,
   StreamTicket,
   Role,
+  SiteUpdateDelivery,
+  SiteUpdateDeliveryStatus,
 } from './generated/prisma/client';
 
 // T-TEST-DB-ISOLATION (2026-09-16): re-exported so suites can import it from the

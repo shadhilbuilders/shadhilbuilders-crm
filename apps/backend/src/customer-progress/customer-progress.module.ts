@@ -11,6 +11,7 @@ import { SiteVideoController } from './site-video.controller';
 import { SiteVideoRateLimiter } from './site-video-rate-limiter';
 import { SiteVideoService } from './site-video.service';
 import { SiteUnitsService } from './site-units.service';
+import { SiteUpdateDelivery } from './site-update-delivery.provider';
 import { SiteUpdateNotifier } from './site-update-notifier.service';
 
 @Module({
@@ -21,6 +22,9 @@ import { SiteUpdateNotifier } from './site-update-notifier.service';
   providers: [
     CustomerProgressService,
     SiteUpdateNotifier,
+    // Buyer-facing WhatsApp leg (step 8). Optional dependencies inside, so a
+    // deployment without the outbox still saves updates.
+    SiteUpdateDelivery,
     SiteUnitsService,
     SiteVideoService,
     SiteVideoRateLimiter,

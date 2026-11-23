@@ -84,10 +84,44 @@
 //               templateName: 'shadhil_visit_reminder', sendType: TEMPLATE
 //               (scheduled 1-2h before the visit)
 //
+// 4. shadhil_site_update_video  (MARKETING, en)  ← env: WA_TEMPLATE_SITE_UPDATE_VIDEO
+// 5. shadhil_site_update_image  (MARKETING, en)  ← env: WA_TEMPLATE_SITE_UPDATE_IMAGE
+//    Category:  MARKETING - approved as marketing 2026-11-23, not the UTILITY
+//                it was submitted as. Two consequences:
+//                1. Each delivered message is BILLED. The freeform path (sent
+//                   inside the 24h customer-service window) stays free, so only
+//                   outside-window sends cost anything.
+//                2. Marketing needs the buyer's MARKETING consent (the Consent
+//                   table models it). Sending to a lead without it is what
+//                   damages the number's quality rating - see the consent gate
+//                   in site-update-delivery.service.ts.
+//                The test-number caveat in item 2 applies here too: accepted,
+//                then silently dropped, until a real sender is registered.
+//    Header:    VIDEO (4) / IMAGE (5) - the ONLY difference between the two,
+//                because Meta fixes a header type at approval and one name
+//                cannot serve both a clip and its poster.
+//    Body:      "Hello {{1}}, here is your latest site update for villa {{2}}.
+//                {{3}}"
+//    Footer:    Shadhil Builders
+//    Buttons:   one URL button, dynamic: /portal?photo={{1}}
+//    Sample:
+//                Hello Asha, here is your latest site update for villa
+//                A-101 (plot 37). Plinth poured, curing until Friday.
+//    Variables: {{1}} body = customer first name, or "there" when the stored
+//                         name is unusable (a title, a phone number, initials)
+//                {{2}} body = villa and plot, e.g. "A-101 (plot 37)"
+//                {{3}} body = the engineer's note, or one neutral line when
+//                         they wrote none (a generated caption is never quoted)
+//                {{1}} button = the saved row id, so the portal opens THIS update
+//    When sent: site-update-delivery.service.ts after the row commits, outside
+//               the 24h window only; inside it the freeform path is used.
+//
 // Env-var name mapping (defaults to the template name itself):
 //   WA_TEMPLATE_CHAT_REPLY            default 'shadhil_chat_reply'
 //   WA_TEMPLATE_VISIT_FOLLOWUP        default 'shadhil_visit_followup'
 //   WA_TEMPLATE_VISIT_REMINDER        default 'shadhil_visit_reminder'
+//   WA_TEMPLATE_SITE_UPDATE_VIDEO     default 'shadhil_site_update_video'
+//   WA_TEMPLATE_SITE_UPDATE_IMAGE     default 'shadhil_site_update_image'
 //   WA_TEMPLATE_LANGUAGE              default 'en'
 //
 // Test-mode override: Meta allows you to send any approved template
@@ -108,9 +142,39 @@ export interface TemplateParameter {
   text: string;
 }
 
-export interface TemplateHeaderComponent {
-  type: 'header';
-  parameters: Array<{ type: 'document'; document: { link: string; filename: string } }>;
+/**
+ * A template header parameter. Documents were the only kind until the site
+ * update needed one: Meta takes a PUBLIC link it fetches itself, so a video
+ * header must be a short-lived signed URL (`StorageProvider.shareUrl`), never
+ * the authenticated BFF path.
+ */
+export type TemplateHeaderComponent =
+  | {
+      type: 'header';
+      parameters: Array<{ type: 'document'; document: { link: string; filename: string } }>;
+    }
+  | {
+      type: 'header';
+      parameters: Array<{ type: 'video'; video: { link: string } }>;
+    }
+  | {
+      type: 'header';
+      parameters: Array<{ type: 'image'; image: { link: string } }>;
+    };
+
+/**
+ * A URL-button parameter. Meta's template button carries at most one variable,
+ * and it must be the LAST thing in the URL, so the approved template is
+ * `https://host/portal?photo={{1}}` and the send supplies only the id.
+ *
+ * `index` is the button's position in the template as a STRING ("0" for the
+ * first), because that is what Meta's API takes.
+ */
+export interface TemplateButtonComponent {
+  type: 'button';
+  sub_type: 'url';
+  index: string;
+  parameters: Array<{ type: 'text'; text: string }>;
 }
 
 export interface WhatsAppDelivery {
@@ -181,6 +245,7 @@ export class WhatsAppClient {
     templateName: string,
     parameters: TemplateParameter[],
     header?: TemplateHeaderComponent,
+    button?: TemplateButtonComponent,
   ): Promise<WhatsAppDelivery> {
     const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${this.phoneNumberId}/messages`;
 
@@ -192,6 +257,9 @@ export class WhatsAppClient {
       type: 'body',
       parameters,
     });
+    // The button's variable goes in its own component, AFTER the body. Meta
+    // matches components by type, so this order is the documented one.
+    if (button) components.push(button as unknown as Record<string, unknown>);
 
     const body = {
       messaging_product: 'whatsapp',

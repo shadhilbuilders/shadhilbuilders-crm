@@ -28,6 +28,9 @@ import { MAX_UPLOAD_BYTES } from '../storage/storage.limits';
 import { reconcileUploadMime } from '../storage/sniff-mime';
 import { PrismaService } from '../prisma/prisma.module';
 import { PortalNotifier } from '../customer-portal/portal-notifier.service';
+import { SiteUpdateDelivery } from './site-update-delivery.provider';
+import { villaLabel } from './site-update-villa';
+import type { RlsClient } from './site-update-delivery.service';
 import { SiteUpdateNotifier } from './site-update-notifier.service';
 import { creditLedgers } from './site-video-ledger';
 import { withRlsContext, rlsContextFrom, type PrismaClient, type RlsTx } from '@shadhil/database';
@@ -145,6 +148,12 @@ export class CustomerProgressService {
     @Optional()
     @Inject(SiteUpdateNotifier)
     private readonly siteUpdateNotifier?: SiteUpdateNotifier,
+    // 2026-11-23 (step 8): the BUYER-facing WhatsApp leg. Optional for the same
+    // reason as the notifiers - a deployment without the outbox still saves, and
+    // its delivery row records why nothing was sent instead of failing the save.
+    @Optional()
+    @Inject(SiteUpdateDelivery)
+    private readonly siteUpdateDelivery?: SiteUpdateDelivery,
   ) {}
 
   private get client() {
@@ -169,13 +178,15 @@ export class CustomerProgressService {
   async assertUnitAccess(
     actor: JwtPayload,
     unitId: string,
-  ): Promise<{ projectId: string; unitNumber: string }> {
+  ): Promise<{ projectId: string; unitNumber: string; plotNumber: number | null }> {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const unit = await tx.unit.findFirst({
         where: { id: unitId, organizationId: actor.organizationId },
         select: {
           id: true,
           unitNumber: true,
+          // Nullable: a villa can be entered before it is placed on the layout.
+          plotNumber: true,
           assignedEngineerId: true,
           phase: { select: { projectId: true } },
         },
@@ -189,7 +200,11 @@ export class CustomerProgressService {
       }
 
       if (isAdminClass(actor.role))
-        return { projectId: unit.phase.projectId, unitNumber: unit.unitNumber };
+        return {
+          projectId: unit.phase.projectId,
+          unitNumber: unit.unitNumber,
+          plotNumber: unit.plotNumber,
+        };
       if (
         actor.role === 'ENGINEER' ||
         actor.role === 'MANAGER' ||
@@ -208,14 +223,18 @@ export class CustomerProgressService {
           select: { projectId: true },
         });
         if (member !== null)
-          return { projectId: unit.phase.projectId, unitNumber: unit.unitNumber };
+          return {
+            projectId: unit.phase.projectId,
+            unitNumber: unit.unitNumber,
+            plotNumber: unit.plotNumber,
+          };
       }
       throw new ForbiddenException('You are not assigned to this project.');
     });
   }
 
   async upload(actor: JwtPayload, unitId: string, dto: UploadPhotoDto): Promise<TimelinePhotoDto> {
-    const { projectId, unitNumber } = await this.assertUnitAccess(actor, unitId);
+    const { projectId, unitNumber, plotNumber } = await this.assertUnitAccess(actor, unitId);
 
     const buf = Buffer.from(dto.base64, 'base64');
     if (buf.length === 0) throw new BadRequestException('Empty file');
@@ -314,6 +333,32 @@ export class CustomerProgressService {
           },
           select: { id: true, createdAt: true },
         });
+        // Buyer direction, one message per note (step 8). INSIDE this
+        // transaction: SiteUpdateDelivery is FORCE RLS with staff-gated writes,
+        // so only this context may write it - and a committed together row means
+        // a message is never queued about an update that rolled back. Photos
+        // carry no batchId on the wire, so the batch is the capture instant: a
+        // note that saves six files shares ONE `takenAt`, which the unique
+        // (org, batchId) collapses into a single send.
+        if (this.siteUpdateDelivery !== undefined) {
+          await this.siteUpdateDelivery.recordAndSend({
+            organizationId: actor.organizationId,
+            unitId,
+            // The plot travels INSIDE the villa value: `Unit.plotNumber` is
+            // nullable and a template slot can never be empty.
+            unitLabel: villaLabel(unitNumber, plotNumber),
+            batchId: `photo-${dto.takenAt}`,
+            rowId: photo.id,
+            kind: 'PHOTO',
+            takenAt: dto.takenAt,
+            stage: dto.stage ?? null,
+            caption,
+            // `caption` is the GENERATED placeholder whenever the engineer left
+            // the note blank, so the message must not present it as their words.
+            hasNote: dto.caption !== undefined,
+            tx: tx as unknown as RlsClient,
+          });
+        }
         return {
           id: photo.id,
           unitId,

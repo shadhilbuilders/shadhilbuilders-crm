@@ -104,6 +104,16 @@ export interface StorageProvider {
   publicUrl?(key: string): string | null;
 
   /**
+   * A short-lived URL a THIRD PARTY (Meta, when it fetches a template's video
+   * header) can fetch without our session, or null when the provider cannot
+   * mint one (local disk). Distinct from `publicUrl`, which is permanent: a
+   * signed site clip must expire, because it shows a customer's home.
+   * The signature must cover any transformation, so callers never touch the
+   * returned string - see `signedOriginalUrl`.
+   */
+  shareUrl?(key: string): string | null;
+
+  /**
    * Delete the stored bytes by key. Compensation path for progress-photo
    * uploads (issue #7): storage.save() runs BEFORE the DB write, so a failed
    * DB transaction must remove the orphaned blob. Implementations MUST NOT

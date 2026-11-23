@@ -2002,6 +2002,20 @@ model SiteUpdateDelivery {
 
 enum SiteUpdateDeliveryStatus {
   PENDING
+  /**
+   * Nothing was sent because there is no buyer to send to: the unit has no
+   * booking, or its lead has no phone. Distinct from FAILED on purpose - a
+   * staff row saying "delivery failed" for a villa nobody bought yet sends
+   * support hunting a bug that does not exist (found by the e2e run on unit
+   * A-101, which has no booking).
+   */
+  SKIPPED_NO_BUYER
+  /**
+   * Nothing was sent because the buyer has no MARKETING opt-in. The site-update
+   * templates were approved as MARKETING (2026-11-23), and mailing a buyer who
+   * never opted in is what erodes a sender number's quality rating.
+   */
+  SKIPPED_NO_CONSENT
   SENT
   SKIPPED_WINDOW
   SKIPPED_NO_TEMPLATE

@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
     progressPhoto: { findFirst: vi.fn(), create: vi.fn() },
     phase: { findFirst: vi.fn() },
     auditLog: { create: vi.fn() },
-    $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
   },
   chargeLedgers: vi.fn(),
   assertHeadroom: vi.fn(),
@@ -179,7 +179,7 @@ beforeEach(() => {
   mocks.tx.progressPhoto.create.mockResolvedValue({ id: 'vid-1' });
   mocks.tx.phase.findFirst.mockResolvedValue({ name: 'Foundation' });
   mocks.tx.auditLog.create.mockResolvedValue({});
-  mocks.tx.$queryRaw.mockResolvedValue([]);
+  mocks.tx.$executeRaw.mockResolvedValue(1);
   mocks.chargeLedgers.mockResolvedValue(undefined);
   mocks.assertHeadroom.mockResolvedValue(undefined);
   mocks.readTimelinePage.mockResolvedValue({ photos: [{ id: 'vid-1', kind: 'VIDEO' }] });
@@ -542,7 +542,7 @@ describe('record: success, replay and failure', () => {
     const id = issueUploadId(scopeFor());
     const r = go(id);
     await r.promise;
-    expect(mocks.tx.$queryRaw).toHaveBeenCalled();
+    expect(mocks.tx.$executeRaw).toHaveBeenCalled();
     expect(r.storage.stat.mock.calls.filter(([k]) => k === `${ORG}/${id}/clip.mp4`).length).toBe(2);
   });
 
