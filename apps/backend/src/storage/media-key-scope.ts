@@ -63,3 +63,26 @@ export function orgOfKey(key: string): string | null {
   if (separator === -1) return null;
   return normalised.slice(0, separator);
 }
+
+/**
+ * True when `key` is a file DIRECTLY inside `/<organizationId>/<uploadId>/`.
+ *
+ * The record route trusts only objects inside the folder it issued: a key in
+ * another upload's folder, another organisation's, or one level deeper (a
+ * sub-path that could hide a traversal) is refused. Compared on the normalised
+ * form, so the local-disk slashless key and ImageKit's slash-prefixed filePath
+ * are the same key.
+ */
+export function keyInUploadFolder(key: string, organizationId: string, uploadId: string): boolean {
+  if (organizationId.length === 0 || uploadId.length === 0) return false;
+  if (organizationId.includes('/') || uploadId.includes('/')) return false;
+  const normalised = normaliseKey(key);
+  if (normalised === null) return false;
+  const segments = normalised.split('/');
+  return (
+    segments.length === 3 &&
+    segments[0] === organizationId &&
+    segments[1] === uploadId &&
+    segments[2]!.length > 0
+  );
+}

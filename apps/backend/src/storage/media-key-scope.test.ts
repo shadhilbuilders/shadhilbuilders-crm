@@ -11,7 +11,7 @@
 //           in the right org can read any key they hold, by design.
 import { describe, expect, it } from 'vitest';
 
-import { keyBelongsToOrg, orgOfKey } from './media-key-scope';
+import { keyBelongsToOrg, keyInUploadFolder, orgOfKey } from './media-key-scope';
 
 const ORG = 'ceid01lpfe1esm8jwsxid41k28';
 const OTHER = 'cyid01lpfe1esm8jwsxid41k29';
@@ -79,5 +79,35 @@ describe('orgOfKey', () => {
     expect(orgOfKey('photo.jpg')).toBeNull();
     expect(orgOfKey('')).toBeNull();
     expect(orgOfKey(`${ORG}/../x.jpg`)).toBeNull();
+  });
+});
+
+describe('keyInUploadFolder', () => {
+  const ORG = 'org-1';
+  const UP = 'a'.repeat(64);
+
+  it('accepts a file directly inside the issued folder, either key style', () => {
+    expect(keyInUploadFolder(`${ORG}/${UP}/clip.mp4`, ORG, UP)).toBe(true);
+    expect(keyInUploadFolder(`/${ORG}/${UP}/clip.mp4`, ORG, UP)).toBe(true);
+  });
+
+  it.each([
+    ['another upload folder', `${ORG}/${'b'.repeat(64)}/clip.mp4`],
+    ['another organisation', `org-2/${UP}/clip.mp4`],
+    ['one level too deep', `${ORG}/${UP}/sub/clip.mp4`],
+    ['the folder itself', `${ORG}/${UP}`],
+    ['a trailing slash', `${ORG}/${UP}/`],
+    ['a traversal', `${ORG}/${UP}/../x.mp4`],
+    ['an encoded separator', `${ORG}/${UP}%2Fclip.mp4`],
+    ['a backslash', `${ORG}\\${UP}\\clip.mp4`],
+    ['an empty key', ''],
+  ])('refuses %s', (_name, key) => {
+    expect(keyInUploadFolder(key, ORG, UP)).toBe(false);
+  });
+
+  it('refuses ids that could themselves be paths', () => {
+    expect(keyInUploadFolder(`${ORG}/${UP}/clip.mp4`, ORG, '')).toBe(false);
+    expect(keyInUploadFolder(`${ORG}/${UP}/clip.mp4`, '', UP)).toBe(false);
+    expect(keyInUploadFolder('x/y/z', 'x/y', 'z')).toBe(false);
   });
 });
