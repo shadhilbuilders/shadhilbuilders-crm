@@ -172,6 +172,45 @@ revoked from the UI at all — a one-way door.
 
 ## Security
 
+### A Consent row's organisation is not required to be its lead's
+
+**What:** Both `Consent` INSERT policies check the row against the ACTOR's org
+(`"Consent"."organizationId" = current_setting('app.user_org_id', true)`) but nothing
+checks it against the LEAD's org. Add the lead-org predicate to
+`consent_insert_owner` and `consent_insert_admin`:
+
+```sql
+AND EXISTS (
+  SELECT 1 FROM "Lead" l2
+  WHERE l2.id = "Consent"."leadId"
+    AND l2."organizationId" = "Consent"."organizationId"
+)
+```
+
+**Why:** An ADMIN in org B can insert a consent row stamped org B that points at a
+lead in org A. The FKs are per column (`leadId -> Lead.id`, `organizationId ->
+Organization.id`), so no constraint holds the pair together. Today the damage is
+clutter inside the writer's own tenant: `consent_select_*` filters on the row's org,
+so org A never sees the row, and the site-update send decision reads the ledger under
+org A's context. It stops being harmless the first time anything joins `Consent` to
+`Lead` without an org predicate, or exports a ledger per organisation and finds a row
+that cites somebody else's lead.
+
+**Context:** found 2026-11-23 while adding the first writer of this table
+(`POST /api/leads/:id/consent`, commit `58208df`). The residual is pinned in
+`packages/database/test/consent-rls.test.ts`, in the case "refuses a manager from
+another team, and an admin from another org", whose comment names it rather than
+letting the suite imply the table is fully bounded. Checked before writing this:
+144 dev rows, 0 with `Consent.organizationId <> Lead.organizationId`, so no backfill.
+The fix is a migration recreating the two policies plus the same edit in
+`policies.sql` (policies.sql is the source of truth; the migration carries the delta).
+A composite FK on `(organizationId, leadId)` was considered and is heavier: it needs a
+`UNIQUE (organizationId, id)` index on `Lead` that does not exist today.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None.
+
 ### ~~Media bytes are org-scoped, not row-scoped~~ — FIXED 2026-11-07
 
 **What:** `GET /api/media/:key` now enforces two walls:
