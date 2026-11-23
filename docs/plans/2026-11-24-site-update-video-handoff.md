@@ -19,7 +19,8 @@ Read first, in this order:
   `consent-rls.test.ts`. Web: 1896 green across 181 files. `tsc` and `eslint` clean in both apps.
 - Three migrations are applied to dev and test: `20261123160000_site_update_delivery_no_buyer`,
   `20261123200000_site_update_delivery_no_consent`,
-  `20261123193000_site_update_delivery_skipped_disabled`. The Prisma client is regenerated in the
+  `20261123193000_site_update_delivery_skipped_disabled`,
+  `20261123194500_outbound_message_site_update_delivery`. The Prisma client is regenerated in the
   build and is not committed; run `pnpm --filter @shadhil/database generate` after pulling.
 
 ## Do not break these
@@ -38,8 +39,18 @@ Read first, in this order:
 - The buyer-facing WhatsApp leg has one switch: `SITE_UPDATE_WHATSAPP=off` stops it for photos and
   video, inside and outside the 24h window, without touching capture. It is checked first in
   `enqueue()`, so nothing is looked up and nothing is queued; the delivery row records
-  `SKIPPED_DISABLED`, which keeps the batch visible for a re-send. Default is ON. Clearing
-  `WA_TEMPLATE_SITE_UPDATE_*` is NOT the switch: that only skips outside-window sends.
+  `SKIPPED_DISABLED`, which keeps the batch visible instead of dropping it. Default is ON.
+  Clearing `WA_TEMPLATE_SITE_UPDATE_*` is NOT the switch: that only skips outside-window sends.
+- The delivery row's status is advanced by the WORKER, not by the save. `OutboundMessage`
+  carries a nullable unique `siteUpdateDeliveryId`; `sendOne` flips that row to SENT (with the
+  wamid) or, on the final failed attempt, to FAILED with `errorCode=SEND_FAILED`. A retryable
+  failure leaves it PENDING on purpose. The write happens AFTER the outbox row commits and is
+  best effort: a failure there logs and leaves the row PENDING, because rolling back a send Meta
+  already accepted would message the buyer twice. Runs under CRON_SERVICE, which
+  `site_update_delivery_cron_service` already allows.
+- A skipped delivery queues no outbox row, so nothing exists to retry. Re-sending a
+  `SKIPPED_DISABLED` or `SKIPPED_NO_*` batch is NOT implemented: the row records that it was
+  skipped, and a re-send feature would have to rebuild the message from the stored row.
 
 ## Task 1 (highest value): capture marketing consent - DONE 2026-11-23
 

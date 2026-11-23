@@ -108,6 +108,13 @@ export class OutboundService {
        * `shareUrl`, never stored: an expiring link must not be persisted.
        */
       templateMediaLink?: string;
+      /**
+       * The SiteUpdateDelivery this message reports on (2026-11-23). Optional:
+       * only site updates set it. When set, the worker flips that row to SENT or
+       * FAILED after Meta answers, because nobody else knows the outcome and the
+       * row otherwise stays PENDING forever.
+       */
+      siteUpdateDeliveryId?: string;
     },
     // RLS-scoped client/transaction override. The chat service enqueues
     // from INSIDE a withRlsContext(tx) block (which sets app.user_id etc.
@@ -143,6 +150,9 @@ export class OutboundService {
         ...(opts.mediaKey !== undefined ? { mediaKey: opts.mediaKey } : {}),
         ...(opts.mediaType !== undefined ? { mediaType: opts.mediaType } : {}),
         ...(opts.mediaFilename !== undefined ? { mediaFilename: opts.mediaFilename } : {}),
+        ...(opts.siteUpdateDeliveryId !== undefined
+          ? { siteUpdateDeliveryId: opts.siteUpdateDeliveryId }
+          : {}),
         status: 'PENDING',
       },
     });
@@ -360,34 +370,89 @@ export class OutboundService {
       deliveryResult = { ok: false, error: errorMessage };
     }
 
+    const isFinal = !deliveryResult.ok && row.attempts >= MAX_ATTEMPTS;
     // Now do the DB write inside the RLS transaction.
-    return withRlsContext(this.client, cronContextFor(row.organizationId), async (tx) => {
-      const txClient = tx as unknown as PrismaClient;
-      if (deliveryResult.ok) {
+    const saved = await withRlsContext(
+      this.client,
+      cronContextFor(row.organizationId),
+      async (tx) => {
+        const txClient = tx as unknown as PrismaClient;
+        if (deliveryResult.ok) {
+          return txClient.outboundMessage.update({
+            where: { id: row.id },
+            data: {
+              status: 'SENT',
+              wamid: deliveryResult.wamid,
+              // A row that failed once and succeeded on a retry keeps the old
+              // error text otherwise, so a SENT row renders with an error beside
+              // it on the delivery page. Clear it on success.
+              lastError: null,
+            },
+          });
+        }
+        this.logger.warn(
+          `[whatsapp] send failed id=${row.id} attempts=${row.attempts}/${MAX_ATTEMPTS} final=${isFinal} error=${deliveryResult.error}`,
+        );
         return txClient.outboundMessage.update({
           where: { id: row.id },
           data: {
-            status: 'SENT',
-            wamid: deliveryResult.wamid,
-            // A row that failed once and succeeded on a retry keeps the old
-            // error text otherwise, so a SENT row renders with an error beside
-            // it on the delivery page. Clear it on success.
-            lastError: null,
+            status: isFinal ? 'FAILED' : 'PENDING',
+            lastError: deliveryResult.error,
           },
         });
-      }
-      const isFinal = row.attempts >= MAX_ATTEMPTS;
-      this.logger.warn(
-        `[whatsapp] send failed id=${row.id} attempts=${row.attempts}/${MAX_ATTEMPTS} final=${isFinal} error=${deliveryResult.error}`,
-      );
-      return txClient.outboundMessage.update({
-        where: { id: row.id },
-        data: {
-          status: isFinal ? 'FAILED' : 'PENDING',
-          lastError: deliveryResult.error,
-        },
+      },
+    );
+
+    // AFTER the outbox row commits, not inside that transaction: a policy miss or
+    // a deleted delivery row must not roll back a send Meta already accepted, or
+    // the retry would message the buyer twice.
+    if (deliveryResult.ok) {
+      await this.markDelivery(row, { status: 'SENT', wamid: deliveryResult.wamid });
+    } else if (isFinal) {
+      // A non-final failure leaves the delivery row PENDING on purpose: the
+      // outbox will retry, and a row saying FAILED between attempts would tell
+      // the engineer the buyer missed an update they are about to get.
+      await this.markDelivery(row, { status: 'FAILED', errorCode: 'SEND_FAILED' });
+    }
+    return saved;
+  }
+
+  /**
+   * Report the send outcome back to the SiteUpdateDelivery this message serves.
+   *
+   * BEST EFFORT, after the message row has committed. A failure here (a policy
+   * that does not match, a deleted delivery row) must never make the worker
+   * retry a message Meta already accepted: that sends the buyer the same update
+   * twice. The cost of the opposite tradeoff is a delivery row stuck at PENDING,
+   * with a log line saying so, which is exactly the state this whole change
+   * exists to end.
+   *
+   * Runs under the same CRON_SERVICE context as the message update, because
+   * site_update_delivery_cron_service is the policy that allows it.
+   */
+  private async markDelivery(
+    row: OutboundMessage,
+    outcome: { status: 'SENT'; wamid: string | null } | { status: 'FAILED'; errorCode: string },
+  ): Promise<void> {
+    const deliveryId = row.siteUpdateDeliveryId;
+    if (deliveryId === null || deliveryId === undefined) return;
+    try {
+      await withRlsContext(this.client, cronContextFor(row.organizationId), async (tx) => {
+        await (tx as unknown as PrismaClient).siteUpdateDelivery.update({
+          where: { id: deliveryId },
+          data:
+            outcome.status === 'SENT'
+              ? { status: 'SENT', wamid: outcome.wamid, sentAt: new Date(), errorCode: null }
+              : { status: 'FAILED', errorCode: outcome.errorCode },
+        });
       });
-    });
+    } catch (err) {
+      this.logger.warn(
+        `[whatsapp] delivery ${deliveryId} not updated after ${outcome.status}: ${
+          err instanceof Error ? err.message : String(err)
+        } - the outbox row is committed, so the send stands`,
+      );
+    }
   }
 
   /** Resolve the lead's phone in E.164 form. Returns the digits-only

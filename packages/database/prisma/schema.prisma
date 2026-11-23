@@ -1690,6 +1690,12 @@ model OutboundMessage {
   attempts       Int              @default(0)
   lastAttemptAt  DateTime?
   lastError      String?          @db.Text
+  // Site-update delivery that this row serves (2026-11-23). The delivery row is
+  // written by the customer-progress save and then parked at PENDING until the
+  // send is known; this is the only link back to it from the worker, which is
+  // what lets the staff row say "sent" instead of "sending" forever. Null for
+  // every other outbound message (chat replies, welcome, visit follow-ups).
+  siteUpdateDeliveryId String?   @unique
   // Meta's message ID, set on successful send. Used by the status
   // webhook to update status (sent → delivered → read).
   wamid          String?
@@ -1703,6 +1709,9 @@ model OutboundMessage {
   lead         Lead?                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
   contact      WhatsappUnknownContact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
   organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // SetNull, not Cascade: deleting the delivery row must not delete the buyer's
+  // message, and a delivered message must not keep a delivery row alive.
+  siteUpdateDelivery SiteUpdateDelivery? @relation(fields: [siteUpdateDeliveryId], references: [id], onDelete: SetNull)
 
   @@index([status, lastAttemptAt]) // cron scan: PENDING rows that aren't being retried too soon
   @@index([leadId])
@@ -1994,6 +2003,10 @@ model SiteUpdateDelivery {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  // The outbox row that carries this delivery's message, if one was ever queued
+  // (a skipped delivery queues nothing). Set by the worker on send, which is what
+  // moves the status off PENDING.
+  outboundMessage OutboundMessage?
 
   @@unique([organizationId, batchId])
   // The cron's scan: PENDING rows for one org, oldest first.

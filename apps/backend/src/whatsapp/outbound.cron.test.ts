@@ -44,6 +44,7 @@ const TEST_LEAD_ID = 'test-outbound-cron-lead';
 
 const TEST_OUTBOUND_IDS: string[] = [];
 const TEST_MESSAGE_IDS: string[] = [];
+const TEST_DELIVERY_IDS: string[] = [];
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
@@ -128,13 +129,41 @@ async function seedOutbound(
     attempts?: number;
     wamid?: string;
     lastError?: string;
+    /**
+     * Attach a SiteUpdateDelivery and link the outbox row to it, so the test can
+     * assert the worker reports the send outcome back (2026-11-23). The delivery
+     * row needs a Unit, and a unit is only created by the seed, so the id is
+     * resolved at seed time and the case is skipped when the org has none.
+     */
+    withDelivery?: boolean;
   } = {},
-): Promise<{ messageId: string; outboundId: string }> {
+): Promise<{ messageId: string; outboundId: string; deliveryId?: string }> {
   if (prisma === null) throw new Error('prisma missing');
   const suffix = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const messageId = `test-msg-${suffix}`;
   const outboundId = `test-out-${suffix}`;
+  let deliveryId: string | undefined;
   await adminSeed(async (db) => {
+    if (opts.withDelivery === true) {
+      // Any unit in the org: the delivery row only needs a valid FK, and which
+      // villa it is has no bearing on the send bookkeeping under test.
+      const unit = await db.unit.findFirst({
+        where: { organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+        select: { id: true },
+      });
+      if (unit === null) return;
+      const delivery = await db.siteUpdateDelivery.create({
+        data: {
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          batchId: `test-batch-${suffix}`,
+          unitId: unit.id,
+          status: 'PENDING',
+        },
+        select: { id: true },
+      });
+      deliveryId = delivery.id;
+      TEST_DELIVERY_IDS.push(delivery.id);
+    }
     await db.message.create({
       data: {
         id: messageId,
@@ -159,13 +188,14 @@ async function seedOutbound(
         ...(opts.lastAttemptAt !== undefined ? { lastAttemptAt: opts.lastAttemptAt } : {}),
         ...(opts.wamid !== undefined ? { wamid: opts.wamid } : {}),
         ...(opts.lastError !== undefined ? { lastError: opts.lastError } : {}),
+        ...(deliveryId !== undefined ? { siteUpdateDeliveryId: deliveryId } : {}),
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
   });
   TEST_OUTBOUND_IDS.push(outboundId);
   TEST_MESSAGE_IDS.push(messageId);
-  return { messageId, outboundId };
+  return { messageId, outboundId, deliveryId };
 }
 
 async function cleanupTestOutbound(): Promise<void> {
@@ -181,9 +211,16 @@ async function cleanupTestOutbound(): Promise<void> {
         where: { id: { in: TEST_MESSAGE_IDS } },
       });
     }
+    // The delivery rows are independent of the messages (SetNull, not Cascade):
+    // deleting the message row leaves the delivery row behind on purpose, so the
+    // fixture has to clean it up itself.
+    if (TEST_DELIVERY_IDS.length > 0) {
+      await db.siteUpdateDelivery.deleteMany({ where: { id: { in: TEST_DELIVERY_IDS } } });
+    }
   });
   TEST_OUTBOUND_IDS.length = 0;
   TEST_MESSAGE_IDS.length = 0;
+  TEST_DELIVERY_IDS.length = 0;
 }
 
 /** Aggressive cleanup: delete ALL OutboundMessage + Message test
@@ -483,6 +520,81 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)('T-E2b outbound cron - lease + claim + se
     expect(row?.status).toBe('FAILED');
     expect(row?.lastError).toContain('Meta API: 400 invalid template');
     expect(row?.attempts).toBe(MAX_ATTEMPTS);
+  });
+
+  it('site-update delivery: a sent message flips the delivery row to SENT', async () => {
+    // THE BUG THIS FIXES (2026-11-23): the delivery row was written PENDING and
+    // nothing advanced it, so the staff row said "Sending to buyer..." over an
+    // update the buyer had already received.
+    const seeded = await seedOutbound('delivery-sent', { withDelivery: true });
+    if (seeded.deliveryId === undefined) {
+      // No unit in this database to hang a delivery row on. Not a failure of the
+      // code under test, and silently passing would be worse than saying so.
+      expect(seeded.deliveryId).toBeUndefined();
+      return;
+    }
+    stubWhatsApp.nextResult = { wamid: 'wamid.delivery-sent' };
+
+    const tick = await cron.runOnce();
+    expect(tick.sent).toBe(1);
+
+    const delivery = await adminSeed(async (db) =>
+      db.siteUpdateDelivery.findUnique({
+        where: { id: seeded.deliveryId as string },
+        select: { status: true, wamid: true, sentAt: true, errorCode: true },
+      }),
+    );
+    expect(delivery?.status).toBe('SENT');
+    expect(delivery?.wamid).toBe('wamid.delivery-sent');
+    expect(delivery?.sentAt).not.toBeNull();
+    expect(delivery?.errorCode).toBeNull();
+  });
+
+  it('site-update delivery: a final failure marks the delivery row FAILED', async () => {
+    const seeded = await seedOutbound('delivery-failed', {
+      attempts: MAX_ATTEMPTS - 1,
+      withDelivery: true,
+    });
+    if (seeded.deliveryId === undefined) {
+      expect(seeded.deliveryId).toBeUndefined();
+      return;
+    }
+    stubWhatsApp.nextResult = { throw: new Error('Meta API: 400 invalid template') };
+
+    const tick = await cron.runOnce();
+    expect(tick.failed).toBe(1);
+
+    const delivery = await adminSeed(async (db) =>
+      db.siteUpdateDelivery.findUnique({
+        where: { id: seeded.deliveryId as string },
+        select: { status: true, errorCode: true, sentAt: true },
+      }),
+    );
+    expect(delivery?.status).toBe('FAILED');
+    expect(delivery?.errorCode).toBe('SEND_FAILED');
+    expect(delivery?.sentAt).toBeNull();
+  });
+
+  it('site-update delivery: a retryable failure leaves the row PENDING for the retry', async () => {
+    // Between attempts the buyer is still going to get the update, so the staff
+    // row must not read FAILED yet.
+    const seeded = await seedOutbound('delivery-retry', { attempts: 0, withDelivery: true });
+    if (seeded.deliveryId === undefined) {
+      expect(seeded.deliveryId).toBeUndefined();
+      return;
+    }
+    stubWhatsApp.nextResult = { throw: new Error('Meta API network error') };
+
+    await cron.runOnce();
+
+    const delivery = await adminSeed(async (db) =>
+      db.siteUpdateDelivery.findUnique({
+        where: { id: seeded.deliveryId as string },
+        select: { status: true, errorCode: true },
+      }),
+    );
+    expect(delivery?.status).toBe('PENDING');
+    expect(delivery?.errorCode).toBeNull();
   });
 
   it('T-E2b: every runOnce passes the tick result to alerts.recordTickResult', async () => {

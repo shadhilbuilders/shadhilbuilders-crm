@@ -143,7 +143,9 @@ function harness(
           throw Object.assign(new Error('unique'), { code: 'P2002' });
         }
         created.push(args);
-        return {};
+        // Prisma returns the selected column; the service needs the id to link
+        // the outbox row back to this delivery.
+        return { id: `sud-${created.length}` };
       }),
       update: vi.fn(async () => ({})),
     },
@@ -431,5 +433,16 @@ describe('SiteUpdateDeliveryService', () => {
     for (const value of ['off', 'OFF', ' off ', 'false', '0']) {
       expect(siteUpdateWhatsAppEnabled({ [SITE_UPDATE_WHATSAPP_ENV]: value })).toBe(false);
     }
+  });
+
+  it('hands the delivery id to the outbox, so the worker can report the outcome', async () => {
+    // THE BUG (2026-11-23): the row was written, the message was queued, and
+    // nothing linked the two, so every delivery read PENDING forever. The id is
+    // the only thread back from the worker to the row it reports on.
+    const h = harness();
+    await h.service.recordAndSend({ ...input, tx: h.tx });
+    expect(h.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ siteUpdateDeliveryId: 'sud-1' }),
+    );
   });
 });

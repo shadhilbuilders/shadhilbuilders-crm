@@ -296,9 +296,9 @@ export class SiteUpdateDeliveryService {
    */
   async recordAndSend(input: DeliveryInput): Promise<void> {
     try {
-      const created = await this.reserve(input);
-      if (!created) return;
-      await this.enqueue(input);
+      const deliveryId = await this.reserve(input);
+      if (deliveryId === null) return;
+      await this.enqueue(input, deliveryId);
     } catch (err) {
       this.deps.logger.error(
         `[site-update-delivery] unit=${input.unitId} batch=${input.batchId}: ${
@@ -316,19 +316,23 @@ export class SiteUpdateDeliveryService {
    * find-then-insert would let two of them both decide they were first. So a
    * unique violation IS the "already recorded" answer.
    */
-  private async reserve(input: DeliveryInput): Promise<boolean> {
+  private async reserve(input: DeliveryInput): Promise<string | null> {
     try {
-      await input.tx.siteUpdateDelivery.create({
+      const created = await input.tx.siteUpdateDelivery.create({
         data: {
           organizationId: input.organizationId,
           batchId: input.batchId,
           unitId: input.unitId,
           status: 'PENDING',
         },
+        // The id is what the worker needs to report the outcome back to. Without
+        // it the row is written and then unreachable, which is the bug this
+        // change fixes.
+        select: { id: true },
       });
-      return true;
+      return (created as { id: string }).id;
     } catch (err) {
-      if (isUniqueViolation(err)) return false;
+      if (isUniqueViolation(err)) return null;
       throw err;
     }
   }
@@ -339,7 +343,7 @@ export class SiteUpdateDeliveryService {
    * both of which may be unavailable in a given deployment, so each absence has
    * its own recorded outcome rather than a crash.
    */
-  private async enqueue(input: DeliveryInput): Promise<void> {
+  private async enqueue(input: DeliveryInput, deliveryId: string): Promise<void> {
     const client = input.tx;
     // THE KILL SWITCH, and the first thing checked (2026-11-23). It sits before
     // every other branch on purpose: with the leg switched off, a missing
@@ -427,6 +431,10 @@ export class SiteUpdateDeliveryService {
       messageId: message.id,
       organizationId: input.organizationId,
       leadId: target.leadId,
+      // The link the worker uses to report the outcome. Without it the delivery
+      // row stays PENDING forever and the staff row says "Sending to buyer…"
+      // over an update the buyer received hours ago.
+      siteUpdateDeliveryId: deliveryId,
       sendType: plan.send === 'template' ? 'TEMPLATE' : 'FREEFORM',
       freeformBody: body,
       ...(plan.send === 'template'
