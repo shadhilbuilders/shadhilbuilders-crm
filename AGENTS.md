@@ -45,6 +45,19 @@ TELECALLER`. Never hand-roll role strings.
 - Do NOT exclude test files from turbo cache inputs - stale green results are
   worse than no results.
 
+## Before you commit
+
+- `.githooks/pre-commit` gates every commit: it runs `prettier --check` over the
+  files you staged and blocks the commit if any drifted. Same check CI's Lint job
+  opens with, so a red format step can no longer reach `main`.
+- The hook arrives through the root `prepare` script. A fresh clone gets it on its
+  first `pnpm install`. An existing clone whose install was a no-op does not, so
+  run `pnpm run prepare` once after pulling this file.
+- When it blocks, format only the files it named:
+  `pnpm exec prettier --write <file>`. Never `pnpm format` - it rewrites the whole
+  tree, and the committed style does not match the root config everywhere.
+- `git commit --no-verify` skips it. The file then fails CI.
+
 ## Database
 
 - Schema changes ONLY via Prisma migrations in
