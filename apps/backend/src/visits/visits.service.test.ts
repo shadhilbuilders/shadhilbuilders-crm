@@ -27,7 +27,6 @@ import { VisitsService } from './visits.service';
 // Lead_phone_equals_phoneE164). One evaluation feeds both columns.
 const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
 
-
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 // T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL, so the
 // fixture leads below need a project.
@@ -973,7 +972,9 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
         data: {
           id: leadId,
           name: `CVE Lead ${eligibilitySeq} (${state})`,
-          ...leadPhoneFields(`92${String(RUN).slice(-8)}${String(eligibilitySeq).padStart(3, '0')}`),
+          ...leadPhoneFields(
+            `92${String(RUN).slice(-8)}${String(eligibilitySeq).padStart(3, '0')}`,
+          ),
           source: 'WHATSAPP',
           state: state as never,
           ownerId: TC_ID,

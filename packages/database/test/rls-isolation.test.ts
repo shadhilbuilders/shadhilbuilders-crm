@@ -41,7 +41,6 @@ import { DATABASE_AVAILABLE } from './setup';
 // Lead_phone_equals_phoneE164). One evaluation feeds both columns.
 const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
 
-
 // The fixture needs the OWNER database role (bypass-RLS) - `shadhil`
 // via DIRECT_DATABASE_URL - not the non-owner `shadhil_app` role used
 // at runtime via DATABASE_URL + PgBouncer. Construct a local PrismaClient

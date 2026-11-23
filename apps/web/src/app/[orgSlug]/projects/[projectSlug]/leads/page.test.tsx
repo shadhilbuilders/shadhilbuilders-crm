@@ -350,11 +350,14 @@ describe('LeadInboxPage - bulk selection', () => {
   it('gives an ADMIN a selection column, with WON rows disabled', () => {
     withRole('ADMIN');
     mockedUseLeads.mockReturnValue({
-      data: [freshRow({ id: 'lead-open', name: 'Open Lead', status: 'NEW' }), freshRow({
-        id: 'lead-won',
-        name: 'Won Lead',
-        status: 'WON',
-      })],
+      data: [
+        freshRow({ id: 'lead-open', name: 'Open Lead', status: 'NEW' }),
+        freshRow({
+          id: 'lead-won',
+          name: 'Won Lead',
+          status: 'WON',
+        }),
+      ],
       isLoading: false,
       error: null,
     } as never);

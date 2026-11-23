@@ -20,7 +20,6 @@ import { DATABASE_AVAILABLE } from './setup';
 // Lead_phone_equals_phoneE164). One evaluation feeds both columns.
 const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
 
-
 const adminPrisma = createDirectPrismaClient();
 
 const ORG_ID = 'ceid01lpfe1esm8jwsxid41k28'; // seeded demo org

@@ -33,9 +33,12 @@ import {
 
 function makeService() {
   const emit = vi.fn(async () => ({ id: 'n1' }));
-  const svc = new InboundChatNotifierService({ $client: {} } as never, {
-    emit,
-  } as unknown as NotificationsService);
+  const svc = new InboundChatNotifierService(
+    { $client: {} } as never,
+    {
+      emit,
+    } as unknown as NotificationsService,
+  );
   return { svc, emit };
 }
 
@@ -136,11 +139,14 @@ describe('InboundChatNotifierService.notifyInbound', () => {
   });
 
   it('never throws, so a notification failure cannot fail the webhook', async () => {
-    const svc = new InboundChatNotifierService({ $client: {} } as never, {
-      emit: vi.fn(async () => {
-        throw new Error('inbox down');
-      }),
-    } as unknown as NotificationsService);
+    const svc = new InboundChatNotifierService(
+      { $client: {} } as never,
+      {
+        emit: vi.fn(async () => {
+          throw new Error('inbox down');
+        }),
+      } as unknown as NotificationsService,
+    );
     await expect(
       svc.notifyInbound({ ...base, recipientSubs: ['owner-1'] }),
     ).resolves.toBeUndefined();

@@ -352,7 +352,9 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
   // count of 3 is the same lie in a different costume. Same predicate as the
   // server's count (`isOverdue`, NEW + 30 minutes).
   const queueShown =
-    filter === 'overdue' ? ordered.filter((row) => isOverdue(row as { status?: string; createdAt?: string })) : ordered;
+    filter === 'overdue'
+      ? ordered.filter((row) => isOverdue(row as { status?: string; createdAt?: string }))
+      : ordered;
 
   return (
     // T-DASH-MOBILE: 16px between sections on phones, 24px from 30rem up. The

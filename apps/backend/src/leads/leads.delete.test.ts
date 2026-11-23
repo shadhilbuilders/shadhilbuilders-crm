@@ -460,8 +460,8 @@ describe.skipIf(!HAS_DB)('POST /leads/bulk-delete (leads.service.deleteMany)', (
 
   it('403: TELECALLER cannot bulk delete', async () => {
     const service = makeLeadsService();
-    await expect(
-      service.deleteMany(actorFor('TELECALLER'), [BULK_WON]),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(service.deleteMany(actorFor('TELECALLER'), [BULK_WON])).rejects.toMatchObject({
+      status: 403,
+    });
   });
 });

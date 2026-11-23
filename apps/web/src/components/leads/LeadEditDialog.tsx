@@ -198,8 +198,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
     defaultValues: {
       name: lead?.name ?? '',
       phone: toPhoneInputValue(lead?.phoneE164 ?? lead?.phone),
-      phoneCountry:
-        countryOfStored(lead?.phoneE164 ?? lead?.phone) ?? DEFAULT_PHONE_COUNTRY,
+      phoneCountry: countryOfStored(lead?.phoneE164 ?? lead?.phone) ?? DEFAULT_PHONE_COUNTRY,
       email: lead?.email ?? '',
     },
     mode: 'onSubmit',
@@ -213,8 +212,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
       form.reset({
         name: lead.name,
         phone: toPhoneInputValue(lead.phoneE164 ?? lead.phone),
-        phoneCountry:
-          countryOfStored(lead.phoneE164 ?? lead.phone) ?? DEFAULT_PHONE_COUNTRY,
+        phoneCountry: countryOfStored(lead.phoneE164 ?? lead.phone) ?? DEFAULT_PHONE_COUNTRY,
         email: lead.email ?? '',
       });
     }

@@ -40,7 +40,6 @@ import { VisitsService } from './visits.service';
 // Lead_phone_equals_phoneE164). One evaluation feeds both columns.
 const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
 
-
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 

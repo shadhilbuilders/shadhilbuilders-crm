@@ -88,8 +88,7 @@ function EditUserDialog({
         target === null || target.role === 'CUSTOMER'
           ? ''
           : toPhoneInputValue(target.phoneE164 ?? target.phone),
-      phoneCountry:
-        countryOfStored(target?.phoneE164 ?? target?.phone) ?? DEFAULT_PHONE_COUNTRY,
+      phoneCountry: countryOfStored(target?.phoneE164 ?? target?.phone) ?? DEFAULT_PHONE_COUNTRY,
     },
     // `onTouched` so a mistyped number is flagged while the user is still in
     // the field, and cleared as soon as it parses.
@@ -109,7 +108,9 @@ function EditUserDialog({
         email: values.email,
         ...(phone === undefined ? {} : { phone }),
         // Only meaningful beside a number: a cleared field sends no country.
-        ...(phone === undefined || phone === null ? {} : { phoneCountry: values.phoneCountry ?? DEFAULT_PHONE_COUNTRY }),
+        ...(phone === undefined || phone === null
+          ? {}
+          : { phoneCountry: values.phoneCountry ?? DEFAULT_PHONE_COUNTRY }),
       },
       {
         onSuccess: () => {

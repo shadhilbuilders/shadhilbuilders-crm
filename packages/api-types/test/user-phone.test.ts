@@ -103,7 +103,10 @@ describe('UpdateProfileDtoSchema (self edit)', () => {
     // user can replace a generated address. The password gate is the fence the
     // DTO can enforce; the placeholder-only rule needs the stored row, so the
     // service enforces that one.
-    const noPassword = UpdateProfileDtoSchema.safeParse({ name: 'Asha', email: 'asha@example.com' });
+    const noPassword = UpdateProfileDtoSchema.safeParse({
+      name: 'Asha',
+      email: 'asha@example.com',
+    });
     expect(noPassword.success).toBe(false);
     if (!noPassword.success) {
       expect(JSON.stringify(noPassword.error.issues)).toContain('current password');

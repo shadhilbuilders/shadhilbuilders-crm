@@ -23,7 +23,6 @@ import { LeadsService } from './leads.service';
 // Lead_phone_equals_phoneE164). One evaluation feeds both columns.
 const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
 
-
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 // T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
 // every fixture lead needs a project. cuid2-shaped in case it passes a DTO.

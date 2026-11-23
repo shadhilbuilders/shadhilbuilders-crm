@@ -56,12 +56,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
 import { LeadReassignDialog } from '@/components/leads/LeadReassignDialog';
 
-import {
-  useBulkDeleteLeads,
-  useDeleteLead,
-  useLeads,
-  useLeadsEnvelope,
-} from '@/hooks/queries/crm';
+import { useBulkDeleteLeads, useDeleteLead, useLeads, useLeadsEnvelope } from '@/hooks/queries/crm';
 import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { canDeleteLeads, canReassign, useSessionUser } from '@/lib/session';
@@ -569,7 +564,9 @@ function AuditBulkDeleteDialog({
           'This permanently removes the leads, their chat history, activities, and visits. Leads that are WON or have booking history stay behind, and the result will tell you which. This action cannot be undone.',
       }}
       cancelButtonText="Cancel"
-      confirmButtonText={pending ? 'Deleting...' : count === 1 ? 'Delete lead' : `Delete ${count} leads`}
+      confirmButtonText={
+        pending ? 'Deleting...' : count === 1 ? 'Delete lead' : `Delete ${count} leads`
+      }
       confirmButtonProps={{
         variant: 'destructive',
         disabled: pending,

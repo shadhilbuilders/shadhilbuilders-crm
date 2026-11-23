@@ -354,7 +354,7 @@ export const UpdateProfileDtoSchema = z
   .object({
     name: nameSchema.optional(),
     phone: ClearablePhoneSchema.optional(),
-  phoneCountry: CountryCodeSchema.optional(),
+    phoneCountry: CountryCodeSchema.optional(),
     email: emailSchema.optional(),
     /**
      * Only ever read to authorise an `email` change. Never stored, never

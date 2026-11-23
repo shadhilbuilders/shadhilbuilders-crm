@@ -38,7 +38,7 @@ One card, `max-w-sm`, centred, exactly as today. Inside it the first field chang
 |        Sign in to your account            |
 |                                          |
 |  Email or phone                          |
-|  [ you@shadhilbuilders.in or 98765 43210 ]|
+|  [ Enter you email or phonenumber ]|
 |                                          |
 |  Password                                |
 |  [ .......................  (eye) ]       |
@@ -50,7 +50,7 @@ One card, `max-w-sm`, centred, exactly as today. Inside it the first field chang
 +------------------------------------------+
 ```
 
-- Label `Email or phone`, placeholder `you@shadhilbuilders.in or 98765 43210`, and `inputProps: { autoComplete: 'username', inputMode: 'text', autoFocus: true }`. The rich autocomplete token has to sit in `inputProps`: the field's own `autoComplete` accepts only `'on' | 'off'`. `inputMode="text"` rather than `email`, because the browser's email keyboard hides digits on mobile.
+- Label `Email or phone`, placeholder `Enter you email or phonenumber`, and `inputProps: { autoComplete: 'username', inputMode: 'text', autoFocus: true }`. The rich autocomplete token has to sit in `inputProps`: the field's own `autoComplete` accepts only `'on' | 'off'`. `inputMode="text"` rather than `email`, because the browser's email keyboard hides digits on mobile.
 - Password field unchanged (`PasswordInput`, `autoComplete="current-password"`, `data-qa="login-password"`).
 - Submit reads `Sign in`, then `Signing in...` while pending; both fields disabled, no overlay spinner. Same pattern as today.
 - One failure string for every outcome, as a toast: `Invalid email, phone or password.` Shape errors stay inline under the field via zod (`Enter your email or phone number`). The existing account-enumeration defence is preserved: the field judges shape only.
@@ -133,15 +133,15 @@ Placeholder account                     Normal account
 
 The table already has a Phone column with a `phoneSource` distinction, so the email cell must not repeat the phone. Rules per row:
 
-| Stored email | Email cell | Phone cell |
-| --- | --- | --- |
-| real address | the address, as today | as today |
-| placeholder, phone present | muted `No email` plus a tooltip `This account signs in with its phone number.` | as today |
-| placeholder, no phone | muted `No email` plus the same tooltip | existing empty dash |
+| Stored email               | Email cell                                                                     | Phone cell          |
+| -------------------------- | ------------------------------------------------------------------------------ | ------------------- |
+| real address               | the address, as today                                                          | as today            |
+| placeholder, phone present | muted `No email` plus a tooltip `This account signs in with its phone number.` | as today            |
+| placeholder, no phone      | muted `No email` plus the same tooltip                                         | existing empty dash |
 
 Search gains phone, and that means both halves: the accessor becomes `['name', 'email', 'phone']` and the placeholder reads `Search by name, email or phone...` (`page.tsx:777`), and the backend list query must match phone too. The table's search is server-side (`onSearchValueChange` drives the API), so changing only the client accessor would move the placeholder text and change nothing about the results.
 
-The users table is the one place where the phone is *not* substituted for the email, precisely because it already has its own column.
+The users table is the one place where the phone is _not_ substituted for the email, precisely because it already has its own column.
 
 ### 6. Accept invite (`(guest)/invite/[token]/AcceptInviteForm.tsx`)
 
@@ -149,40 +149,40 @@ Today it prints `preview.email` (`:200`) and signs in with it (`:103-104`). For 
 
 ## Interaction states
 
-| Feature | Loading | Empty | Error | Success | Partial |
-| --- | --- | --- | --- | --- | --- |
-| Login submit | button `Signing in...`, both fields disabled | fields empty, submit enabled, no inline errors until submit | toast `Invalid email, phone or password.`; fields re-enabled; password left as typed | redirect by document navigation, as today | not applicable |
-| Account picker | `Continue` disabled until a row is chosen | never rendered with zero rows; a zero-match resolver returns the generic failure instead | picker POST failing on the second submit returns to the picker with the toast and the previous choice kept | pick one, `Continue`, redirect | `More than 10 accounts match` is not a state: over-cap returns the generic failure and logs a warning |
-| Invite dialog email | n/a | collapsed trigger row is the empty state | inline zod error under the field; empty is not an error | trigger reads `Email: address`, no toast | an invite without an email shows a muted `No email` chip in the pending list |
-| Settings email | `Add email` shows `Saving...` | field empty with helper text | inline under field (duplicate) or under password (wrong password) | field switches to read-only, toast confirms | n/a |
-| Users table email cell | n/a | `No email` with tooltip | n/a | n/a | n/a |
+| Feature                | Loading                                      | Empty                                                                                    | Error                                                                                                      | Success                                     | Partial                                                                                               |
+| ---------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Login submit           | button `Signing in...`, both fields disabled | fields empty, submit enabled, no inline errors until submit                              | toast `Invalid email, phone or password.`; fields re-enabled; password left as typed                       | redirect by document navigation, as today   | not applicable                                                                                        |
+| Account picker         | `Continue` disabled until a row is chosen    | never rendered with zero rows; a zero-match resolver returns the generic failure instead | picker POST failing on the second submit returns to the picker with the toast and the previous choice kept | pick one, `Continue`, redirect              | `More than 10 accounts match` is not a state: over-cap returns the generic failure and logs a warning |
+| Invite dialog email    | n/a                                          | collapsed trigger row is the empty state                                                 | inline zod error under the field; empty is not an error                                                    | trigger reads `Email: address`, no toast    | an invite without an email shows a muted `No email` chip in the pending list                          |
+| Settings email         | `Add email` shows `Saving...`                | field empty with helper text                                                             | inline under field (duplicate) or under password (wrong password)                                          | field switches to read-only, toast confirms | n/a                                                                                                   |
+| Users table email cell | n/a                                          | `No email` with tooltip                                                                  | n/a                                                                                                        | n/a                                         | n/a                                                                                                   |
 
 ## Journey
 
-| Step | User does | User feels | Plan specifies |
-| --- | --- | --- | --- |
-| 1 | Opens the login page | Routine, no surprises | Same card, same heading; only the first label changed |
-| 2 | Types `98765 43210` and their password | Slight uncertainty: "does this really work with a number?" | Placeholder shows both forms, so the field says yes before they try |
-| 3a | Submits, one account matches | Relief, then they are in | No extra step; straight redirect |
-| 3b | Submits, two accounts match | Brief "oh, right, two orgs" | Picker names the person and both orgs, with a way back |
-| 4 | Wrong password | Mild annoyance, no shame | One neutral sentence, password kept so they can fix a typo |
-| 5 | Later opens Settings and sees "Add an email" | Understood as optional, not a chore assigned | Helper text names the benefit, current-password only appears once they start |
-| 6 | Admin invites the next person without an email | Faster than before | The disclosure is collapsed by default, so the dialog is shorter, not longer |
+| Step | User does                                      | User feels                                                 | Plan specifies                                                               |
+| ---- | ---------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 1    | Opens the login page                           | Routine, no surprises                                      | Same card, same heading; only the first label changed                        |
+| 2    | Types `98765 43210` and their password         | Slight uncertainty: "does this really work with a number?" | Placeholder shows both forms, so the field says yes before they try          |
+| 3a   | Submits, one account matches                   | Relief, then they are in                                   | No extra step; straight redirect                                             |
+| 3b   | Submits, two accounts match                    | Brief "oh, right, two orgs"                                | Picker names the person and both orgs, with a way back                       |
+| 4    | Wrong password                                 | Mild annoyance, no shame                                   | One neutral sentence, password kept so they can fix a typo                   |
+| 5    | Later opens Settings and sees "Add an email"   | Understood as optional, not a chore assigned               | Helper text names the benefit, current-password only appears once they start |
+| 6    | Admin invites the next person without an email | Faster than before                                         | The disclosure is collapsed by default, so the dialog is shorter, not longer |
 
 ## Design system alignment
 
 Everything reuses `@paalstack/react-ui` 1.7.2 through its Props API. No new primitives, and no hand-rolled controls where the library already has one.
 
-| Need | Component / helper | Source |
-| --- | --- | --- |
-| Login form, labels, inline errors, submit states | `<Form fields={...} />`, props API only | existing `LoginForm.tsx` |
-| Password entry and reveal | `<PasswordInput>` | `components/shared/PasswordInput.tsx` |
-| Account picker | `<RadioGroup options={...}>` (props API takes `options`, not children) | library, verified export |
-| Status chip for a pending invite with no email | `<Badge variant="secondary">No email</Badge>`, never a hand-rolled span | library |
-| Card, heading, muted text | `Card`, `Heading`, `TypographyP` | already imported by the login page |
-| Invite dialog shell | existing `Dialog`, footer carries the submit | unchanged |
-| Phone display | `formatPhone`, `telUrl` | `apps/web/src/lib/phone.ts` (both defects from the 2026-11-18 doc are already fixed) |
-| Email-or-phone decision | `isPlaceholderEmail` in `api-types`, `displayIdentifier` in `apps/web/src/lib/identity.ts` | new |
+| Need                                             | Component / helper                                                                         | Source                                                                               |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Login form, labels, inline errors, submit states | `<Form fields={...} />`, props API only                                                    | existing `LoginForm.tsx`                                                             |
+| Password entry and reveal                        | `<PasswordInput>`                                                                          | `components/shared/PasswordInput.tsx`                                                |
+| Account picker                                   | `<RadioGroup options={...}>` (props API takes `options`, not children)                     | library, verified export                                                             |
+| Status chip for a pending invite with no email   | `<Badge variant="secondary">No email</Badge>`, never a hand-rolled span                    | library                                                                              |
+| Card, heading, muted text                        | `Card`, `Heading`, `TypographyP`                                                           | already imported by the login page                                                   |
+| Invite dialog shell                              | existing `Dialog`, footer carries the submit                                               | unchanged                                                                            |
+| Phone display                                    | `formatPhone`, `telUrl`                                                                    | `apps/web/src/lib/phone.ts` (both defects from the 2026-11-18 doc are already fixed) |
+| Email-or-phone decision                          | `isPlaceholderEmail` in `api-types`, `displayIdentifier` in `apps/web/src/lib/identity.ts` | new                                                                                  |
 
 Library conventions that constrain the implementer, from the `paalstack-react-ui` skill:
 
@@ -292,51 +292,51 @@ Migration first, then the app deploy (`deploy-coolify.yml` already runs `prisma 
 
 ## Implementation tasks
 
-- [X] **T1 (P1, human: ~40min / CC: ~8min)** - api-types - add `isPlaceholderEmail`, `PLACEHOLDER_EMAIL_DOMAIN`, the blank-or-email union on invite, and the profile DTO `email` + `currentPassword`
+- [x] **T1 (P1, human: ~40min / CC: ~8min)** - api-types - add `isPlaceholderEmail`, `PLACEHOLDER_EMAIL_DOMAIN`, the blank-or-email union on invite, and the profile DTO `email` + `currentPassword`
   - Surfaced by: Phase 0. Load the `zod` skill before touching any schema, per the repo rule in `paalstack-react-ui`.
   - Files: `packages/api-types/src/common.ts`, `packages/api-types/src/invites.ts`, `packages/api-types/src/auth.ts`
   - Verify: `pnpm --filter @shadhil/api-types test`, plus the blank-email and bad-email regression cases, type-check
-- [X] **T2 (P1, human: ~30min / CC: ~6min)** - backend - guard MANAGER editing a CUSTOMER in `users.service.update()`, with a regression test
+- [x] **T2 (P1, human: ~30min / CC: ~6min)** - backend - guard MANAGER editing a CUSTOMER in `users.service.update()`, with a regression test
   - Surfaced by: Decision 5 / `2026-11-18-user-phone.md` Defect 3
   - Files: `apps/backend/src/users/users.service.ts`, its test
   - Verify: `pnpm --filter @shadhil/backend test`
-- [X] **T3 (P1, human: ~1.5h / CC: ~20min)** - backend - placeholder generation and invite creation without an email
+- [x] **T3 (P1, human: ~1.5h / CC: ~20min)** - backend - placeholder generation and invite creation without an email
   - Surfaced by: Phase 1
   - Files: `apps/backend/src/invites/invites.service.ts`, `invites.tokens.ts`, tests
   - Verify: unit tests for placeholder shape, uniqueness, blank payload, duplicate checks
-- [X] **T4 (P1, human: ~2h / CC: ~25min)** - backend - `POST /api/public/auth/login-identifier` with async scrypt, dummy compare, cap 5, semaphore, throttling
+- [x] **T4 (P1, human: ~2h / CC: ~25min)** - backend - `POST /api/public/auth/login-identifier` with async scrypt, dummy compare, cap 5, semaphore, throttling
   - Surfaced by: Phase 2, eng review D2 and D3
   - Files: new public controller, `apps/backend/src/users/users.service.ts`, `apps/backend/src/users/credentials.ts`, `apps/backend/src/app.module.ts`, `apps/backend/package.json`
   - Verify: unit tests for all six resolver outcomes, the dummy-compare spy, and the sync/async hash parity test
-- [X] **T5 (P1, human: ~40min / CC: ~8min)** - database - `auth_account_identities(user_ids, phone)` SECURITY DEFINER helper migration
+- [x] **T5 (P1, human: ~40min / CC: ~8min)** - database - `auth_account_identities(user_ids, phone)` SECURITY DEFINER helper migration
   - Surfaced by: Phase 2 (Organization is RLS-scoped), eng review A1
   - Files: new `packages/database/prisma/migrations/*/migration.sql`
   - Verify: RLS matrix job, plus a manual `psql` check of the grant and the phone filter
-- [X] **T6 (P1, human: ~40min / CC: ~8min)** - web - BFF route handler plus the `/api/public/auth` allowlist entry
+- [x] **T6 (P1, human: ~40min / CC: ~8min)** - web - BFF route handler plus the `/api/public/auth` allowlist entry
   - Surfaced by: Phase 2 (proxy.ts does not expose it)
   - Files: `apps/web/src/app/api/public/auth/login-identifier/route.ts`, `apps/web/src/proxy.ts`
   - Verify: request through the Next dev server with no cookie returns 200
-- [X] **T7 (P1, human: ~2h / CC: ~25min)** - web - login field, picker, and their states
+- [x] **T7 (P1, human: ~2h / CC: ~25min)** - web - login field, picker, and their states
   - Surfaced by: "What the user sees" 1 and 2
   - Files: `apps/web/src/app/(guest)/login/LoginForm.tsx`, new picker component, tests
   - Verify: component tests for phone path, pick, back, single match
-- [X] **T8 (P1, human: ~1h / CC: ~12min)** - web - invite dialog disclosure
+- [x] **T8 (P1, human: ~1h / CC: ~12min)** - web - invite dialog disclosure
   - Surfaced by: "What the user sees" 3
   - Files: `InviteStaffDialog.tsx`, tests
   - Verify: collapsed by default, blank omits the key, typed address survives collapse attempts
-- [X] **T9 (P1, human: ~1.5h / CC: ~18min)** - web/backend - Settings add-your-email state and the `PATCH /me` placeholder-only rule
+- [x] **T9 (P1, human: ~1.5h / CC: ~18min)** - web/backend - Settings add-your-email state and the `PATCH /me` placeholder-only rule
   - Surfaced by: "What the user sees" 4, Phase 3
   - Files: `settings/page.tsx`, `users.service.ts`, `users.controller.ts`, tests
   - Verify: placeholder replace, duplicate 409, wrong password, phone-clear blocked
-- [X] **T10 (P2)** - users table `No email` badge; the accept page shows the phone as the identifier when the address is a placeholder (`accept-phone-identifier`); backend search already matched phone in both shapes (verified `users.service.ts:1867`), so that half needed no change.
+- [x] **T10 (P2)** - users table `No email` badge; the accept page shows the phone as the identifier when the address is a placeholder (`accept-phone-identifier`); backend search already matched phone in both shapes (verified `users.service.ts:1867`), so that half needed no change.
   - Surfaced by: "What the user sees" 5 and 6
   - Files: `admin/users/page.tsx`, `apps/backend/src/users/users.service.ts` (search predicate), `(guest)/invite/[token]/AcceptInviteForm.tsx`, tests
   - Verify: three cell cases, search by phone returning results from the API, accept page renders no `users.invalid` text
-- [X] **T11 (P3, human: ~20min / CC: ~5min)** - web - normalize the invite dialog to the library's standard width `sm:max-w-md` and confirm every new interactive carries `data-qa`
+- [x] **T11 (P3, human: ~20min / CC: ~5min)** - web - normalize the invite dialog to the library's standard width `sm:max-w-md` and confirm every new interactive carries `data-qa`
   - Surfaced by: `paalstack-react-ui` dialog convention (user-mandated standard width)
   - Files: `InviteStaffDialog.tsx`
   - Verify: the three-field form and its footer still fit at 320x568, e2e audit passes
-- [X] **T12 (P1, human: ~1.5h / CC: ~20min)** - backend and api-types - expire stale invites on create, accept both shapes in the EXPIRED filter, map the index P2002 to a friendly 409
+- [x] **T12 (P1, human: ~1.5h / CC: ~20min)** - backend and api-types - expire stale invites on create, accept both shapes in the EXPIRED filter, map the index P2002 to a friendly 409
   - Surfaced by: Phase 4, Decision 6. Without it a re-invite after expiry returns a raw 500.
   - Files: `apps/backend/src/invites/invites.tokens.ts` (helper), `apps/backend/src/invites/invites.service.ts` (create + P2002 map), `packages/api-types/src/invites.ts` (filter mapping), tests
   - Verify: re-invite after expiry succeeds and stores EXPIRED; live invite still 409 `INVITE_ALREADY_PENDING`; accepted past deadline untouched; list `status=EXPIRED` returns derived and stored rows; concurrent creates yield one invite plus one 409
@@ -424,13 +424,13 @@ E5 (added after this review, at the owner's request while the plan was held for 
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | not run | - |
-| Outside Review | `/codex` consult (codex-cli 0.169.0, ollamacloud/deepseek-v4.1-flash) | Independent 2nd opinion | 1 | completed | 6 production risks, 6 security/correctness, 7 under-specified, 4 simplification |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 13 findings, 0 critical gaps, 5 decisions |
-| Design Review | `/plan-design-review` | UI/UX gaps | 3 | clean | score: 4/10 -> 8/10, 7 decisions |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | not run | - |
+| Review         | Trigger                                                               | Why                             | Runs | Status    | Findings                                                                        |
+| -------------- | --------------------------------------------------------------------- | ------------------------------- | ---- | --------- | ------------------------------------------------------------------------------- |
+| CEO Review     | `/plan-ceo-review`                                                    | Scope & strategy                | 0    | not run   | -                                                                               |
+| Outside Review | `/codex` consult (codex-cli 0.169.0, ollamacloud/deepseek-v4.1-flash) | Independent 2nd opinion         | 1    | completed | 6 production risks, 6 security/correctness, 7 under-specified, 4 simplification |
+| Eng Review     | `/plan-eng-review`                                                    | Architecture & tests (required) | 1    | clean     | 13 findings, 0 critical gaps, 5 decisions                                       |
+| Design Review  | `/plan-design-review`                                                 | UI/UX gaps                      | 3    | clean     | score: 4/10 -> 8/10, 7 decisions                                                |
+| DX Review      | `/plan-devex-review`                                                  | Developer experience gaps       | 0    | not run   | -                                                                               |
 
 - **OUTSIDE COVERAGE:** codex-cli, design and plan consult phase, completed. Its findings are folded into this revision; the wrapper ran the same model family as the host harness, so it is a fresh-context review rather than a cross-model one.
 - **VERDICT:** ENG + DESIGN CLEARED - ready to implement.

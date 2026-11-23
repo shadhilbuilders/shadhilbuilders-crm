@@ -676,7 +676,8 @@ describe('LeadChatPane - WhatsApp reachability', () => {
   it('replaces the composer with the reason when the number is not on WhatsApp', () => {
     const html = renderPane({
       state: 'UNREACHABLE',
-      detail: 'The last message to this number was not delivered. WhatsApp reports it is not on WhatsApp.',
+      detail:
+        'The last message to this number was not delivered. WhatsApp reports it is not on WhatsApp.',
     });
     expect(html).toContain('data-qa="chat-wa-unreachable"');
     expect(html).toContain('This number is not on WhatsApp');

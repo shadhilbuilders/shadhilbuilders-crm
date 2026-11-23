@@ -1,5 +1,7 @@
 <!-- /autoplan restore point: "/home/paalstack/workspace/shadhil-projects/shadhilbuilders-crm/.gstack/tmp/autoplan/main-autoplan-restore-20261122-035207.md" -->
+
 ## Implementation plan
+
 # International lead phone numbers
 
 ## Problem
@@ -31,14 +33,14 @@ What exists and must be reused:
 
 **Parse order is digits-first, then national with an explicit country, and only then the Indian default.** Measured behaviour:
 
-| input | rule | result |
-|---|---|---|
-| `+919876543210` | explicit `+` | `919876543210`, valid |
-| `16502345678` | `+` + digits validates | `16502345678`, NOT `91...` |
-| `14155552671` | `+` + digits validates | `14155552671`, webhook safe |
-| `9876543210` | `+` fails, then 10 digits 6-9 | `919876543210`, today's behaviour kept |
-| `6502345678` with `country=US` | national + explicit country | `16502345678` |
-| `6502345678` with no country | `+` fails, not an Indian mobile | **rejected**: "include the country code" |
+| input                          | rule                            | result                                   |
+| ------------------------------ | ------------------------------- | ---------------------------------------- |
+| `+919876543210`                | explicit `+`                    | `919876543210`, valid                    |
+| `16502345678`                  | `+` + digits validates          | `16502345678`, NOT `91...`               |
+| `14155552671`                  | `+` + digits validates          | `14155552671`, webhook safe              |
+| `9876543210`                   | `+` fails, then 10 digits 6-9   | `919876543210`, today's behaviour kept   |
+| `6502345678` with `country=US` | national + explicit country     | `16502345678`                            |
+| `6502345678` with no country   | `+` fails, not an Indian mobile | **rejected**: "include the country code" |
 
 That last row is the point: with no information, refuse rather than invent a country. A refusal is recoverable; a number rewritten to another country's subscriber is not.
 
@@ -73,9 +75,9 @@ The first draft of A1 exported `parseStoredPhone(raw, country?)`. Three problems
 
 ```ts
 export type PhoneInput =
-  | { source: 'typed'; raw: string; country: CountryCode | null }  // null means "no country was chosen"
-  | { source: 'e164'; digits: string }                            // Meta inbound, canonical reads
-  | { source: 'legacy-national'; raw: string };                   // the ONE Indian guess, by name
+  | { source: 'typed'; raw: string; country: CountryCode | null } // null means "no country was chosen"
+  | { source: 'e164'; digits: string } // Meta inbound, canonical reads
+  | { source: 'legacy-national'; raw: string }; // the ONE Indian guess, by name
 
 export function parsePhone(input: PhoneInput): { e164: string; region: CountryCode | null };
 export function leadPhoneColumns(input: PhoneInput): { phone: string; phoneE164: string };
@@ -203,17 +205,18 @@ Sending a template to a number that is not on WhatsApp wastes the attempt and le
 
 **Derived state, three values, no guessing:**
 
-| state | evidence |
-|---|---|
-| `REACHABLE` | any inbound message from the lead, or an outbound status receipt of `delivered` / `read` |
-| `UNREACHABLE` | the most recent outbound attempt returned `131026`, with no inbound message after it |
-| `UNKNOWN` | nothing yet. This is the state of every lead that has never been messaged and never written in |
+| state         | evidence                                                                                       |
+| ------------- | ---------------------------------------------------------------------------------------------- |
+| `REACHABLE`   | any inbound message from the lead, or an outbound status receipt of `delivered` / `read`       |
+| `UNREACHABLE` | the most recent outbound attempt returned `131026`, with no inbound message after it           |
+| `UNKNOWN`     | nothing yet. This is the state of every lead that has never been messaged and never written in |
 
 `131030` (recipient not on the test allowlist) must not be read as unreachable: it means the sender is in test mode, not that the person lacks WhatsApp.
 
 **Storage:** derive it from `Message` direction plus `OutboundMessage.lastError` / status for the lead detail, which is one query and always current. Add a nullable `Lead.whatsappState` column only if the leads list needs to filter or badge on it; do not add it up front.
 
 **UI:**
+
 - Lead chat pane: when `UNREACHABLE`, a banner states what is actually known, "The last message to this number was not delivered. WhatsApp reports it is not on WhatsApp." Templates and freeform sends are disabled behind that banner, with two escapes: **Send anyway** (numbers do change hands, and the flag is evidence, not a truth) and **Re-check**, which clears the flag and allows one more attempt because a retry is the only way to learn anything new.
 - When `UNKNOWN`, the composer stays enabled and the pane says nothing; the first failure is what teaches it.
 - Leads list: an optional muted badge, only if the column is added.
@@ -263,7 +266,7 @@ Lead search does not get a parser. `leads.service.ts:344` is a plain ILIKE with 
 
 ## Risks and rollout
 
-- **The landing form is a cross-repo release dependency, not an open question.** Phase A makes the server *accept* a country and parse digits-first, but `shadhil-landing-page` still sends a bare national number. Until that form carries a country or sends the `+` form, a US enquiry from the main acquisition source is still ambiguous. Either ship that change in the landing repo with this work, or say plainly that Phase A fixes the CRM and the landing stays Indian-only until its own change lands. Do not claim the landing path is fixed while the sender is untouched.
+- **The landing form is a cross-repo release dependency, not an open question.** Phase A makes the server _accept_ a country and parse digits-first, but `shadhil-landing-page` still sends a bare national number. Until that form carries a country or sends the `+` form, a US enquiry from the main acquisition source is still ambiguous. Either ship that change in the landing repo with this work, or say plainly that Phase A fixes the CRM and the landing stays Indian-only until its own change lands. Do not claim the landing path is fixed while the sender is untouched.
 - **Ambiguous input now refuses.** A bare 10-digit non-Indian number with no country is rejected instead of guessed. That is the fix, but it changes behaviour for any client doing it today; the message must say what to do.
 - **Two libphonenumber copies** unless `api-types` and `react-phone-number-input` resolve one version. `libphonenumber-js@1.13.12` is already in the lockfile via `class-validator`, so pin to that and assert a single instance.
 - **Metadata weight** in the web bundle through `api-types`; the `/min` import is load-bearing, so measure the delta before and after.
@@ -278,6 +281,7 @@ Lead search does not get a parser. `leads.service.ts:344` is a plain ILIKE with 
 ## Review record
 
 <!-- autoplan-accepted:ceo -->
+
 - A lead update must write `phone` and `phoneE164` together; the invariant is "both denote the same subscriber".
 - `public-leads` repeat-enquiry derivation moves to the same helper as create, or a foreign repeat enquiry duplicates its lead.
 - `phoneCountry` is validated as a real ISO code and rejected loudly; no silent IN fallback.
@@ -285,9 +289,11 @@ Lead search does not get a parser. `leads.service.ts:344` is a plain ILIKE with 
 - International staff sign-in and user search use the country-aware parser, with the timing-equal invalid branch preserved and a foreign-staff test.
 - Lead search keeps its parameterised query and length cap.
 - `api-types` imports `libphonenumber-js/min`, and the dependency resolves to the version already in the lockfile (1.13.12).
+
 <!-- /autoplan-accepted:ceo -->
 
 <!-- autoplan-accepted:design -->
+
 - The country list renders through the library's `PopoverModalContent`, not a hand-assembled Command block.
 - Search matches country name, dial code and ISO code; `IN` is pinned in its own unfiltered group.
 - No flags anywhere in the field; the trigger's accessible name carries the country.
@@ -298,18 +304,18 @@ Lead search does not get a parser. `leads.service.ts:344` is a plain ILIKE with 
 - One controlled `value` in E.164-with-`+` form plus `defaultCountry`, so seven call sites share one representation.
 - The state table is binding: paste of an international number, country switch preserving digits, clearable empty, disabled trigger alongside a disabled input.
 - 320px: the list is as wide as the field, scrolls internally, and becomes a Sheet below `sm`.
+
 <!-- /autoplan-accepted:design -->
 
 CEO dual-voice review, 2026-11-22. The outside voice returned eleven findings, four Critical: the landing path still corrupts through the IN default, the inbound webhook would drop every message, lead edits never update `phoneE164`, and uniqueness keys on `phone` rather than the canonical column. The native voice returned the same two write-path criticals and added one both of us had missed: `public-leads.service.ts:295` derives its repeat-enquiry key with `toE164`, so changing only `leads.service.ts` makes create and dedupe disagree and a foreign repeat enquiry silently duplicates.
 
 Every load-bearing claim was re-verified here rather than accepted on trust: parser behaviour by running `libphonenumber-js` against the exact inputs, the write paths and DTO plumbing by reading `leads.service.ts`, `public-leads.service.ts` and `common.ts`, the dependency by finding `libphonenumber-js@1.13.12` already in `pnpm-lock.yaml`, and the data by querying the local database. One native finding corrects this plan's own wording: `phone` has never held the typed string, because `PhoneSchema` transforms on the way in, so the two columns are meant to be identical and the docblock should say that.
 
-| Dimension | Native | Outside | Consensus |
-|---|---|---|---|
-| Premises valid? | Phone identity is wrong in six places; demand evidenced by 15 foreign rows | Premise "leads arrive anywhere" unmeasured | Agreed the defects are real; measurement now exists |
-| Right problem? | Yes, with write paths first | Re-sequence: identity before picker | Agreed: Phase A before Phase B |
-| Scope calibration | Add update path, public-leads, search, login | Same four, called cherry-picks | Agreed |
-| Alternatives explored | One helper, no column retirement | Same | Agreed |
-| Market/competitive risk | Not the bottleneck today | Timezone/consent/quiet-hours are | Outside-only, noted as out of scope |
-| 6-month trajectory | Correct foundation | Picker alone would be cosmetic | Agreed |
-
+| Dimension               | Native                                                                     | Outside                                    | Consensus                                           |
+| ----------------------- | -------------------------------------------------------------------------- | ------------------------------------------ | --------------------------------------------------- |
+| Premises valid?         | Phone identity is wrong in six places; demand evidenced by 15 foreign rows | Premise "leads arrive anywhere" unmeasured | Agreed the defects are real; measurement now exists |
+| Right problem?          | Yes, with write paths first                                                | Re-sequence: identity before picker        | Agreed: Phase A before Phase B                      |
+| Scope calibration       | Add update path, public-leads, search, login                               | Same four, called cherry-picks             | Agreed                                              |
+| Alternatives explored   | One helper, no column retirement                                           | Same                                       | Agreed                                              |
+| Market/competitive risk | Not the bottleneck today                                                   | Timezone/consent/quiet-hours are           | Outside-only, noted as out of scope                 |
+| 6-month trajectory      | Correct foundation                                                         | Picker alone would be cosmetic             | Agreed                                              |

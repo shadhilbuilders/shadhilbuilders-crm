@@ -28,7 +28,6 @@ import { OverdueAlertsService, OVERDUE_ALERT_LOCK_KEY } from './overdue-alerts.s
 // Lead_phone_equals_phoneE164). One evaluation feeds both columns.
 const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
 
-
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const HAS_REDIS = Boolean(process.env.REDIS_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;

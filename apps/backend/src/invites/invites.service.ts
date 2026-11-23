@@ -433,10 +433,7 @@ export class InvitesService {
         // PENDING with a past deadline. Filtering on only one shape would make
         // the other disappear from the Invites tab.
         return {
-          OR: [
-            { status: 'EXPIRED' },
-            { status: 'PENDING', expiresAt: { lte: now } },
-          ],
+          OR: [{ status: 'EXPIRED' }, { status: 'PENDING', expiresAt: { lte: now } }],
         };
       }
       if (status === 'PENDING') {

@@ -734,10 +734,18 @@ describe('Awaiting approval card - only lists bookings it can actually decide', 
 // SCHEDULED. The class of bug is a count and the list beneath it computed from
 // different definitions, so these tests pin the card to the list.
 describe('Dashboard counts agree with the list beneath them', () => {
-  it("counts the work still ahead and names the finished ones", async () => {
+  it('counts the work still ahead and names the finished ones', async () => {
     ROLE.current = 'MANAGER';
     STATS.current = {
-      data: { kpis: { newLeadsToday: 1, visitsToday: 2, visitsTodayOpen: 0, visitsTodayDone: 2, bookingsOnHold: 0 } },
+      data: {
+        kpis: {
+          newLeadsToday: 1,
+          visitsToday: 2,
+          visitsTodayOpen: 0,
+          visitsTodayDone: 2,
+          bookingsOnHold: 0,
+        },
+      },
       isLoading: false,
       error: null,
     } as unknown as typeof STATS.current;
@@ -754,7 +762,15 @@ describe('Dashboard counts agree with the list beneath them', () => {
   it('says how many are listed AND how many are already done', async () => {
     ROLE.current = 'MANAGER';
     STATS.current = {
-      data: { kpis: { newLeadsToday: 1, visitsToday: 2, visitsTodayOpen: 1, visitsTodayDone: 1, bookingsOnHold: 0 } },
+      data: {
+        kpis: {
+          newLeadsToday: 1,
+          visitsToday: 2,
+          visitsTodayOpen: 1,
+          visitsTodayDone: 1,
+          bookingsOnHold: 0,
+        },
+      },
       isLoading: false,
       error: null,
     } as unknown as typeof STATS.current;

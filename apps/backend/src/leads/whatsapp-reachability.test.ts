@@ -23,9 +23,7 @@ function fakeClient(options: {
     },
     outboundMessage: {
       findFirst: async () =>
-        options.lastOutbound === null
-          ? null
-          : { ...options.lastOutbound, createdAt: new Date() },
+        options.lastOutbound === null ? null : { ...options.lastOutbound, createdAt: new Date() },
     },
   } as unknown as PrismaClient;
 }

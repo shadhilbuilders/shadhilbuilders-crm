@@ -83,39 +83,40 @@ function isPlausiblePublicPhone(value: string, country?: string): boolean {
   return digits >= 10 && digits <= 15;
 }
 
-export const PublicCreateLeadDtoSchema = z.object({
-  fullName: z
-    .string({ error: 'fullName is required' })
-    .trim()
-    .min(1, 'Name is required')
-    .max(120, 'Name is too long'),
-  phoneCountry: z.string().trim().length(2).toUpperCase().optional(),
-  phone: z
-    .string({ error: 'phone is required' })
-    // HARDENED 2026-11-19. This was `.min(7).max(20)` - a LENGTH check only,
-    // so `abcdefg123` passed and only failed later, when the service
-    // re-parsed onto CreateLeadDtoSchema (which uses PhoneSchema). That late
-    // failure used to surface as a 500; even now that it is a 400, rejecting
-    // garbage HERE keeps the message at the field the user typed, and means
-    // this public schema does not advertise a contract the real one rejects.
-    //
-    // ONE check, not two. An alphabet regex plus a digit-count refine (the
-    // first attempt) emitted the SAME message twice for `abcdefg123`, because
-    // both issues fired. This single predicate keeps one message per field.
-    // The authoritative SHAPE rule still lives in PhoneSchema one layer down.
-    .trim(),
-  email: z.string().trim().toLowerCase().max(254).optional().or(z.literal('')),
-  requirement: z.string().trim().max(2000).optional().or(z.literal('')),
-  message: z.string().trim().max(2000).optional().or(z.literal('')),
-  contactMethod: z.string().trim().max(20).optional().or(z.literal('')),
-  preferredDate: z.string().trim().max(20).optional().or(z.literal('')),
-  preferredTime: z.string().trim().max(20).optional().or(z.literal('')),
-  source: z.string().trim().max(80).optional().or(z.literal('')),
-  // Org targeting: the landing passes a SLUG; the service resolves it.
-  orgSlug: z.string().trim().min(1).max(120).optional().or(z.literal('')),
-  projectSlug: z.string().trim().min(1).max(120).optional().or(z.literal('')),
-  // Optional direct-owner override (validated against the org/team).
-  ownerId: z.string().trim().min(1).max(120).optional().or(z.literal('')),
+export const PublicCreateLeadDtoSchema = z
+  .object({
+    fullName: z
+      .string({ error: 'fullName is required' })
+      .trim()
+      .min(1, 'Name is required')
+      .max(120, 'Name is too long'),
+    phoneCountry: z.string().trim().length(2).toUpperCase().optional(),
+    phone: z
+      .string({ error: 'phone is required' })
+      // HARDENED 2026-11-19. This was `.min(7).max(20)` - a LENGTH check only,
+      // so `abcdefg123` passed and only failed later, when the service
+      // re-parsed onto CreateLeadDtoSchema (which uses PhoneSchema). That late
+      // failure used to surface as a 500; even now that it is a 400, rejecting
+      // garbage HERE keeps the message at the field the user typed, and means
+      // this public schema does not advertise a contract the real one rejects.
+      //
+      // ONE check, not two. An alphabet regex plus a digit-count refine (the
+      // first attempt) emitted the SAME message twice for `abcdefg123`, because
+      // both issues fired. This single predicate keeps one message per field.
+      // The authoritative SHAPE rule still lives in PhoneSchema one layer down.
+      .trim(),
+    email: z.string().trim().toLowerCase().max(254).optional().or(z.literal('')),
+    requirement: z.string().trim().max(2000).optional().or(z.literal('')),
+    message: z.string().trim().max(2000).optional().or(z.literal('')),
+    contactMethod: z.string().trim().max(20).optional().or(z.literal('')),
+    preferredDate: z.string().trim().max(20).optional().or(z.literal('')),
+    preferredTime: z.string().trim().max(20).optional().or(z.literal('')),
+    source: z.string().trim().max(80).optional().or(z.literal('')),
+    // Org targeting: the landing passes a SLUG; the service resolves it.
+    orgSlug: z.string().trim().min(1).max(120).optional().or(z.literal('')),
+    projectSlug: z.string().trim().min(1).max(120).optional().or(z.literal('')),
+    // Optional direct-owner override (validated against the org/team).
+    ownerId: z.string().trim().min(1).max(120).optional().or(z.literal('')),
   })
   // The phone gate needs the sibling country, so it runs on the object.
   .superRefine((value, ctx) => {

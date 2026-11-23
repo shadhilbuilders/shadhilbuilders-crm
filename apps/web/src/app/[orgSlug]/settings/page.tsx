@@ -270,7 +270,9 @@ function ProfileSection({
         name: values.name,
         ...(phone === undefined ? {} : { phone }),
         // Only beside a number: a cleared field sends no country.
-        ...(phone === undefined || phone === null ? {} : { phoneCountry: values.phoneCountry ?? DEFAULT_PHONE_COUNTRY }),
+        ...(phone === undefined || phone === null
+          ? {}
+          : { phoneCountry: values.phoneCountry ?? DEFAULT_PHONE_COUNTRY }),
       },
       {
         onSuccess: async (saved) => {
