@@ -40,14 +40,15 @@ export class SiteVideoRateLimiter {
     const { organizationId: org, userId, projectId } = args;
     const window = this.config.authWindowSeconds;
     const user = await this.bump(`sitevideo:auth:user:${org}:${userId}`, window);
-    const project = await this.bump(`sitevideo:auth:project:${org}:${projectId}`, window);
-
+    // A user already over their own limit must not also burn the project's
+    // allowance, or one member could lock the rest of the project out.
     if (user.count > this.config.authPerUserLimit) {
       throw siteVideoError('VIDEO_UPLOAD_RATE_LIMITED', {
         scope: 'USER',
         retryAfterSeconds: user.ttl,
       });
     }
+    const project = await this.bump(`sitevideo:auth:project:${org}:${projectId}`, window);
     if (project.count > this.config.authPerProjectLimit) {
       throw siteVideoError('VIDEO_UPLOAD_RATE_LIMITED', {
         scope: 'PROJECT',

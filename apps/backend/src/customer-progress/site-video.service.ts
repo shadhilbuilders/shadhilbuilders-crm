@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.module';
 import { keyInUploadFolder } from '../storage/media-key-scope';
 import type { StorageProvider, UploadAuth } from '../storage/storage.provider';
 import { MAX_VIDEO_BYTES } from '../storage/storage.limits';
+import { sniffMime } from '../storage/sniff-mime';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import { buildCaption, CustomerProgressService } from './customer-progress.service';
 import { readTimelinePage, type TimelinePhotoDto } from './progress-photo.mapper';
@@ -33,6 +34,7 @@ import { issueUploadId, verifyUploadId } from './site-video-upload-id';
 import { POSTER_MAX_BYTES, guardStorage, verifyClip, verifyPoster } from './site-video-verify';
 
 const SLOT_FILE = { clip: 'clip.mp4', poster: 'poster.jpg' } as const;
+const POSTER_MIMES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const SLOT_MIME = { clip: 'video/mp4', poster: 'image/jpeg' } as const;
 
 export interface UploadGrant {
@@ -46,6 +48,14 @@ export interface RecordResult {
   photo: TimelinePhotoDto;
   /** True when this exact take was already saved and the existing row is returned. */
   replayed: boolean;
+}
+
+/** Serialise record/cancel/discard of ONE upload id for the rest of this transaction. */
+async function lockUpload(
+  tx: { $queryRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<unknown> },
+  uploadId: string,
+): Promise<void> {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`sitevideo:${uploadId}`}))`;
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -138,8 +148,19 @@ export class SiteVideoService {
     });
     if (grant?.transport !== 'inline') throw siteVideoError('VIDEO_INLINE_UNSUPPORTED');
 
+    // A recorded take's bytes are frozen: re-posting to the same fixed filename
+    // would swap the content under a row whose size the ledger already charged.
+    const recorded = await withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
+      tx.progressPhoto.findFirst({
+        where: { organizationId: actor.organizationId, unitId, uploadId },
+        select: { id: true },
+      }),
+    );
+    if (recorded !== null) throw siteVideoError('VIDEO_UPLOAD_ID_REUSED');
+
     const bytes = Buffer.from(dto.base64, 'base64');
     if (bytes.length === 0) throw siteVideoError('VIDEO_SIZE_MISMATCH');
+    this.assertSlotContent(dto.slot, bytes);
     if (dto.slot === 'clip' && bytes.length > MAX_VIDEO_BYTES) {
       throw siteVideoError('VIDEO_TOO_LARGE', { maxBytes: MAX_VIDEO_BYTES });
     }
@@ -171,7 +192,7 @@ export class SiteVideoService {
     if (replay !== null) return replay;
 
     const phase = await this.resolvePhase(actor, projectId, dto.phaseId);
-    const size = await this.verifyUpload(actor, dto);
+    const size = await this.verifyUpload(actor, unitId, dto);
     const takenAt = new Date(dto.takenAt);
     const caption = dto.caption ?? buildCaption(phase.name, takenAt);
 
@@ -193,17 +214,30 @@ export class SiteVideoService {
     await this.progress.assertUnitAccess(actor, unitId);
     this.requireIssuedUploadId(actor, unitId, uploadId);
 
-    const recorded = await withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
-      tx.progressPhoto.findFirst({
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // Same lock `record` takes: a cancel and a record of one take are serialised,
+      // so a row can never be committed over a folder that is being deleted.
+      await lockUpload(tx, uploadId);
+      const recorded = await tx.progressPhoto.findFirst({
         where: { organizationId: actor.organizationId, unitId, uploadId },
         select: { id: true },
-      }),
-    );
-    // A recorded take is a real row now: its bytes are the row's, not ours to cancel.
-    if (recorded !== null) return { cancelled: false };
+      });
+      // A recorded take is a real row now: its bytes are the row's, not ours to cancel.
+      if (recorded !== null) return { cancelled: false };
+      await this.storage.deleteUploadFolder(actor.organizationId, uploadId);
+      return { cancelled: true };
+    });
+  }
 
-    await this.storage.deleteUploadFolder(actor.organizationId, uploadId);
-    return { cancelled: true };
+  /** Content check at write time, the same rule `record` applies when it verifies. */
+  private assertSlotContent(slot: 'clip' | 'poster', bytes: Buffer): void {
+    const sniffed = sniffMime(bytes.subarray(0, 64));
+    if (slot === 'clip' && sniffed !== 'video/mp4') {
+      throw siteVideoError('VIDEO_CONTAINER_UNSUPPORTED', { detected: sniffed });
+    }
+    if (slot === 'poster' && !POSTER_MIMES.has(sniffed ?? '')) {
+      throw siteVideoError('VIDEO_POSTER_INVALID');
+    }
   }
 
   // ── record helpers ──────────────────────────────────────────────────────
@@ -255,17 +289,37 @@ export class SiteVideoService {
   }
 
   /** Verify both objects. A CLIENT-caused refusal also discards the upload folder. */
-  private async verifyUpload(actor: JwtPayload, dto: RecordVideoDto): Promise<number> {
+  private async verifyUpload(
+    actor: JwtPayload,
+    unitId: string,
+    dto: RecordVideoDto,
+  ): Promise<number> {
     try {
       const clip = await verifyClip(this.storage, dto.key, dto.sizeBytes);
       await verifyPoster(this.storage, dto.posterKey);
       return clip.size;
     } catch (err) {
       if (err instanceof CodedException && this.isClientFault(err)) {
-        await this.storage.deleteUploadFolder(actor.organizationId, dto.uploadId);
+        await this.discardUnrecorded(actor, unitId, dto.uploadId);
       }
       throw err;
     }
+  }
+
+  /** Delete the folder only if no row claims it (a racing twin may have recorded it). */
+  private async discardUnrecorded(
+    actor: JwtPayload,
+    unitId: string,
+    uploadId: string,
+  ): Promise<void> {
+    await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      await lockUpload(tx, uploadId);
+      const row = await tx.progressPhoto.findFirst({
+        where: { organizationId: actor.organizationId, unitId, uploadId },
+        select: { id: true },
+      });
+      if (row === null) await this.storage.deleteUploadFolder(actor.organizationId, uploadId);
+    });
   }
 
   /** Refusals that mean "this upload is bad", as opposed to "we could not check". */
@@ -290,6 +344,10 @@ export class SiteVideoService {
     size: number,
   ): Promise<TimelinePhotoDto> {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      await lockUpload(tx, dto.uploadId);
+      // A cancel may have deleted the folder between verify and now.
+      const stillThere = await guardStorage(() => this.storage.stat(dto.key));
+      if (stillThere === null) throw siteVideoError('VIDEO_UPLOAD_NOT_FOUND');
       await chargeLedgers(
         tx,
         { organizationId: actor.organizationId, projectId },

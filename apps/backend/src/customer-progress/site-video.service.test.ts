@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     progressPhoto: { findFirst: vi.fn(), create: vi.fn() },
     phase: { findFirst: vi.fn() },
     auditLog: { create: vi.fn() },
+    $queryRaw: vi.fn(),
   },
   chargeLedgers: vi.fn(),
   assertHeadroom: vi.fn(),
@@ -178,6 +179,7 @@ beforeEach(() => {
   mocks.tx.progressPhoto.create.mockResolvedValue({ id: 'vid-1' });
   mocks.tx.phase.findFirst.mockResolvedValue({ name: 'Foundation' });
   mocks.tx.auditLog.create.mockResolvedValue({});
+  mocks.tx.$queryRaw.mockResolvedValue([]);
   mocks.chargeLedgers.mockResolvedValue(undefined);
   mocks.assertHeadroom.mockResolvedValue(undefined);
   mocks.readTimelinePage.mockResolvedValue({ photos: [{ id: 'vid-1', kind: 'VIDEO' }] });
@@ -240,8 +242,11 @@ describe('uploadAuth', () => {
 });
 
 describe('inlineUpload', () => {
-  const upload = (svc: SiteVideoService, id: string, slot: 'clip' | 'poster', size = 100) =>
-    svc.inlineUpload(actor, UNIT, id, { slot, base64: Buffer.alloc(size, 1).toString('base64') });
+  const upload = (svc: SiteVideoService, id: string, slot: 'clip' | 'poster', size = 100) => {
+    const head = slot === 'clip' ? MP4_HEAD : JPEG_HEAD;
+    const bytes = Buffer.concat([head, Buffer.alloc(Math.max(size - head.length, 0), 1)]);
+    return svc.inlineUpload(actor, UNIT, id, { slot, base64: bytes.toString('base64') });
+  };
 
   it('refuses an upload id this server did not issue to this user', async () => {
     const { svc } = build();
@@ -277,6 +282,29 @@ describe('inlineUpload', () => {
     expect(await failureCode(upload(svc, id, 'poster', 2 * 1024 * 1024 + 1))).toBe(
       'VIDEO_POSTER_INVALID',
     );
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('VIDEO_UPLOAD_ID_REUSED once the take is recorded: recorded bytes are frozen', async () => {
+    const { svc, storage } = build();
+    mocks.tx.progressPhoto.findFirst.mockResolvedValue({ id: 'vid-1' });
+    expect(await failureCode(upload(svc, issueUploadId(scopeFor()), 'clip'))).toBe(
+      'VIDEO_UPLOAD_ID_REUSED',
+    );
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('refuses bytes that are not an MP4 clip or an image poster, saving nothing', async () => {
+    const { svc, storage } = build();
+    const id = issueUploadId(scopeFor());
+    const send = (slot: 'clip' | 'poster', head: Buffer) =>
+      svc.inlineUpload(actor, UNIT, id, {
+        slot,
+        base64: Buffer.concat([head, Buffer.alloc(64, 1)]).toString('base64'),
+      });
+    expect(await failureCode(send('clip', JPEG_HEAD))).toBe('VIDEO_CONTAINER_UNSUPPORTED');
+    expect(await failureCode(send('clip', QT_HEAD))).toBe('VIDEO_CONTAINER_UNSUPPORTED');
+    expect(await failureCode(send('poster', MP4_HEAD))).toBe('VIDEO_POSTER_INVALID');
     expect(storage.save).not.toHaveBeenCalled();
   });
 
@@ -508,6 +536,43 @@ describe('record: success, replay and failure', () => {
     expect(await failureCode(r.promise)).toBe('VIDEO_SAVE_FAILED');
     expect(r.storage.deleteUploadFolder).not.toHaveBeenCalled();
     expect(r.storage.delete).not.toHaveBeenCalled();
+  });
+
+  it('takes the per-upload lock and re-checks the clip before committing', async () => {
+    const id = issueUploadId(scopeFor());
+    const r = go(id);
+    await r.promise;
+    expect(mocks.tx.$queryRaw).toHaveBeenCalled();
+    expect(r.storage.stat.mock.calls.filter(([k]) => k === `${ORG}/${id}/clip.mp4`).length).toBe(2);
+  });
+
+  it('VIDEO_UPLOAD_NOT_FOUND, no row and no charge, when a cancel removed the clip mid-record', async () => {
+    const id = issueUploadId(scopeFor());
+    const r = go(id);
+    let calls = 0;
+    const original = r.storage.stat.getMockImplementation();
+    r.storage.stat.mockImplementation(async (k: string) => {
+      calls += 1;
+      return calls > 2 ? null : original!(k);
+    });
+    expect(await failureCode(r.promise)).toBe('VIDEO_UPLOAD_NOT_FOUND');
+    expect(mocks.chargeLedgers).not.toHaveBeenCalled();
+    expect(mocks.tx.progressPhoto.create).not.toHaveBeenCalled();
+  });
+
+  it('does not delete the folder after a client-fault refusal if a twin recorded it meanwhile', async () => {
+    const id = issueUploadId(scopeFor());
+    const objects = {
+      ...goodObjects(id),
+      [`${ORG}/${id}/clip.mp4`]: { size: SIZE, isPrivate: false, head: MP4_HEAD },
+    };
+    const r = go(id, objects);
+    // findExisting sees nothing; the re-check inside the discard lock sees the twin's row.
+    mocks.tx.progressPhoto.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'twin' });
+    expect(await failureCode(r.promise)).toBe('VIDEO_NOT_PRIVATE');
+    expect(r.storage.deleteUploadFolder).not.toHaveBeenCalled();
   });
 
   it('a unique violation from a racing twin resolves to a replay of the winner', async () => {

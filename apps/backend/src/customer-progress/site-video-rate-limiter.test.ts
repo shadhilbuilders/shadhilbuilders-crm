@@ -56,6 +56,15 @@ describe('SiteVideoRateLimiter', () => {
     });
   });
 
+  it('a user already over their limit does not burn the project allowance', async () => {
+    const counts: Record<string, number> = {};
+    const { svc } = limiter(counts);
+    await svc.consume(args);
+    await svc.consume(args);
+    for (let i = 0; i < 5; i += 1) await svc.consume(args).catch(() => undefined);
+    expect(counts['sitevideo:auth:project:o:p']).toBe(2);
+  });
+
   it('keeps users, projects and organisations in separate counters', async () => {
     const counts: Record<string, number> = {};
     const { svc } = limiter(counts);

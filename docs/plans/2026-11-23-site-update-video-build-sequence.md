@@ -128,6 +128,42 @@ The query was run against live Postgres in a throwaway test (not committed): a u
 
 Verified: backend typecheck clean; inventory and customer-progress suites green.
 
+## Step 5: landed 2026-11-23
+
+Routes (all 404 `VIDEO_CAPTURE_DISABLED` while `SITE_VIDEO_CAPTURE` is off):
+`POST customer-progress/units/:unitId/videos/upload-auth`, `.../videos/uploads/:uploadId`
+(local-disk transport), `POST .../videos` (201, or 200 on replay), and
+`DELETE .../videos/pending/:uploadId`.
+
+Decisions made while building:
+
+- **Per-project cap and rate limit, from config only.** `SITE_VIDEO_ORG_CAP_BYTES` and
+  `SITE_VIDEO_PROJECT_CAP_BYTES` are required when the flag is on; boot fails without them.
+  Grant limits default to 20 per user, 100 per project, per 600 s. Documented in `.env.example`.
+  A user over their own limit does not consume the project allowance.
+- **Ledgers.** `StorageUsage` (org) and `ProjectStorageUsage` (project) are charged by a
+  conditional UPDATE in the record transaction, org row first. Only clip bytes are counted;
+  posters are small and uncounted. `deletePhoto` credits both in the same transaction.
+- **Upload ids are server-issued**: nonce plus HMAC over (org, unit, user), keyed from
+  `JWT_SECRET`. Keys must sit in `<org>/<uploadId>/` with fixed filenames.
+- **`durationMs` is trusted** (range-checked 1-45 s only). Size, privacy and container come from
+  storage, never from the client.
+- **Cleanup rule.** A client-fault refusal discards the upload folder. An infrastructure failure
+  deletes nothing, so a retry reuses the blobs. Record, cancel and discard take a per-upload
+  advisory lock, and record re-checks the clip inside the lock, so a cancel cannot leave a row over
+  deleted blobs. After a take is recorded, inline re-upload to its folder is refused.
+- **`policies.sql`** carried an error in the step 1 block; fixed in the step 5c block.
+- The buyer push and the staff notifier are NOT wired for videos (private to
+  `CustomerProgressService`). Left for steps 7/8.
+
+Security review follow-ups, not done: upload ids never expire and derive from `JWT_SECRET`
+(M2); a direct ImageKit grant does not enforce size or folder, so orphan folders need a sweeper
+(M4); only the `ftyp` header is sniffed and `durationMs`/`hasAudio`/`takenAt` are trusted (M5);
+inline upload has no per-request rate limit (M1, body now bounded by schema). Review's H3 (OWNER
+missing from RLS) is not a defect: OWNER travels as ADMIN at the RLS layer.
+
+Known gaps 1, 2, 3, 5 and 8 are closed or decided by the above.
+
 ## Known gaps: ten items, checked before the flag flips
 
 Found by auditing the plan against the code after the gate closed. Items 1 to 4 block step 5 as written; the rest are named risks with a decision attached rather than silent assumptions.

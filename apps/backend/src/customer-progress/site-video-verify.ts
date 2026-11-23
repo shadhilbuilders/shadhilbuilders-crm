@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 // Server-side verification of an uploaded clip and its poster (plan section 8).
 //
 // The client's claims are hints; these checks make them facts. Size comes from
@@ -12,6 +13,8 @@ import { sniffMime } from '../storage/sniff-mime';
 import type { StorageProvider } from '../storage/storage.provider';
 import { siteVideoError } from './site-video.errors';
 
+const logger = new Logger('SiteVideoVerify');
+
 /** A poster is a still frame at 1280px and JPEG q0.8; 2MiB is generous. */
 export const POSTER_MAX_BYTES = 2 * 1024 * 1024;
 const HEAD_BYTES = 64;
@@ -23,9 +26,11 @@ export async function guardStorage<T>(call: () => Promise<T>): Promise<T> {
     return await call();
   } catch (err) {
     if (err instanceof CodedException) throw err;
-    throw siteVideoError('STORAGE_UNAVAILABLE', {
-      cause: err instanceof Error ? err.message : String(err),
-    });
+    // The provider's message can carry endpoints or paths: log it, never return it.
+    logger.error(
+      `[site-video] storage call failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    throw siteVideoError('STORAGE_UNAVAILABLE');
   }
 }
 

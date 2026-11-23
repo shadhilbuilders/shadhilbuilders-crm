@@ -6,6 +6,7 @@
 import { ConstructionStageSchema } from '@shadhil/api-types';
 import { z } from 'zod';
 
+import { MAX_VIDEO_BYTES } from '../storage/storage.limits';
 import { UPLOAD_ID_PATTERN } from './site-video-upload-id';
 
 const BATCH_ID = /^[A-Za-z0-9_-]{8,64}$/;
@@ -40,6 +41,11 @@ export type RecordVideoDto = z.infer<typeof RecordVideoSchema>;
 /** Inline (local-disk) upload of one object into a server-issued folder. */
 export const InlineUploadSchema = z.object({
   slot: z.enum(['clip', 'poster']),
-  base64: z.string().min(1),
+  // Bounded BEFORE decoding: the encoded form of the largest clip, plus padding.
+  base64: z
+    .string()
+    .min(1)
+    .max(Math.ceil((MAX_VIDEO_BYTES * 4) / 3) + 4)
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/, 'base64 must be standard base64'),
 });
 export type InlineUploadDto = z.infer<typeof InlineUploadSchema>;
