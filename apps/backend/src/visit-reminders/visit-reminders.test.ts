@@ -6,7 +6,12 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.module';
 import type { RedisService } from '../redis/redis.module';
 
-import { createTestTenant, withCronTickLock, type TestTenant } from '../test-utils/test-tenant';
+import {
+  createTestTenant,
+  holdCronLockForFile,
+  type CronFileLock,
+  type TestTenant,
+} from '../test-utils/test-tenant';
 import { VisitRemindersService } from './visit-reminders.service';
 
 // Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
@@ -21,6 +26,8 @@ const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 // flip on each other. The tenant also owns the one OWNER the reminder resolves.
 let ORG: string;
 let tenant: TestTenant;
+/** Held for the whole file: a tick claims rows from EVERY org. */
+let cronLock: CronFileLock;
 const RUN = Date.now();
 const P = `test-vrem-`;
 const ids = {
@@ -72,6 +79,9 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
   beforeAll(async () => {
     const ps = { $client: prisma as unknown as PrismaClient } as PrismaService;
     tenant = await createTestTenant('visit-reminders');
+    // Before any fixture exists: see holdCronLockForFile. Another file's tick must
+    // not be able to claim what this file is about to seed.
+    cronLock = await holdCronLockForFile(tenant);
     ORG = tenant.organizationId;
     for (const [id, role] of [
       [ids.owner, 'OWNER'],
@@ -149,14 +159,17 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
       });
     });
     service = new VisitRemindersService(ps, redis, new NotificationsService(ps));
-  });
+    // The hook may queue behind another file driving a global cron (see
+    // holdCronLockForFile), so it needs more room than the default.
+  }, 120_000);
 
   afterAll(async () => {
+    // Release first, so the next file driving a cron stops waiting.
+    await cronLock.release();
     // The org cascades to its users, team, project, leads, visits and the
-    // notifications the cron wrote. No shared row was touched, so nothing to
-    // restore either.
+    // notifications the cron wrote.
     await tenant.dispose();
-  });
+  }, 120_000);
 
   const seedVisit = (id: string, minutesAhead: number, leadId = ids.lead) =>
     admin((db) =>
@@ -185,14 +198,14 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
     // What the spec claims is that the reminder reached the right four people
     // exactly once, which holds whoever's tick delivered it - the inboxes below
     // are the assertion.
-    await withCronTickLock(tenant, () => service.tick());
+    await service.tick();
 
     for (const who of [ids.exec, ids.tc, ids.mgr, ids.owner]) {
       expect(await inbox(who)).toContain(ids.lead);
     }
 
     // Second tick: no duplicate for the soon visit, and the later one is outside 60 min.
-    await withCronTickLock(tenant, () => service.tick());
+    await service.tick();
     expect(await inbox(ids.exec)).toHaveLength(1);
     const later = await admin((db) =>
       db.siteVisit.findUnique({ where: { id: ids.later }, select: { reminderSentAt: true } }),
@@ -204,7 +217,7 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
     await admin((db) =>
       db.organization.update({ where: { id: ORG }, data: { visitReminderLeadMinutes: 240 } }),
     );
-    await withCronTickLock(tenant, () => service.tick());
+    await service.tick();
     const later = await admin((db) =>
       db.siteVisit.findUnique({ where: { id: ids.later }, select: { reminderSentAt: true } }),
     );
@@ -218,7 +231,7 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
     await admin((db) =>
       db.siteVisit.update({ where: { id: closed }, data: { status: 'CANCELLED' } }),
     );
-    await withCronTickLock(tenant, () => service.tick());
+    await service.tick();
     const row = await admin((db) =>
       db.siteVisit.findUnique({ where: { id: closed }, select: { reminderSentAt: true } }),
     );

@@ -31,6 +31,7 @@ import type { JwtPayload } from '@shadhil/auth';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { LeadsService } from '../leads/leads.service';
+import { createTestTenant, type TestTenant } from '../test-utils/test-tenant';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.module';
 
@@ -43,10 +44,16 @@ const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
-// Must match PUBLIC_ORG_ID: NotificationsService.emit writes
-// `organizationId: process.env['PUBLIC_ORG_ID']`, and the insert policy compares
-// it to the context's org, so a different org would silently insert nothing.
-const ORG_ID = 'ceid01lpfe1esm8jwsxid41k28';
+// A private organization per run (test-utils/test-tenant). These assertions read
+// notifications by RECIPIENT, and every recipient, team, project and lead here is
+// created in this org - so another suite cannot add a row to anyone's inbox, and
+// the recipient counts stay exact.
+//
+// The org comes from the recipient's own User row (NotificationsService.emit,
+// `resolveRecipientOrg`), not from PUBLIC_ORG_ID: the emit used to stamp every row
+// with the public org, which made a second tenant impossible to test.
+let ORG_ID: string;
+let tenant: TestTenant;
 
 const RUN = Date.now();
 const PROJECT_ID = `test-vnotif-proj-${RUN}`;
@@ -64,8 +71,6 @@ const OWNER_ID = `test-vnotif-owner-${RUN}`;
 const EXEC_ID = `test-vnotif-exec-${RUN}`;
 
 const SEEDED_USERS = [MANAGER_ID, ADMIN_ID, ACTOR_ID, OWNER_ID, EXEC_ID];
-const CREATED_LEAD_IDS: string[] = [];
-const CREATED_VISIT_IDS: string[] = [];
 
 function actorFor(userId: string, role: JwtPayload['role']): JwtPayload {
   return {
@@ -166,10 +171,9 @@ async function seedUser(id: string, role: JwtPayload['role']): Promise<void> {
 }
 
 /**
- * A monotonic counter, NOT derived from CREATED_LEAD_IDS.length. That array is
- * emptied by every cleanup() (and by the beforeAll pre-clean), so an index-based
- * phone restarts at 0 and collides with an earlier lead's on `Lead_phone_key` -
- * which is what actually happened here and masked the real assertions.
+ * A monotonic counter. An index-based phone (derived from a per-test counter that
+ * restarts) collided on `Lead_phone_key` - which is what actually happened here
+ * and masked the real assertions.
  */
 let seq = 0;
 
@@ -207,38 +211,7 @@ async function seedLeadWithVisit(): Promise<{ leadId: string; visitId: string }>
       },
     });
   });
-  CREATED_LEAD_IDS.push(leadId);
-  CREATED_VISIT_IDS.push(visitId);
   return { leadId, visitId };
-}
-
-async function cleanup(): Promise<void> {
-  if (prisma === null) return;
-  // Prefix-based, not CREATED_* arrays: beforeAll calls this before any seed,
-  // when those arrays are empty. A crashed prior run can leave leads owned by
-  // `test-vnotif-%` users; deleting users first then hits Lead_ownerId_fkey.
-  const prefix = 'test-vnotif-%';
-  await adminSeed(async (db) => {
-    await db.$executeRawUnsafe(
-      `DELETE FROM "SiteVisit" WHERE id LIKE $1 OR "leadId" LIKE $1 OR "userId" LIKE $1`,
-      prefix,
-    );
-    await db.$executeRawUnsafe(
-      `DELETE FROM "Notification" WHERE "userId" LIKE $1 OR "leadId" LIKE $1`,
-      prefix,
-    );
-    await db.$executeRawUnsafe(`DELETE FROM "AuditLog" WHERE "userId" LIKE $1`, prefix);
-    await db.$executeRawUnsafe(
-      `DELETE FROM "Lead" WHERE id LIKE $1 OR "ownerId" LIKE $1 OR "coOwnerId" LIKE $1`,
-      prefix,
-    );
-    await db.$executeRawUnsafe(`DELETE FROM "User" WHERE id LIKE $1`, prefix);
-    await db.$executeRawUnsafe(`DELETE FROM "ProjectTeam" WHERE "teamId" LIKE $1`, prefix);
-    await db.$executeRawUnsafe(`DELETE FROM "Team" WHERE id LIKE $1`, prefix);
-    await db.$executeRawUnsafe(`DELETE FROM "Project" WHERE id LIKE $1`, prefix);
-  });
-  CREATED_LEAD_IDS.length = 0;
-  CREATED_VISIT_IDS.length = 0;
 }
 
 describe.skipIf(!HAS_DB)('visits notifications - reschedule + outcome', () => {
@@ -257,10 +230,10 @@ describe.skipIf(!HAS_DB)('visits notifications - reschedule + outcome', () => {
     if (prisma === null) return;
     prismaService = { $client: prisma as unknown as PrismaClient } as PrismaService;
 
-    // Clean any residue from an earlier failed run BEFORE seeding: the fixture
-    // uses `Lead.phone` (unique) derived from RUN, so a leftover row from a run
-    // that crashed mid-suite collides on re-run and masks the real failure.
-    await cleanup();
+    // A fresh org per run: no residue from a crashed run can collide, because the
+    // org (and every unique row under it) is new. One delete in afterAll clears it.
+    tenant = await createTestTenant('visits-notifications');
+    ORG_ID = tenant.organizationId;
 
     for (const [id, role] of [
       [MANAGER_ID, 'MANAGER'],
@@ -316,7 +289,8 @@ describe.skipIf(!HAS_DB)('visits notifications - reschedule + outcome', () => {
   });
 
   afterAll(async () => {
-    await cleanup();
+    // Cascades: users, project, teams, leads, visits, notifications, audit rows.
+    await tenant.dispose();
   });
 
   it('notifies the project managers + the org admin when a visit is RESCHEDULED', async () => {

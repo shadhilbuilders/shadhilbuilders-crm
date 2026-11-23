@@ -42,6 +42,12 @@ const ALLOWLIST = {
 
 const SKIP_TEST_FILE = /(^|\.)(test|spec)\.tsx?$/;
 
+// Test-support modules (fixtures, tenant helpers) are not specs themselves, so the
+// filename skip above does not cover them, but they are exactly as test-only. The
+// second pass at the bottom enforces the other half of that claim: nothing outside a
+// spec may import them, so they can never reach a business path.
+const TEST_SUPPORT_DIR = 'apps/backend/src/test-utils/';
+
 // Files that merely DECLARE the sanctioned pattern are fine even
 // without matching the heuristics - but the heuristic still needs to
 // catch the actual failure mode. Walk the tree.
@@ -63,13 +69,24 @@ function main() {
     const rel = relative(ROOT, file).replaceAll('\\', '/');
     const src = readFileSync(file, 'utf8');
 
+    // (c) The other half of the test-utils exemption: a fixture module may hold the
+    // bypass-RLS client precisely because only specs import it. If business code ever
+    // imports one, that reasoning is gone - so this runs BEFORE the early continues
+    // below, which would otherwise skip a plain business file that imports a fixture.
+    if (/from\s+['"][^'"]*test-utils\//.test(src) && !rel.startsWith(TEST_SUPPORT_DIR)) {
+      violations.push(
+        `${rel}: imports from src/test-utils, which is test-only (fixtures, tenant helpers). ` +
+          `Business code must not depend on test support (AGENTS.md).`,
+      );
+    }
+
     // (a0) Does the file reach for the BYPASS-RLS owner-role client? That helper
     // exists only for test fixtures on tables whose RLS has no INSERT policy, and
     // it is exported from the test-only subpath precisely so business code cannot
     // mistake it for a normal client. Naming it anywhere under apps/backend/src
     // (tests included) is a violation - suites import it from
     // '@shadhil/database/test-db-isolation', which this pattern does not match.
-    if (/\bcreateDirectPrismaClient\b/.test(src)) {
+    if (/\bcreateDirectPrismaClient\b/.test(src) && !rel.startsWith(TEST_SUPPORT_DIR)) {
       violations.push(
         `${rel}: references createDirectPrismaClient, the BYPASS-RLS owner-role client. ` +
           `It is a TEST-ONLY fixture helper (import it from '@shadhil/database/test-db-isolation'); ` +
@@ -90,9 +107,7 @@ function main() {
     // genuine business-write failure mode is `prisma.<model>.<op>`
     // called directly; withRlsContext files pass the client as the
     // first arg, so look for the wrapper call itself.
-    const usesRls =
-      /withRlsContext\s*\(/.test(src) ||
-      /\$transaction\s*\(\s*async/.test(src);
+    const usesRls = /withRlsContext\s*\(/.test(src) || /\$transaction\s*\(\s*async/.test(src);
 
     if (!usesRls && !ALLOWLIST[rel]) {
       violations.push(
@@ -109,7 +124,9 @@ function main() {
     console.error(`\n${violations.length} violation(s).`);
     process.exit(1);
   }
-  console.log('✓ bare-prisma guardrail passed - all bare-client imports are wrapped or allowlisted');
+  console.log(
+    '✓ bare-prisma guardrail passed - all bare-client imports are wrapped or allowlisted',
+  );
 }
 
 main();

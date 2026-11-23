@@ -306,31 +306,47 @@ the overdue scan is org-wide, and `visitReminderLeadMinutes` is org configuratio
 organization (id + slug unique per run) through the owner-role test client, and `dispose()` which
 deletes the org and lets the cascades take users, projects, leads, ledgers and notifications.
 
-**Converted and verified (2026-11-23):** `site-video-ledger.db.test.ts`,
-`overdue-alerts.processor.test.ts`, `visit-reminders.test.ts`. Each runs green alone, in the full
-suite (121 files / 2176), and three copies of all three run CONCURRENTLY: 3/3 green, where the
-ledger spec failed every time before.
+**Converted and verified (2026-11-23):** all five that collided. Each runs green alone, in the
+full suite (121 files / 2176 tests), and three copies of all five run CONCURRENTLY: 3/3 green,
+30 tests each. The same configuration failed 8, 11 and 6 tests before.
 
-**Still on the demo org:** `visits.notifications.test.ts`, `outbound.cron.test.ts`. Convert the
-same way when touching them.
+    site-video-ledger.db.test.ts
+    overdue-alerts.processor.test.ts
+    visit-reminders.test.ts
+    visits.notifications.test.ts
+    outbound.cron.test.ts
 
-**Three constraints for the rest, learned the hard way:**
+**Four constraints, each learned by breaking it first:**
 
-1. A tenant alone is NOT enough for a cron spec. `tick()` scans EVERY organization, so a suite
-   running in parallel processes this tenant's rows too (it stamps the visit, it sends the
-   overdue alert). A tenant stops rows colliding; it does not stop another process doing the work.
-   `withCronTickLock(tenant, fn)` in `test-utils/test-tenant.ts` takes a Postgres
-   transaction-scoped advisory lock, so ticks serialise across processes the way the Redis lock
-   serialises them in production (these specs stub that lock to always grant).
-2. Consequently, do not assert a tick's RETURN VALUE (`considered > 0`, `sent >= 1`): the other
-   process may legitimately have done the work. Assert the outcome - who received what, and the
-   durable stamp that dedupes the next tick. Both specs now do, and say why in a comment.
-3. Adding orgs to the test database means every org-wide scan sees them, and process-wide env
-   (`WHATSAPP_PHONE_NUMBER_ID`, `LEADS_FALLBACK_OWNER_ID`, the `SITE_VIDEO_*` caps) is NOT per-org,
-   so a tenant cannot isolate those. Inject per test or per worker instead of reading the
-   environment.
+1. **A tenant isolates rows, not work.** `tick()` scans and CLAIMS every organization, so a
+   parallel suite processes this tenant's rows: it stamps the visit, it sends the outbound row.
+   `holdCronLockForFile(tenant)` takes the advisory lock for the WHOLE file (before seeding, after
+   teardown), which is the property the production Redis lease gives. A lock around a single tick is
+   not enough: the other file's tick still eats what this one seeded in between.
+2. **Do not assert a tick's return value** (`considered > 0`, `sent >= 1`, `claimed === 1`). The
+   other process may legitimately have done the work. Assert the outcome: who received what, and
+   the durable stamp that dedupes the next tick.
+3. **Teardown is not one DELETE.** `Organization` is FORCE-RLS and seven children are ON DELETE
+   RESTRICT (User, Team, Lead, Booking, AuditLog, LeadFact, WhatsappUnknownContact). `deleteMany`
+   on the org deletes nothing and reports success - it leaked 73 orgs into the test database before
+   this was found, and their PENDING outbound rows are what the next tick claims. `purgeOrganization`
+   deletes those seven in dependency order, then the org; `dispose()` throws rather than leaking.
+   `sweepStaleTestOrgs` reaps orgs from killed runs at file lock time, `test-*` slugs only, older
+   than five minutes so a live parallel file is never taken. Residual hole, accepted: a run that
+   dies inside that window leaves PENDING rows the next cron file's tick will claim. Closing it
+   needs a liveness marker on the org row - purging every other test org at lock time would delete
+   rows under the non-cron specs that write outbound rows (webhooks.controller, site-update-delivery).
+4. **Process-wide env cannot be isolated by a tenant** (`WHATSAPP_PHONE_NUMBER_ID`,
+   `LEADS_FALLBACK_OWNER_ID`, the `SITE_VIDEO_*` caps). Those specs need the value injected per test
+   or per worker. Also: once test orgs exist, every org-wide scan sees them, so a spec asserting a
+   global total has to scope to its own org id.
 
-**Effort:** S per spec now that the helper exists. **Priority:** P2, highest of the test-health
-items, because it is the one that actually flips red.
+Side benefit: `outbound.cron.test.ts` now seeds a phase + unit in its own org, so the two
+site-update delivery cases actually RUN instead of quietly returning early when the database had no
+unit to hang a delivery on.
+
+**Remaining:** the other ~56 DB-backed specs still share the demo org. They pass because they only
+touch their own project-scoped rows. Convert any that start counting org-wide rows, or that drive a
+cron, with `createTestTenant` + `holdCronLockForFile`.
 
 ## Completed

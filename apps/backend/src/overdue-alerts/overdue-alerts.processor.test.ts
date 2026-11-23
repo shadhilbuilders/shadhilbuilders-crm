@@ -20,7 +20,12 @@ import { prisma as runtimePrisma, type PrismaClient } from '@shadhil/database';
 import { withRlsContext } from '@shadhil/database';
 
 import { NotificationsService } from '../notifications/notifications.service';
-import { createTestTenant, withCronTickLock, type TestTenant } from '../test-utils/test-tenant';
+import {
+  createTestTenant,
+  holdCronLockForFile,
+  type CronFileLock,
+  type TestTenant,
+} from '../test-utils/test-tenant';
 import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
 import { OverdueAlertsService, OVERDUE_ALERT_LOCK_KEY } from './overdue-alerts.service';
@@ -39,6 +44,8 @@ const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 // shared those rows, and "expected 3 to be 1" was another file's notification.
 // The tenant is created in beforeAll, so the ids below are assigned there.
 let tenant: TestTenant;
+/** Held for the whole file: a tick claims rows from EVERY org. */
+let cronLock: CronFileLock;
 let ORG_ID: string;
 let ADMIN_ID: string;
 let TEST_PROJECT_ID: string;
@@ -65,6 +72,8 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
 
 async function cleanup(): Promise<void> {
   if (prisma === null) return;
+  // Release first, or the next file's beforeAll waits on a lock nobody needs.
+  await cronLock?.release();
   // One delete: the org cascades to its users, team, project, lead and the
   // notifications the cron wrote.
   await tenant.dispose();
@@ -220,12 +229,16 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
 
     beforeAll(async () => {
       tenant = await createTestTenant('overdue-alerts');
+      // Before any fixture exists: see holdCronLockForFile. Another file's tick must
+      // not be able to claim what this file is about to seed.
+      cronLock = await holdCronLockForFile(tenant);
       ORG_ID = tenant.organizationId;
       ADMIN_ID = `ovdo-admin-${runToken}`;
       ORG_OWNER_ID = `ovdo-ownr-${runToken}`;
       TEST_PROJECT_ID = `ovdo-proj-${runToken}`;
       await seedFixtures();
-    }, 30_000);
+      // Queues behind any other file driving a global cron: see holdCronLockForFile.
+    }, 120_000);
 
     afterAll(async () => {
       await cleanup();
@@ -247,7 +260,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
     });
 
     it('happy path: emits to owner + manager + org owner, then stamps the lead', async () => {
-      await withCronTickLock(tenant, () => service.tick());
+      await service.tick();
       const last = service.getLastTick();
       expect(last?.lockHeld).toBe(true);
       // `considered` is deliberately not asserted. The scan covers EVERY
@@ -290,11 +303,11 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
 
     it('every-1-hour cadence: a second tick within the hour does NOT re-push', async () => {
       // First tick pushes + stamps.
-      await withCronTickLock(tenant, () => service.tick());
+      await service.tick();
 
       // Immediately tick again - should consider 0 (already stamp this tick
       // window), so no duplicate notifications.
-      await withCronTickLock(tenant, () => service.tick());
+      await service.tick();
 
       // Count via the lead owner's RLS context (admin can't see others' rows).
       const forOwner = await withRlsContext(
@@ -316,7 +329,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
       const acquired = await stubRedis.acquireLock(OVERDUE_ALERT_LOCK_KEY, 50, REPLICA_A);
       expect(acquired).toBe(true);
 
-      await withCronTickLock(tenant, () => service.tick());
+      await service.tick();
       const last = service.getLastTick();
       expect(last?.lockHeld).toBe(false);
       expect(last?.considered).toBe(0);

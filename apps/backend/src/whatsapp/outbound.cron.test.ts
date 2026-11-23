@@ -20,6 +20,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
+import {
+  createTestTenant,
+  holdCronLockForFile,
+  type CronFileLock,
+  type TestTenant,
+} from '../test-utils/test-tenant';
 import { RedisService } from '../redis/redis.module';
 
 import { OutboundCronService, OUTBOUND_LOCK_KEY } from './outbound.cron';
@@ -27,20 +33,32 @@ import { OutboundService, MAX_ATTEMPTS } from './outbound.service';
 import { WhatsAppClient } from './whatsapp.client';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
-// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
-// every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
-const TEST_PROJECT_ID = 'outboundcrpr' + Date.now().toString();
+// Everything this file creates lives in a private organization (see
+// test-utils/test-tenant): the cron CLAIMS PENDING outbound rows across the whole
+// database, so another suite's rows were getting claimed here and this file's
+// rows were getting claimed there - "claimed" counted the other process's work.
+// The organization id is assigned in beforeAll, hence `let`.
+let ORG_ID: string;
+let tenant: TestTenant;
+/** Held for the whole file: a tick claims rows from EVERY org. */
+let cronLock: CronFileLock;
 const HAS_REDIS = Boolean(process.env.REDIS_URL);
 
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
-// Test fixtures - unique per run so re-runs don't collide on
-// the unique `Lead_phoneE164_key` and `OutboundMessage_messageId_key`
-// constraints.
-const REPLICA_ID = 'test-outbound-cron-replica';
-const TEST_USER_ID = 'test-outbound-cron-user';
-const TEST_TEAM_ID = 'test-outbound-cron-team';
-const TEST_LEAD_ID = 'test-outbound-cron-lead';
+// Test fixtures - unique per run AND per process: two copies of this file can run
+// at the same time, and both the ids and the unique `Lead_phoneE164_key` /
+// `OutboundMessage_messageId_key` constraints have to hold across them.
+const RUN = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
+// every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
+const TEST_PROJECT_ID = `outboundcrpr${RUN}`;
+const REPLICA_ID = `test-outbound-cron-replica-${RUN}`;
+const TEST_USER_ID = `test-outbound-cron-user-${RUN}`;
+const TEST_TEAM_ID = `test-outbound-cron-team-${RUN}`;
+const TEST_LEAD_ID = `test-outbound-cron-lead-${RUN}`;
+const TEST_PHASE_ID = `test-outbound-cron-phase-${RUN}`;
+const TEST_UNIT_ID = `test-outbound-cron-unit-${RUN}`;
 
 const TEST_OUTBOUND_IDS: string[] = [];
 const TEST_MESSAGE_IDS: string[] = [];
@@ -53,7 +71,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
     {
       userId: TEST_USER_ID,
       role: 'ADMIN',
-      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      organizationId: ORG_ID,
     },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
@@ -72,7 +90,7 @@ async function ensureFixtures(): Promise<void> {
         name: `Test Project ${TEST_PROJECT_ID}`,
         slug: TEST_PROJECT_ID,
         address: 'test',
-        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        organizationId: ORG_ID,
       },
     });
     await db.team.upsert({
@@ -81,7 +99,7 @@ async function ensureFixtures(): Promise<void> {
       create: {
         id: TEST_TEAM_ID,
         name: 'Outbound Cron Test Team',
-        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        organizationId: ORG_ID,
       },
     });
     await db.user.upsert({
@@ -92,7 +110,30 @@ async function ensureFixtures(): Promise<void> {
         email: 'outbound-cron@test.local',
         name: 'Outbound Cron Test',
         role: 'ADMIN',
-        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        organizationId: ORG_ID,
+      },
+    });
+    // A phase + unit, so the site-update delivery cases (which need a valid unit
+    // FK) actually RUN instead of quietly returning early. In a per-run org there
+    // is no seed to borrow one from.
+    await db.phase.create({
+      data: {
+        id: TEST_PHASE_ID,
+        projectId: TEST_PROJECT_ID,
+        name: `Test Phase ${RUN}`,
+        organizationId: ORG_ID,
+      },
+    });
+    await db.unit.create({
+      data: {
+        id: TEST_UNIT_ID,
+        phaseId: TEST_PHASE_ID,
+        organizationId: ORG_ID,
+        unitNumber: `T-${RUN}`,
+        bhk: 3,
+        buildupSqft: 1850,
+        pricePerSqft: 6500,
+        price: 12025000,
       },
     });
     // Lead with a per-test unique phone. The `phone` field has a
@@ -114,7 +155,7 @@ async function ensureFixtures(): Promise<void> {
         teamId: TEST_TEAM_ID,
         ownerId: TEST_USER_ID,
         ownerType: 'ADMIN',
-        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        organizationId: ORG_ID,
 
         projectId: TEST_PROJECT_ID,
       },
@@ -147,14 +188,14 @@ async function seedOutbound(
     if (opts.withDelivery === true) {
       // Any unit in the org: the delivery row only needs a valid FK, and which
       // villa it is has no bearing on the send bookkeeping under test.
-      const unit = await db.unit.findFirst({
-        where: { organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      const unit = await db.unit.findUnique({
+        where: { id: TEST_UNIT_ID },
         select: { id: true },
       });
       if (unit === null) return;
       const delivery = await db.siteUpdateDelivery.create({
         data: {
-          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          organizationId: ORG_ID,
           batchId: `test-batch-${suffix}`,
           unitId: unit.id,
           status: 'PENDING',
@@ -172,7 +213,7 @@ async function seedOutbound(
         direction: 'OUT',
         channel: 'WHATSAPP',
         body: 'test outbound message body',
-        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        organizationId: ORG_ID,
       },
     });
     await db.outboundMessage.create({
@@ -189,7 +230,7 @@ async function seedOutbound(
         ...(opts.wamid !== undefined ? { wamid: opts.wamid } : {}),
         ...(opts.lastError !== undefined ? { lastError: opts.lastError } : {}),
         ...(deliveryId !== undefined ? { siteUpdateDeliveryId: deliveryId } : {}),
-        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        organizationId: ORG_ID,
       },
     });
   });
@@ -200,48 +241,18 @@ async function seedOutbound(
 
 async function cleanupTestOutbound(): Promise<void> {
   if (prisma === null) return;
-  // Cleanup via FK cascade: deleting the Message removes the
-  // OutboundMessage (FK ON DELETE CASCADE). This avoids the
-  // DELETE permission path on OutboundMessage - same workaround
-  // as chat.service.send.test.ts. ADMIN role satisfies the
-  // Message DELETE policy (message_delete via team membership).
+  // Cleanup via FK cascade: deleting the Message removes the OutboundMessage (FK
+  // ON DELETE CASCADE). Scoped to THIS file's lead, which is now the whole tenant,
+  // so it cannot delete another suite's rows - which the old prefix sweep could.
   await adminSeed(async (db) => {
-    if (TEST_MESSAGE_IDS.length > 0) {
-      await db.message.deleteMany({
-        where: { id: { in: TEST_MESSAGE_IDS } },
-      });
-    }
-    // The delivery rows are independent of the messages (SetNull, not Cascade):
-    // deleting the message row leaves the delivery row behind on purpose, so the
-    // fixture has to clean it up itself.
-    if (TEST_DELIVERY_IDS.length > 0) {
-      await db.siteUpdateDelivery.deleteMany({ where: { id: { in: TEST_DELIVERY_IDS } } });
-    }
+    await db.message.deleteMany({ where: { leadId: TEST_LEAD_ID } });
+    // The delivery rows are independent of the messages (SetNull, not Cascade), so
+    // they need their own delete.
+    await db.siteUpdateDelivery.deleteMany({ where: { organizationId: ORG_ID } });
   });
   TEST_OUTBOUND_IDS.length = 0;
   TEST_MESSAGE_IDS.length = 0;
   TEST_DELIVERY_IDS.length = 0;
-}
-
-/** Aggressive cleanup: delete ALL OutboundMessage + Message test
- *  rows, not just the ones this test session knows about. Used by
- *  the backoff test to clear PENDING orphans from previous runs
- *  before checking the backoff filter (the filter is correct, but
- *  if other PENDING rows from prior test runs exist with
- *  backoff-elapsed `lastAttemptAt`, the cron will claim those and
- *  the assertion will fail with claimed=1 instead of 0). */
-async function cleanupAllTestRows(): Promise<void> {
-  if (prisma === null) return;
-  await adminSeed(async (db) => {
-    // Delete via Message cascade - same pattern as cleanupTestOutbound.
-    await db.message.deleteMany({
-      where: {
-        OR: [{ id: { startsWith: 'test-msg-' } }, { id: { startsWith: 'test-wamid-' } }],
-      },
-    });
-  });
-  TEST_OUTBOUND_IDS.length = 0;
-  TEST_MESSAGE_IDS.length = 0;
 }
 
 // Same shape as StubRedis in reminders.processor.test.ts.
@@ -328,14 +339,28 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)('T-E2b outbound cron - lease + claim + se
   let cron: OutboundCronService;
 
   beforeAll(async () => {
+    tenant = await createTestTenant('outbound-cron');
+    // Before any fixture exists: see holdCronLockForFile. Another file's tick must
+    // not be able to claim what this file is about to seed.
+    cronLock = await holdCronLockForFile(tenant);
+    ORG_ID = tenant.organizationId;
     await ensureFixtures();
-  }, 30_000);
+    // Queues behind any other file driving a global cron: see holdCronLockForFile.
+  }, 120_000);
 
   afterAll(async () => {
-    await cleanupTestOutbound();
-  }, 30_000);
+    // Release before the teardown, so the next file's beforeAll stops waiting.
+    await cronLock.release();
+    // Cascades: project, phase, unit, team, user, lead, messages, outbound rows,
+    // deliveries.
+    await tenant.dispose();
+  }, 120_000);
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Each case starts with no outbound rows of its own: the tick CLAIMS every
+    // PENDING row in the database, so a row left by the previous case would be
+    // claimed here and every `claimed`/`sent` count would be off by one.
+    await cleanupTestOutbound();
     stubRedis = new StubRedis();
     stubWhatsApp = new StubWhatsApp();
     prismaService = {
@@ -422,7 +447,6 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)('T-E2b outbound cron - lease + claim + se
     // would claim it (since lastAttemptAt is null → backoff filter
     // treats it as ready). The next test's expected counts would
     // be off by 1.
-    await cleanupAllTestRows();
   });
 
   it('backoff: a row within the backoff window is NOT claimed', async () => {
@@ -431,8 +455,6 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)('T-E2b outbound cron - lease + claim + se
     // it before checking our test row, breaking the assertion
     // (claimed would be 1, expected 0). The backoff filter is
     // correct; this just isolates the test.
-    await cleanupAllTestRows();
-
     // First attempt happened 1 second ago - the first backoff
     // is 30s, so this row is still in its backoff window.
     const recentAttempt = new Date(Date.now() - 1_000);
