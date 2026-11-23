@@ -23,12 +23,29 @@ export interface CodedErrorBody {
   code: string;
   message: string;
   details?: unknown;
+  /**
+   * Whether repeating the SAME request can succeed (2026-11-23, site update
+   * video). Optional so every existing error keeps its exact wire shape; a
+   * client that wants to decide its retry button from a typed field reads this
+   * instead of matching on a code string.
+   */
+  retryable?: boolean;
 }
 
 export class CodedException extends HttpException {
-  constructor(status: number, code: string, message: string, details?: unknown) {
-    const body: CodedErrorBody =
-      details === undefined ? { code, message } : { code, message, details };
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details?: unknown,
+    retryable?: boolean,
+  ) {
+    const body: CodedErrorBody = {
+      code,
+      message,
+      ...(details === undefined ? {} : { details }),
+      ...(retryable === undefined ? {} : { retryable }),
+    };
     super(body, status);
   }
 }
