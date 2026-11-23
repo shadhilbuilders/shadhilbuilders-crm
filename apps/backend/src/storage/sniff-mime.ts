@@ -19,6 +19,7 @@ export type SniffedMime =
   | 'image/avif'
   | 'application/pdf'
   | 'video/mp4'
+  | 'video/quicktime'
   | 'audio/mpeg';
 
 function startsWithBytes(buf: Buffer, bytes: readonly number[]): boolean {
@@ -33,6 +34,29 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 const JPEG_SIGNATURE = [0xff, 0xd8, 0xff] as const;
 const GIF87A = [0x47, 0x49, 0x46, 0x38, 0x37, 0x61] as const; // "GIF87a"
 const GIF89A = [0x47, 0x49, 0x46, 0x38, 0x39, 0x61] as const; // "GIF89a"
+const EBML_SIGNATURE = [0x1a, 0x45, 0xdf, 0xa3] as const;
+
+/** ISO base media brands that are MP4 video: the ISO generations, MP4 v1/v2,
+ *  AVC, DASH segments, Microsoft's, iTunes video, and the 3GPP family Meta
+ *  accepts as video. */
+const MP4_BRANDS: ReadonlySet<string> = new Set([
+  'isom',
+  'iso2',
+  'iso4',
+  'iso5',
+  'iso6',
+  'mp41',
+  'mp42',
+  'avc1',
+  'dash',
+  'mmp4',
+  'msnv',
+  'M4V ',
+  '3gp4',
+  '3gp5',
+  '3gp6',
+  '3g2a',
+]);
 const PDF_SIGNATURE = [0x25, 0x50, 0x44, 0x46] as const; // "%PDF"
 
 /**
@@ -83,8 +107,20 @@ export function sniffMime(buf: Buffer): SniffedMime | null {
       return 'image/heic';
     }
     if (brand === 'avif' || brand === 'avis') return 'image/avif';
-    return 'video/mp4';
+    // QuickTime (an iPhone Photos recording): its own type, so the video
+    // routes can refuse it by name instead of passing it off as MP4.
+    if (brand === 'qt  ') return 'video/quicktime';
+    // An explicit allowlist, not a fall-through (2026-11-23). Any unnamed brand
+    // used to come back as video/mp4, which labelled audio-only `M4A ` files
+    // and unknown containers as video. An unlisted brand is now null: the
+    // caller refuses what it cannot identify.
+    return MP4_BRANDS.has(brand) ? 'video/mp4' : null;
   }
+
+  // EBML header (Matroska / WebM). Named here only to be refused: Chrome on
+  // Android records WebM by default and Meta will not accept it for video, so
+  // it must come back unidentified rather than be guessed into something else.
+  if (startsWithBytes(buf, EBML_SIGNATURE)) return null;
 
   // MPEG audio frame sync (11 set bits) - coarse but sufficient for chat audio.
   if (buf.length >= 2 && buf[0] === 0xff && (buf[1]! & 0xe0) === 0xe0) return 'audio/mpeg';

@@ -145,3 +145,41 @@ describe('reconcileUploadMime - bytes beat the client declaration', () => {
     });
   });
 });
+
+describe('sniffMime: video containers (site update video, step 3)', () => {
+  const EBML = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01]);
+
+  it.each(['isom', 'mp42', 'mp41', 'iso2', 'avc1', 'dash', 'M4V ', '3gp4'])(
+    'maps the %s brand to video/mp4',
+    (brand) => {
+      expect(sniffMime(ftyp(brand))).toBe('video/mp4');
+    },
+  );
+
+  it('maps the QuickTime brand to video/quicktime, not video/mp4', () => {
+    expect(sniffMime(ftyp('qt  '))).toBe('video/quicktime');
+  });
+
+  it('refuses WebM (EBML) by returning null', () => {
+    expect(sniffMime(EBML)).toBeNull();
+  });
+
+  it('returns null for an unlisted brand instead of guessing video/mp4', () => {
+    expect(sniffMime(ftyp('M4A '))).toBeNull();
+    expect(sniffMime(ftyp('zzzz'))).toBeNull();
+  });
+
+  it('still classifies HEIC and AVIF as photos, ahead of the video allowlist', () => {
+    expect(sniffMime(ftyp('heic'))).toBe('image/heic');
+    expect(sniffMime(ftyp('mif1'))).toBe('image/heic');
+    expect(sniffMime(ftyp('avif'))).toBe('image/avif');
+  });
+
+  it('reconcileUploadMime records the sniffed QuickTime type and refuses WebM', () => {
+    expect(reconcileUploadMime(ftyp('qt  '), 'video/mp4')).toEqual({
+      mimeType: 'video/quicktime',
+      declaredWasWrong: true,
+    });
+    expect(reconcileUploadMime(EBML, 'video/webm')).toBeNull();
+  });
+});

@@ -107,6 +107,14 @@ Gap 4 is closed with a number: local `createUploadAuth` returns `{ transport: 'i
 
 Verified: storage suite 107 passed across 8 files, backend typecheck and `eslint src/storage` clean. **Not verified:** the live-CDN rows of the proof (a private object served at full byte count, 206 on Range, 403 at the bare URL) were measured earlier with the same `ik.url` call and are not re-run in CI, since that needs real credentials.
 
+## Step 3: landed 2026-11-23
+
+`sniffMime` no longer falls through to `video/mp4` for an unnamed `ftyp` brand. HEIC and AVIF are still matched first; `qt  ` returns the new `video/quicktime`; a 16-brand allowlist (ISO generations, `mp41`/`mp42`, `avc1`, `dash`, `M4V `, the 3GPP family) returns `video/mp4`; an EBML header returns null on purpose so WebM is refused rather than guessed; any other brand returns null. The fixtures are header buffers in `sniff-mime.test.ts` (MP4, QuickTime, EBML, plus the refused `M4A `); a real recorded MP4 arrives in step 7 for the ffprobe proof.
+
+One behaviour change to know about: an audio-only `M4A ` file used to be labelled `video/mp4` and is now unidentified, so `reconcileUploadMime` returns null for it and the chat upload route answers 400. No test pinned the old labelling, and a voice note called video was a bug, but if chat is meant to accept `.m4a`, add `M4A ` as an audio type in a follow-up rather than putting it back in the video list.
+
+Verified: backend 1943 passed across 105 files, typecheck clean.
+
 ## Known gaps: ten items, checked before the flag flips
 
 Found by auditing the plan against the code after the gate closed. Items 1 to 4 block step 5 as written; the rest are named risks with a decision attached rather than silent assumptions.
