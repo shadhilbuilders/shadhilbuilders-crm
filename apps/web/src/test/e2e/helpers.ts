@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 /**
  * Shared e2e navigation. Never wait for `load` or `networkidle` on
@@ -45,6 +45,31 @@ export const NAV = {
   timeout: 45_000,
   waitUntil: 'domcontentloaded' as const,
 };
+
+/** The villa list for the seeded Metro Heights project. */
+export const SITE_HOME = '/shadhil-builders/projects/shadhil-metro-heights/site';
+
+/**
+ * Open a villa's site page by FOLLOWING THE LIST, and return the URL it opened.
+ *
+ * Why not a constant: the seed upserts units on `(phaseId, unitNumber)`, so every
+ * unit id is generated. A hardcoded id therefore exists only in the database it
+ * was copied from - and `site-video.spec.ts` shipped with one, which meant the
+ * spec could never run in CI against a freshly seeded database even with the
+ * feature flag switched on. Clicking the first row is what a person does, and it
+ * works anywhere the seed has run.
+ */
+export async function openSiteUnit(page: Page): Promise<string> {
+  await page.goto(SITE_HOME, NAV);
+  // `href*="/site/"` needs the trailing slash: the section's own nav link is
+  // `/site` and would otherwise match first.
+  const unit = page.locator('a[href*="/site/"]').first();
+  await expect(unit).toBeVisible({ timeout: 60_000 });
+  const href = await unit.getAttribute('href');
+  if (href === null) throw new Error('the villa list rendered a unit link with no href');
+  await page.goto(href, NAV);
+  return href;
+}
 
 function stillOnLogin(url: URL): boolean {
   return url.pathname === '/login' || url.pathname.startsWith('/login/');

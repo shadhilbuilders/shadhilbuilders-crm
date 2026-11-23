@@ -323,7 +323,6 @@ jobs:
           DATABASE_URL: postgresql://shadhil_app:${{ env.SHADHIL_APP_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
           RLS_MATRIX_REQUIRED: 'true'
 
-
   # Playwright e2e against real servers + a real Postgres.
   #
   # WHY THIS EXISTS: e2e was never in CI, and the suite rotted silently - a
@@ -422,6 +421,30 @@ jobs:
       # Without this, @t3-oss/env-nextjs and assertAuthEnv() fail on the
       # CI placeholder values (they only check shape, not real connectivity).
       SKIP_ENV_VALIDATION: 'true'
+      # Site update video (step 7). Without these the job runs the whole suite
+      # with the feature off: `site-video.spec.ts` finds no `capture-video`
+      # control and fails on its first assertion, while
+      # `site-video-flag-off.spec.ts` is the one spec that wants the flag off.
+      # One server pair serves both, so the flag goes ON and the flag-off spec
+      # skips by design (it asks the rendered page which flag it got) - that
+      # spec's subject is the OFF build, which this job does not start. It is
+      # covered locally and by the unit tests on the server wrapper.
+      #
+      # Both servers read these at request time, so the same env covers the API
+      # and the Next server: the API refuses to boot with the flag on and either
+      # cap missing (site-video.config.ts lists every problem at once), and the
+      # web wrapper passes `videoEnabled` down to the client payload.
+      #
+      # Caps are 512 MiB each: far above what a few seconds of synthetic-camera
+      # MP4 costs, so no spec in this job can trip the "storage full" branch and
+      # fail for a reason it is not testing.
+      SITE_VIDEO_CAPTURE: 'true'
+      SITE_VIDEO_ORG_CAP_BYTES: '536870912'
+      SITE_VIDEO_PROJECT_CAP_BYTES: '536870912'
+      # Local disk, not the CDN: the spec asserts the inline upload transport and
+      # CI must never reach ImageKit. Explicit rather than relying on the
+      # storage module's "anything that is not imagekit means local" default.
+      MEDIA_STORAGE: local
     services:
       postgres:
         image: postgres:16-alpine

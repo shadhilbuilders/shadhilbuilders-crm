@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { ENGINEER_EMAIL, ENGINEER_PASSWORD, NAV, loginAs } from './helpers';
+import { ENGINEER_EMAIL, ENGINEER_PASSWORD, loginAs, openSiteUnit } from './helpers';
 
 /**
  * Flag OFF: the capture screen must be exactly today's photo-only screen.
@@ -13,8 +13,6 @@ import { ENGINEER_EMAIL, ENGINEER_PASSWORD, NAV, loginAs } from './helpers';
  * The site-video.spec.ts run NEEDS the flag on. Run the two with different
  * servers (or restart the web server between them); the skip message says so.
  */
-const UNIT_URL = '/shadhil-builders/projects/shadhil-metro-heights/site/cmu55o059000fyju8wvcaj7ch';
-
 test.use({
   viewport: { width: 393, height: 851 },
   isMobile: true,
@@ -26,7 +24,7 @@ test.describe('site video flag off', () => {
 
   test('the capture screen is the photo-only screen', async ({ page }) => {
     await loginAs(page, ENGINEER_EMAIL, ENGINEER_PASSWORD);
-    await page.goto(UNIT_URL, { ...NAV, timeout: 120_000 });
+    await openSiteUnit(page);
     await expect(page.locator('[data-qa="site-take-photo"]')).toBeVisible({ timeout: 60_000 });
 
     // Ask the PAGE which flag it was rendered with: the server wrapper passes

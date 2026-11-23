@@ -33,7 +33,18 @@ Read first, in this order:
   Format only the files you touched: `pnpm exec prettier --write <file>`.
 - The web e2e specs need BOTH servers started with `SITE_VIDEO_CAPTURE=true`, the two storage
   caps set, and `MEDIA_STORAGE=local` (so the inline upload path is exercised and nothing reaches
-  the real CDN). The API refuses to boot with the flag on and the caps unset.
+  the real CDN). The API refuses to boot with the flag on and the caps unset. Note that
+  `pnpm --filter @shadhil/backend start` is bare `node dist/main.js` with NO env file, so a local
+  run has to be `cd apps/backend && SITE_VIDEO_CAPTURE=true ... node --env-file=../../.env
+dist/main.js`; the repo-root `.env` already sets `MEDIA_STORAGE=imagekit`, so pass
+  `MEDIA_STORAGE=local` on the command line or the spec will ask the CDN for a grant.
+- The CI e2e job now sets all four (`ci.yml`, e2e job env) so the video spec runs there instead of
+  failing on its first assertion. One server pair serves the whole suite, so the flag is ON and
+  `site-video-flag-off.spec.ts` skips there by design; that spec's subject is the OFF build.
+- The specs resolve the villa from the site list (`openSiteUnit()` in `test/e2e/helpers.ts`),
+  never by a hardcoded unit id. Seed units are upserted on `(phaseId, unitNumber)`, so their ids
+  are generated per database - the constant that shipped with step 7 only ever worked on the
+  machine it was copied from, which is the real reason the spec could not pass in CI.
 - `site-video-flag-off.spec.ts` deliberately SKIPS on a flag-on server. To prove it, restart the
   web server with `SITE_VIDEO_CAPTURE=false`.
 - The buyer-facing WhatsApp leg has one switch: `SITE_UPDATE_WHATSAPP=off` stops it for photos and
