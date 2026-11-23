@@ -6,7 +6,6 @@
 // delivery row then records FAILED with a reason rather than the save failing.
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 
-import { PrismaService } from '../prisma/prisma.module';
 import { OutboundService } from '../whatsapp/outbound.service';
 import type { StorageProvider } from '../storage/storage.provider';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
@@ -22,12 +21,15 @@ export class SiteUpdateDelivery implements Pick<DeliveryCore, 'recordAndSend'> {
   private readonly core: DeliveryCore;
 
   constructor(
-    @Inject(PrismaService) prismaService: PrismaService,
     @Optional() @Inject(OutboundService) outbound?: OutboundService,
     @Optional() @Inject(STORAGE_PROVIDER) storage?: StorageProvider,
   ) {
+    // NO PrismaService here. This class used to take it and hand its raw
+    // `$client` to the core, which never used it: every query runs on the RLS
+    // transaction the caller passes as `input.tx`. Dropping the parameter is what
+    // keeps the bare-prisma guardrail honest instead of adding an allowlist entry
+    // for a capability nobody needs.
     this.core = new DeliveryCore({
-      client: prismaService.$client,
       outbound,
       storage,
       logger: this.logger,

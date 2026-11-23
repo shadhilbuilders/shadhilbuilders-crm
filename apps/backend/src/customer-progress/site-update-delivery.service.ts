@@ -24,7 +24,6 @@
 import { Logger } from '@nestjs/common';
 
 import { isServiceWindowOpen } from '@shadhil/api-types';
-import type { PrismaClient } from '@shadhil/database';
 
 import type { OutboundService } from '../whatsapp/outbound.service';
 
@@ -265,7 +264,14 @@ export function deliveryCaption(
 }
 
 export interface SiteUpdateDeliveryDeps {
-  client: PrismaClient;
+  /**
+   * NO bare Prisma client here, on purpose (2026-11-23). Every write and read
+   * runs on the RLS transaction the caller passes in as `input.tx`, which is
+   * the only context allowed to touch this table. An unused `client` field
+   * looked harmless but it (a) tripped the bare-prisma guardrail, which cannot
+   * tell an unused capability from a real bypass, and (b) invited the next
+   * caller to query outside RLS. Removed rather than allowlisted.
+   */
   outbound: OutboundService | undefined;
   storage: { stat(key: string): Promise<{ size: number } | null> } | undefined;
   logger: Logger;

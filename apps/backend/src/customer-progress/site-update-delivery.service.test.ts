@@ -190,7 +190,6 @@ function harness(
   const enqueue = vi.fn(async () => ({}));
   const stat = vi.fn(async () => ({ size: 1000 }));
   const service = new SiteUpdateDeliveryService({
-    client: client as never,
     outbound: { enqueue } as never,
     storage: { stat } as never,
     logger: { log: vi.fn(), error: vi.fn(), warn: vi.fn() } as never,
