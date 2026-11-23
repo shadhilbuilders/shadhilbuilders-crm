@@ -57,6 +57,7 @@ const PHOTO = {
   id: 'photo-1',
   unitId: 'unit-1',
   key: `${ORG}/abc/site.jpg`,
+  posterKey: null as string | null,
   caption: 'Foundation October 2026',
 };
 
@@ -223,6 +224,52 @@ describe('deletePhoto', () => {
       .deletePhoto(actor('ADMIN'), 'photo-1')
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(NotFoundException);
+    expect(mocks.storageDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe('deletePhoto - video rows (site update video, step 5)', () => {
+  const VIDEO = {
+    ...PHOTO,
+    key: `${ORG}/up1/clip.mp4`,
+    posterKey: `${ORG}/up1/poster.jpg`,
+  };
+
+  it('protects= a video deletes BOTH the clip and its poster, and audits both keys', async () => {
+    mocks.tx.progressPhoto.findFirst.mockResolvedValue(VIDEO);
+
+    await svc().deletePhoto(actor('ADMIN'), 'photo-1');
+
+    expect(mocks.storageDelete).toHaveBeenCalledTimes(2);
+    expect(mocks.storageDelete).toHaveBeenCalledWith(VIDEO.key);
+    expect(mocks.storageDelete).toHaveBeenCalledWith(VIDEO.posterKey);
+    const audit = mocks.tx.auditLog.create.mock.calls[0]?.[0] as {
+      data: { before: { key: string; posterKey: string } };
+    };
+    expect(audit.data.before).toMatchObject({ key: VIDEO.key, posterKey: VIDEO.posterKey });
+  });
+
+  it('fails_when= a failed clip delete stops the poster delete', async () => {
+    mocks.tx.progressPhoto.findFirst.mockResolvedValue(VIDEO);
+    mocks.storageDelete.mockRejectedValueOnce(new Error('storage down'));
+
+    await expect(svc().deletePhoto(actor('ADMIN'), 'photo-1')).resolves.toEqual({
+      id: 'photo-1',
+      unitId: 'unit-1',
+    });
+    expect(mocks.storageDelete).toHaveBeenCalledTimes(2);
+  });
+
+  it('deletes only the poster for a clip whose key was already purged', async () => {
+    mocks.tx.progressPhoto.findFirst.mockResolvedValue({ ...VIDEO, key: null });
+    await svc().deletePhoto(actor('ADMIN'), 'photo-1');
+    expect(mocks.storageDelete).toHaveBeenCalledTimes(1);
+    expect(mocks.storageDelete).toHaveBeenCalledWith(VIDEO.posterKey);
+  });
+
+  it('does not call storage at all for a fully purged tombstone', async () => {
+    mocks.tx.progressPhoto.findFirst.mockResolvedValue({ ...VIDEO, key: null, posterKey: null });
+    await svc().deletePhoto(actor('ADMIN'), 'photo-1');
     expect(mocks.storageDelete).not.toHaveBeenCalled();
   });
 });

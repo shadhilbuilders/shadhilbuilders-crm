@@ -520,12 +520,21 @@ export class CustomerProgressService {
     unitId: string;
     /** Null on an archived tombstone: the row outlives the bytes it named. */
     key: string | null;
+    /** A video's poster object; null for a photo and after a purge. */
+    posterKey: string | null;
     caption: string;
     stage: string | null;
   }> {
     const photo = await tx.progressPhoto.findFirst({
       where: { id: photoId, organizationId: actor.organizationId },
-      select: { id: true, unitId: true, key: true, caption: true, stage: true },
+      select: {
+        id: true,
+        unitId: true,
+        key: true,
+        posterKey: true,
+        caption: true,
+        stage: true,
+      },
     });
     // No row here means either "does not exist" or "the write policy hides it".
     // Both answer 404 - a 403 would confirm a row the caller may not know about.
@@ -605,12 +614,17 @@ export class CustomerProgressService {
           organizationId: actor.organizationId,
           entityType: 'ProgressPhoto',
           entityId: photo.id,
-          before: { caption: photo.caption, key: photo.key, unitId: photo.unitId },
+          before: {
+            caption: photo.caption,
+            key: photo.key,
+            posterKey: photo.posterKey,
+            unitId: photo.unitId,
+          },
           after: {},
           reason: `photo deleted by ${actor.email} (${actor.role})`,
         },
       });
-      return { id: photo.id, unitId: photo.unitId, key: photo.key };
+      return { id: photo.id, unitId: photo.unitId, keys: [photo.key, photo.posterKey] };
     });
 
     // Bytes AFTER the row commits: a failed delete leaves an orphaned blob
@@ -618,19 +632,22 @@ export class CustomerProgressService {
     // as the upload's compensation path, inverted.
     //
     // A tombstone may already have had its keys cleared by the purge cron, in
-    // which case there is nothing left to delete and the warning below would
-    // name a blob that cannot exist.
-    if (removed.key === null) {
+    // which case there is nothing left to delete and a warning would name a
+    // blob that cannot exist. A video has TWO objects (clip and poster); each is
+    // deleted on its own so a failure on one never strands the other.
+    const keys = removed.keys.filter((k): k is string => k !== null);
+    if (keys.length === 0) {
       this.logger.log(`[progress] photo ${removed.id} deleted with no stored key (already purged)`);
       return { id: removed.id, unitId: removed.unitId };
     }
-
-    try {
-      await this.storage.delete(removed.key);
-    } catch (err) {
-      this.logger.warn(
-        `[progress] photo ${removed.id} row deleted but blob ${removed.key} remains: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    for (const key of keys) {
+      try {
+        await this.storage.delete(key);
+      } catch (err) {
+        this.logger.warn(
+          `[progress] photo ${removed.id} row deleted but blob ${key} remains: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
     return { id: removed.id, unitId: removed.unitId };
