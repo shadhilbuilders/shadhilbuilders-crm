@@ -486,6 +486,12 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm --filter @shadhil/web exec playwright install --with-deps chromium
+      # site-video.spec.ts asserts the recorded MP4's codec, B-frames and moov
+      # placement with ffprobe. The runner image does not carry ffmpeg, so those
+      # assertions died with `spawnSync ffprobe ENOENT` and took the whole job
+      # down. Installing it here keeps the assertions (they are the point of the
+      # spec: the clip must be web-safe) instead of skipping them in CI.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       # CI's bare postgres container has no docker-entrypoint hook, so create the
       # non-owner app role BEFORE migrations (migration 1 GRANTs to it).
       - run: |

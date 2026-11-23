@@ -66,9 +66,27 @@ function expectClipFile(body: Buffer, opts: { audio: boolean }): void {
   const file = join(dir, 'clip.mp4');
   writeFileSync(file, body);
 
-  const probe = JSON.parse(
-    execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', file]).toString(),
-  ) as { streams: Array<Record<string, string | number>> };
+  let probed: string;
+  try {
+    probed = execFileSync('ffprobe', [
+      '-v',
+      'error',
+      '-show_streams',
+      '-of',
+      'json',
+      file,
+    ]).toString();
+  } catch (err) {
+    // A missing binary surfaces as a bare ENOENT inside child_process, which in a
+    // CI log reads like the clip was rejected. Name the cause instead.
+    const code = (err as NodeJS.ErrnoException).code;
+    throw new Error(
+      code === 'ENOENT'
+        ? 'ffprobe is not installed; install ffmpeg to run the site-video assertions'
+        : `ffprobe could not read the recorded clip: ${(err as Error).message}`,
+    );
+  }
+  const probe = JSON.parse(probed) as { streams: Array<Record<string, string | number>> };
   const v = probe.streams.find((s) => s.codec_type === 'video');
   expect(v?.codec_name).toBe('h264');
   expect(['Baseline', 'Constrained Baseline', 'Main']).toContain(String(v?.profile));
