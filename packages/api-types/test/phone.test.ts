@@ -96,9 +96,7 @@ describe('per-country mobile rules', () => {
       e164: '16502345678',
       region: 'US',
     });
-    expect(
-      tryParsePhone({ source: 'typed', raw: '1234567890', country: 'US' }).ok,
-    ).toBe(false);
+    expect(tryParsePhone({ source: 'typed', raw: '1234567890', country: 'US' }).ok).toBe(false);
   });
 
   it('names the country and its length in the refusal', () => {

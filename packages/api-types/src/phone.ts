@@ -187,10 +187,7 @@ export function isValidMobileNumber(nationalDigits: string, country: CountryCode
  * that text is a render behind, so the field rewinds and lands on digits the
  * operator never typed. Cutting the new value keeps every accepted digit.
  */
-export function limitPhoneTyping(
-  typed: string,
-  country: CountryCode | null | undefined,
-): string {
+export function limitPhoneTyping(typed: string, country: CountryCode | null | undefined): string {
   if (typed.trimStart().startsWith('+')) return typed;
   const max = maxNationalDigits(country);
   let out = '';
@@ -211,16 +208,12 @@ export function limitPhoneTyping(
  * selected country" tells an operator nothing about which digit is wrong;
  * "India takes a 10-digit mobile" does.
  */
-export function phoneErrorMessage(
-  reason: PhoneParseReason,
-  country?: CountryCode | null,
-): string {
+export function phoneErrorMessage(reason: PhoneParseReason, country?: CountryCode | null): string {
   if (reason !== 'WRONG_COUNTRY' || country === null || country === undefined) {
     return PHONE_ERRORS[reason];
   }
   if (!isCountryCode(country)) return PHONE_ERRORS[reason];
-  const name =
-    listCountries().find((option) => option.code === country)?.name ?? String(country);
+  const name = listCountries().find((option) => option.code === country)?.name ?? String(country);
   const length = mobileNationalLength(country);
   return `That is not a valid mobile number for ${name} (${length} digits)`;
 }

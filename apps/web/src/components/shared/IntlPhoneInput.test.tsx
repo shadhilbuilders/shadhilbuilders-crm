@@ -31,7 +31,12 @@ function shown(html: string): string {
 
 function render(value: string, defaultCountry: 'IN' | 'AE' | 'US' | 'IT') {
   return renderToStaticMarkup(
-    <IntlPhoneInput data-qa="phone" value={value} onChange={noop} defaultCountry={defaultCountry} />,
+    <IntlPhoneInput
+      data-qa="phone"
+      value={value}
+      onChange={noop}
+      defaultCountry={defaultCountry}
+    />,
   );
 }
 
