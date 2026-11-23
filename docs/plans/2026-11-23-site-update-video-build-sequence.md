@@ -115,6 +115,19 @@ One behaviour change to know about: an audio-only `M4A ` file used to be labelle
 
 Verified: backend 1943 passed across 105 files, typecheck clean.
 
+## Step 4: landed 2026-11-23
+
+`UnitUpdateSummary` is split in two, and the plan's "two filtered `take: 1` relations" turned out not to be buildable: Prisma selects a relation once per query, and the grid needs it three ways.
+
+- **Legacy fields stay in `UNIT_ROW_SELECT`, filtered to PHOTO.** `lastPhotoAt`, `photoCount` and the `lastPhotoStage` alias still come from the row, now with `where: { kind: 'PHOTO' }` on both the take-1 relation and the filtered `_count`, so a clip can never become "the newest photo" or inflate the photo count. For photo-only data the output is identical.
+- **The video-aware fields come from `unit-update-summary.ts`**: `videoCount`, `updateCount`, `lastUpdateAt`, `lastRecordedStage`, `lastRecordedStageAt`. `loadUnitUpdateExtras` runs two statements for a whole page, one `groupBy(unitId, kind)` and one `DISTINCT ON ("unitId")` over rows `WHERE stage IS NOT NULL`, on the caller's RLS transaction. It is wired into the units list, the unit detail read and the site units list.
+
+Two decisions to know about. The new `UnitRow` fields are **optional on the wire and omitted, not zero,** when a surface did not load them (create, update, assign, the plot map), so an unloaded count cannot be read as an empty feed. And `lastPhotoStage` keeps its old meaning (newest PHOTO's stage) rather than becoming an alias of `lastRecordedStage` today: aliasing them would change what a photo-only unit shows when its newest photo has no stage but an older one does, and step 4 promised no visible change. Step 7 moves the readers to `lastRecordedStage` and deletes the alias.
+
+The query was run against live Postgres in a throwaway test (not committed): a unit with a STRUCTURE photo and a newer stageless video returned `videoCount 1`, `updateCount 2`, `lastRecordedStage STRUCTURE` dated the photo, and `lastUpdateAt` dated the clip. The committed tests prove the fold, the two-statement call shape and the PHOTO filters, with mocks; there is no committed DB-backed proof of the SQL text.
+
+Verified: backend typecheck clean; inventory and customer-progress suites green.
+
 ## Known gaps: ten items, checked before the flag flips
 
 Found by auditing the plan against the code after the gate closed. Items 1 to 4 block step 5 as written; the rest are named risks with a decision attached rather than silent assumptions.

@@ -72,6 +72,24 @@ export const UnitRowSchema = z.object({
    */
   lastPhotoStage: ConstructionStageSchema.nullable(),
   /**
+   * Site update video (2026-11-23): the rest of the derived UnitUpdateSummary.
+   * Absent means "this surface did not load it", never zero - so a consumer
+   * cannot mistake an unloaded count for an empty feed. The units grid, the
+   * detail read and the site list always send them. `photoCount` above stays
+   * photos only; `updateCount` is every row, photo or video.
+   */
+  videoCount: z.number().int().min(0).optional(),
+  updateCount: z.number().int().min(0).optional(),
+  /** Newest row of ANY kind. */
+  lastUpdateAt: z.iso.datetime({ offset: true }).nullable().optional(),
+  /**
+   * Stage of the newest row WHERE stage IS NOT NULL, whatever its kind. A newer
+   * clip with no stage moves neither this nor its date. `lastPhotoStage` is the
+   * legacy alias (newest PHOTO's stage) and is deleted with its last reader.
+   */
+  lastRecordedStage: ConstructionStageSchema.nullable().optional(),
+  lastRecordedStageAt: z.iso.datetime({ offset: true }).nullable().optional(),
+  /**
    * Staff-entered handover estimate shown to the buyer in the portal. Null means
    * "not set" (the portal then renders nothing). Optional on the wire so older
    * fixtures and clients keep parsing; the API always sends it.

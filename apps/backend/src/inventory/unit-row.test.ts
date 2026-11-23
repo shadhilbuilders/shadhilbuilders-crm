@@ -248,3 +248,48 @@ describe('toUnitRow - money audience', () => {
     expect(() => toUnitRow(redacted as never, true)).toThrow(/different audiences/);
   });
 });
+
+describe('toUnitRow - update summary extras (site update video, step 4)', () => {
+  it('omits the new fields when the caller did not load them, rather than sending zeros', () => {
+    const row = toUnitRow(source(), true);
+    expect('videoCount' in row).toBe(false);
+    expect('updateCount' in row).toBe(false);
+    expect(() => UnitRowSchema.parse(row)).not.toThrow();
+  });
+
+  it('sends the loaded extras alongside the unchanged photo-only fields', () => {
+    const row = toUnitRow(
+      source({
+        progressPhotos: [{ takenAt: new Date('2026-11-06T04:30:00.000Z'), stage: 'READY' }],
+        _count: { progressPhotos: 2 },
+      }),
+      true,
+      {
+        videoCount: 1,
+        updateCount: 3,
+        lastUpdateAt: new Date('2026-11-09T04:30:00.000Z'),
+        lastRecordedStage: 'READY',
+        lastRecordedStageAt: new Date('2026-11-06T04:30:00.000Z'),
+      },
+    );
+    expect(row).toMatchObject({
+      photoCount: 2,
+      lastPhotoStage: 'READY',
+      videoCount: 1,
+      updateCount: 3,
+      lastUpdateAt: '2026-11-09T04:30:00.000Z',
+      lastRecordedStage: 'READY',
+      lastRecordedStageAt: '2026-11-06T04:30:00.000Z',
+    });
+    expect(() => UnitRowSchema.parse(row)).not.toThrow();
+  });
+
+  it('selects only PHOTO rows for the legacy fields, so a clip never becomes "the newest photo"', () => {
+    expect(UNIT_ROW_SELECT.progressPhotos.where).toEqual({ kind: 'PHOTO' });
+    expect(UNIT_ROW_SELECT_NO_MONEY.progressPhotos.where).toEqual({ kind: 'PHOTO' });
+    expect(UNIT_ROW_SELECT._count.select.progressPhotos).toEqual({ where: { kind: 'PHOTO' } });
+    expect(UNIT_ROW_SELECT_NO_MONEY._count.select.progressPhotos).toEqual({
+      where: { kind: 'PHOTO' },
+    });
+  });
+});

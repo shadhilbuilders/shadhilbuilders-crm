@@ -64,6 +64,9 @@ function makeService(): {
   const client = {
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+    // The video-aware unit summary: one grouped count, one DISTINCT ON.
+    $queryRaw: vi.fn().mockResolvedValue([]),
+    progressPhoto: { groupBy: vi.fn().mockResolvedValue([]) },
     unit: {
       findMany: vi.fn(),
       count: vi.fn(),

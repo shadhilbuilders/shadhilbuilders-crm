@@ -15,6 +15,7 @@ import { rlsContextFrom, withRlsContext, type Prisma, type PrismaClient } from '
 import type { SiteUnitScope, SiteUnitsResult } from '@shadhil/api-types';
 
 import { toUnitRow, unitRowSelectFor } from '../inventory/unit-row';
+import { extrasFor, loadUnitUpdateExtras } from '../inventory/unit-update-summary';
 import { PrismaService } from '../prisma/prisma.module';
 
 /** Hard cap on one site-units response (the page renders a map, not a table). */
@@ -71,11 +72,15 @@ export class SiteUnitsService {
         }),
         db.unit.count({ where }),
       ]);
+      const extras = await loadUnitUpdateExtras(
+        db,
+        rows.map((r) => r.id),
+      );
       return {
         scope,
         canCapture: actor.role === 'ENGINEER',
         total,
-        rows: rows.map((r) => toUnitRow(r, false)),
+        rows: rows.map((r) => toUnitRow(r, false, extrasFor(extras, r.id))),
       };
     });
   }

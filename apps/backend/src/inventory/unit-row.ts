@@ -16,6 +16,8 @@ import type { UnitRow } from '@shadhil/api-types';
 import { InternalServerErrorException } from '@nestjs/common';
 import type { Prisma } from '@shadhil/database';
 
+import { unitUpdateExtrasToWire, type UnitUpdateExtras } from './unit-update-summary';
+
 /**
  * The unit columns every unit surface sends, plus the phase/project names the
  * grids denormalize so the UI needs no second lookup.
@@ -52,11 +54,15 @@ export const UNIT_ROW_SELECT = {
   // real count - not something the browser invents. The newest photo's
   // `takenAt` drives the four-state map; `_count` gives the feed size.
   progressPhotos: {
+    // PHOTO only (2026-11-23): once a unit can hold a clip, "newest photo" and
+    // "how many photos" must not start counting videos. The video-aware
+    // figures come from `loadUnitUpdateExtras`, in one batched query.
+    where: { kind: 'PHOTO' },
     select: { takenAt: true, stage: true },
     orderBy: { takenAt: 'desc' },
     take: 1,
   },
-  _count: { select: { progressPhotos: true } },
+  _count: { select: { progressPhotos: { where: { kind: 'PHOTO' } } } },
 } as const satisfies Prisma.UnitSelect;
 
 /**
@@ -85,11 +91,15 @@ export const UNIT_ROW_SELECT_NO_MONEY = {
     select: { name: true, projectId: true, project: { select: { name: true } } },
   },
   progressPhotos: {
+    // PHOTO only (2026-11-23): once a unit can hold a clip, "newest photo" and
+    // "how many photos" must not start counting videos. The video-aware
+    // figures come from `loadUnitUpdateExtras`, in one batched query.
+    where: { kind: 'PHOTO' },
     select: { takenAt: true, stage: true },
     orderBy: { takenAt: 'desc' },
     take: 1,
   },
-  _count: { select: { progressPhotos: true } },
+  _count: { select: { progressPhotos: { where: { kind: 'PHOTO' } } } },
 } as const satisfies Prisma.UnitSelect;
 
 /**
@@ -127,6 +137,7 @@ export type UnitRowSourceRedacted = Prisma.UnitGetPayload<{
 export function toUnitRow(
   row: UnitRowSource | UnitRowSourceRedacted,
   canSeeMoney: boolean,
+  extras?: UnitUpdateExtras,
 ): UnitRow {
   // Newest photo = the unit's current documentation state. `progressPhotos` is
   // selected with take: 1 ordered by takenAt DESC, so index 0 is the newest.
@@ -151,6 +162,8 @@ export function toUnitRow(
     // Derived from the newest photo, never denormalized. Null means the newest
     // capture recorded no stage - every surface then says "Stage not set".
     lastPhotoStage: newestPhoto?.stage ?? null,
+    // Omitted (not zero) when the caller did not load the summary.
+    ...(extras === undefined ? {} : unitUpdateExtrasToWire(extras)),
     expectedHandoverDate: row.expectedHandoverDate?.toISOString() ?? null,
     assignedEngineerId: row.assignedEngineerId,
     assignedEngineerName: row.assignedEngineer?.name ?? null,

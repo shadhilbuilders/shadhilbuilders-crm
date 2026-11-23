@@ -61,6 +61,7 @@ import type {
 
 import { PrismaService } from '../prisma/prisma.module';
 import { UNIT_ROW_SELECT, unitRowSelectFor, toUnitRow } from './unit-row';
+import { extrasFor, loadUnitUpdateExtras } from './unit-update-summary';
 import { unitStatusRank } from './unit-status-rank';
 import { canManageProjectMembers, canSeeUnitMoney, isAdminClass } from '../users/roles';
 
@@ -284,9 +285,14 @@ export class InventoryService {
         .map((id) => byId.get(id))
         .filter((r): r is (typeof rows)[number] => r !== undefined);
 
+      // Video-aware summary for the whole page in two statements.
+      const extras = await loadUnitUpdateExtras(
+        tx as unknown as PrismaClient,
+        orderedRows.map((r) => r.id),
+      );
       return {
         total,
-        rows: orderedRows.map((r) => toUnitRow(r, canSeeMoney)),
+        rows: orderedRows.map((r) => toUnitRow(r, canSeeMoney, extrasFor(extras, r.id))),
       };
     });
   }
@@ -311,7 +317,8 @@ export class InventoryService {
       if (unit === null) {
         throw new NotFoundException(`Unit ${unitId} not found`);
       }
-      return toUnitRow(unit, canSeeMoney);
+      const extras = await loadUnitUpdateExtras(tx as unknown as PrismaClient, [unit.id]);
+      return toUnitRow(unit, canSeeMoney, extrasFor(extras, unit.id));
     });
   }
 
