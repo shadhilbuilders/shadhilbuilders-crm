@@ -281,53 +281,56 @@ migration plus a backfill for a problem two indexed lookups solve.
 
 ## Test health
 
-### `auto-assign.service.test.ts` failed once and would not reproduce
+### Shared-tenant test fixtures: five specs collide under concurrency
 
-**What:** `autoAssignLeads = false → manager owns the lead (pending) > routes to the creating
-team manager with ownerType MANAGER` failed once in a full backend run (1 failed | 2175 passed),
-then passed alone (25/25) and in seven further full runs.
+**What:** DB-backed specs seed into the SAME demo organization. Rows that are per-ORG therefore
+belong to every suite at once, and vitest runs files in parallel against one database. Three
+concurrent full suites produced 8, 11 and 6 failures, in five specs, all of one shape:
 
-**Repro attempts, all clean (2026-11-23):** four sequential full suites (2176/2176 each) and
-three CONCURRENT full suites against the same test database (3-way contention, the condition the
-vitest config already documents as load-sensitive). The auto-assign spec did not fail once in any
-of them.
-
-**Both original hypotheses were wrong, and reading the code disproved them:**
-
-1. "TEAM_B's flag is set false and never restored, so a later test inherits it" - the fixture
-   teams are `auto-team-b-${RUN_TAG}`, unique per run. There is nothing to inherit.
-2. "The phone is `Date.now()`-derived, so a leftover row collides and `create()` returns an older
-   lead with a different owner" - `create()` THROWS on a duplicate phone (`BadRequestException`),
-   it never returns an existing lead; and the duplicate check is scoped to
-   `organizationId + projectId`, with `PROJECT_ID` also per-run. Phones here cannot collide.
-
-**What the concurrency run did prove:** three simultaneous suites produce 11-14 failures, in
-sibling specs, all of the same shape - specs that count global rows or mutate shared ledgers:
-
-    site-video-ledger.db.test.ts        shared org/project ledger bytes
-    overdue-alerts.processor.test.ts    "expected 3 to be 1" (global reminder rows)
-    visit-reminders / visits.notifications   shared pending-row counts
+    site-video-ledger.db.test.ts        "expected {org: 36700160} to equal {org: 26214400}"
+    overdue-alerts.processor.test.ts    "expected 3 to be 1" (org-wide reminder scan)
+    visit-reminders.test.ts             mutates the ORG row (visitReminderLeadMinutes)
+    visits.notifications.test.ts        shared pending-row reads
     outbound.cron.test.ts               shared outbox rows
 
-That is per-file isolation (own org, or a rollback transaction), not one spec's bug. The
-auto-assign suite was NOT among them, which is why it stays a separate question.
+**Why it matters:** a red suite that goes green on a re-run trains everyone to re-run. It hides
+real failures, and it costs minutes every time it fires.
 
-**Remaining hypothesis:** a load-sensitive transient during the one run that had a web
-`tsc --noEmit` and a prettier pass in flight. `vitest.config.ts` documents exactly this class for
-this suite (30s timeouts exist because of it), and the failing run's output was filtered by a
-`grep -E "Test Files|Tests |FAIL"`, so the error text was thrown away rather than unreadable.
-Next occurrence: capture `vitest run 2>&1 | tail -60` before summarising.
+**Fix, and why the ORGANIZATION is the unit of isolation:** RLS is scoped to `app.user_org_id`, so
+a private org per suite makes another file's rows invisible at the POLICY layer. Nothing
+test-only leaks into a business path, and the tenant boundary is the one production uses. A
+private PROJECT inside the demo org would NOT fix it: `StorageUsage` is one row per organization,
+the overdue scan is org-wide, and `visitReminderLeadMinutes` is org configuration.
 
-**Changed (2026-11-23):** the spec now asserts `{ ownerId, ownerType }` as a pair, read back from
-the row. `ownerType` was never asserted on this path (the file said so in a comment), so
-`ownerId === MGR_B` alone would also pass if another path landed on the same user. A recurrence
-now reports what the row actually was.
+`apps/backend/src/test-utils/test-tenant.ts` provides `createTestTenant(label)`: a fresh
+organization (id + slug unique per run) through the owner-role test client, and `dispose()` which
+deletes the org and lets the cascades take users, projects, leads, ledgers and notifications.
 
-**Fix:** if it recurs, take the captured error first. If it is a timeout, the answer is fewer
-workers or a longer connect timeout for the test pool, not a retry in the spec.
+**Converted and verified (2026-11-23):** `site-video-ledger.db.test.ts`,
+`overdue-alerts.processor.test.ts`, `visit-reminders.test.ts`. Each runs green alone, in the full
+suite (121 files / 2176), and three copies of all three run CONCURRENTLY: 3/3 green, where the
+ledger spec failed every time before.
 
-**Effort:** S (diagnose) / M (per-file isolation across the suites above).
-**Priority:** P2 for the isolation work: it is the same failure class in five specs, and it is
-what turns "run it again" into a habit.
+**Still on the demo org:** `visits.notifications.test.ts`, `outbound.cron.test.ts`. Convert the
+same way when touching them.
+
+**Three constraints for the rest, learned the hard way:**
+
+1. A tenant alone is NOT enough for a cron spec. `tick()` scans EVERY organization, so a suite
+   running in parallel processes this tenant's rows too (it stamps the visit, it sends the
+   overdue alert). A tenant stops rows colliding; it does not stop another process doing the work.
+   `withCronTickLock(tenant, fn)` in `test-utils/test-tenant.ts` takes a Postgres
+   transaction-scoped advisory lock, so ticks serialise across processes the way the Redis lock
+   serialises them in production (these specs stub that lock to always grant).
+2. Consequently, do not assert a tick's RETURN VALUE (`considered > 0`, `sent >= 1`): the other
+   process may legitimately have done the work. Assert the outcome - who received what, and the
+   durable stamp that dedupes the next tick. Both specs now do, and say why in a comment.
+3. Adding orgs to the test database means every org-wide scan sees them, and process-wide env
+   (`WHATSAPP_PHONE_NUMBER_ID`, `LEADS_FALLBACK_OWNER_ID`, the `SITE_VIDEO_*` caps) is NOT per-org,
+   so a tenant cannot isolate those. Inject per test or per worker instead of reading the
+   environment.
+
+**Effort:** S per spec now that the helper exists. **Priority:** P2, highest of the test-health
+items, because it is the one that actually flips red.
 
 ## Completed

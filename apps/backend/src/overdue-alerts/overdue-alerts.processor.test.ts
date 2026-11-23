@@ -20,6 +20,7 @@ import { prisma as runtimePrisma, type PrismaClient } from '@shadhil/database';
 import { withRlsContext } from '@shadhil/database';
 
 import { NotificationsService } from '../notifications/notifications.service';
+import { createTestTenant, withCronTickLock, type TestTenant } from '../test-utils/test-tenant';
 import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
 import { OverdueAlertsService, OVERDUE_ALERT_LOCK_KEY } from './overdue-alerts.service';
@@ -32,12 +33,18 @@ const HAS_DB = Boolean(process.env.DATABASE_URL);
 const HAS_REDIS = Boolean(process.env.REDIS_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
-const ORG_ID = 'ceid01lpfe1esm8jwsxid41k28';
-const ADMIN_ID = 'zhp69koimlj4hqorl1skmpsq';
-const TEST_PROJECT_ID = 'wqvswgk5n0ucvq8l1ydva3d7';
+// A private organization per run (test-utils/test-tenant). This spec ticks the
+// REAL cron, which scans leads org-wide and resolves the org's OWNER as a
+// recipient: pointing it at the demo org meant every concurrently running suite
+// shared those rows, and "expected 3 to be 1" was another file's notification.
+// The tenant is created in beforeAll, so the ids below are assigned there.
+let tenant: TestTenant;
+let ORG_ID: string;
+let ADMIN_ID: string;
+let TEST_PROJECT_ID: string;
 // The org's single OWNER (the one_owner_per_org constraint forbids seeding a
-// second). Verified present in the dev DB. This is the org-owner recipient.
-const ORG_OWNER_ID = 'oet70k7svsjrta4480fnyenx';
+// second). This is the org-owner recipient.
+let ORG_OWNER_ID: string;
 
 // Ids unique per test run (hyphen-free base36 so the FK/unique constraints hold).
 const runToken = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -58,21 +65,19 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
 
 async function cleanup(): Promise<void> {
   if (prisma === null) return;
-  await adminSeed(async (db) => {
-    await db.notification.deleteMany({
-      where: { leadId: LEAD_ID },
-    });
-    await db.lead.deleteMany({ where: { id: LEAD_ID } });
-    await db.team.deleteMany({ where: { id: TEAM_ID } });
-    await db.user.deleteMany({ where: { id: { in: [OWNER_ID, MANAGER_ID] } } });
-  });
+  // One delete: the org cascades to its users, team, project, lead and the
+  // notifications the cron wrote.
+  await tenant.dispose();
 }
 
 // Seed: org owner (OWNER role), a manager (leads a team), a team + project,
 // and an OVERDUE NEW lead owned by the manager's teammate (the owner here).
 async function seedFixtures(): Promise<void> {
   if (prisma === null) throw new Error('prisma missing');
-  await adminSeed(async (db) => {
+  // Fixtures go through the owner-role client: a brand-new org has no user to
+  // act as yet, and this spec is about the cron's recipient resolution, not RLS.
+  const db = tenant.admin;
+  await (async () => {
     await db.user.upsert({
       where: { id: ADMIN_ID },
       update: {},
@@ -81,6 +86,21 @@ async function seedFixtures(): Promise<void> {
         email: `test-ovdo-admin@x`,
         name: 'test-ovdo-admin',
         role: 'ADMIN',
+        emailVerified: true,
+        organizationId: ORG_ID,
+      },
+    });
+    // The org's OWNER: the cron adds org owners as recipients, so the tenant
+    // needs one (one_owner_per_org allows exactly one). Seeded before the team
+    // so the manager-vs-owner distinction stays visible in the fixture.
+    await db.user.upsert({
+      where: { id: ORG_OWNER_ID },
+      update: { role: 'OWNER' },
+      create: {
+        id: ORG_OWNER_ID,
+        email: `test-ovdo-orgowner@${runToken}.x`,
+        name: 'Test Org Owner',
+        role: 'OWNER',
         emailVerified: true,
         organizationId: ORG_ID,
       },
@@ -149,7 +169,7 @@ async function seedFixtures(): Promise<void> {
         createdAt: new Date(Date.now() - 40 * 60_000),
       },
     });
-  });
+  })();
 }
 
 class StubRedis implements Pick<RedisService, 'acquireLock' | 'releaseLock' | 'renewLease'> {
@@ -199,6 +219,11 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
     let notifications: NotificationsService;
 
     beforeAll(async () => {
+      tenant = await createTestTenant('overdue-alerts');
+      ORG_ID = tenant.organizationId;
+      ADMIN_ID = `ovdo-admin-${runToken}`;
+      ORG_OWNER_ID = `ovdo-ownr-${runToken}`;
+      TEST_PROJECT_ID = `ovdo-proj-${runToken}`;
       await seedFixtures();
     }, 30_000);
 
@@ -222,10 +247,13 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
     });
 
     it('happy path: emits to owner + manager + org owner, then stamps the lead', async () => {
-      await service.tick();
+      await withCronTickLock(tenant, () => service.tick());
       const last = service.getLastTick();
       expect(last?.lockHeld).toBe(true);
-      expect(last?.considered).toBeGreaterThan(0);
+      // `considered` is deliberately not asserted. The scan covers EVERY
+      // organization, so a suite running in parallel can stamp this lead first and
+      // leave this tick considering 0 - the recipients' inboxes below are what the
+      // spec actually claims, and the durable stamp is asserted after them.
 
       // Notifications are owner-scoped by RLS (notification_select_owner:
       // a user only sees their own rows). The cron emitted one to EACH of the
@@ -262,11 +290,11 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
 
     it('every-1-hour cadence: a second tick within the hour does NOT re-push', async () => {
       // First tick pushes + stamps.
-      await service.tick();
+      await withCronTickLock(tenant, () => service.tick());
 
       // Immediately tick again - should consider 0 (already stamp this tick
       // window), so no duplicate notifications.
-      await service.tick();
+      await withCronTickLock(tenant, () => service.tick());
 
       // Count via the lead owner's RLS context (admin can't see others' rows).
       const forOwner = await withRlsContext(
@@ -288,7 +316,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
       const acquired = await stubRedis.acquireLock(OVERDUE_ALERT_LOCK_KEY, 50, REPLICA_A);
       expect(acquired).toBe(true);
 
-      await service.tick();
+      await withCronTickLock(tenant, () => service.tick());
       const last = service.getLastTick();
       expect(last?.lockHeld).toBe(false);
       expect(last?.considered).toBe(0);

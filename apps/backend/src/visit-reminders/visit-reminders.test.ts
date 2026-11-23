@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.module';
 import type { RedisService } from '../redis/redis.module';
 
+import { createTestTenant, withCronTickLock, type TestTenant } from '../test-utils/test-tenant';
 import { VisitRemindersService } from './visit-reminders.service';
 
 // Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
@@ -14,7 +15,12 @@ const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
-const ORG = 'ceid01lpfe1esm8jwsxid41k28';
+// A private organization per run (test-utils/test-tenant). This spec MUTATES the
+// organization row it works against (`visitReminderLeadMinutes`), which is
+// org-level configuration: on the demo org that is a shared switch two suites can
+// flip on each other. The tenant also owns the one OWNER the reminder resolves.
+let ORG: string;
+let tenant: TestTenant;
 const RUN = Date.now();
 const P = `test-vrem-`;
 const ids = {
@@ -22,8 +28,8 @@ const ids = {
   exec: `${P}exec-${RUN}`,
   tc: `${P}tc-${RUN}`,
   mgr: `${P}mgr-${RUN}`,
-  // one OWNER per org is enforced by the DB: use the org's real owner
-  owner: '',
+  // one OWNER per org is enforced by the DB: seeded into this run's org.
+  owner: `${P}ownr-${RUN}`,
   project: `${P}proj-${RUN}`,
   team: `${P}team-${RUN}`,
   lead: `${P}lead-${RUN}`,
@@ -54,22 +60,6 @@ async function inbox(userId: string): Promise<string[]> {
   return rows.map((r: { leadId: string | null }) => r.leadId ?? '');
 }
 
-async function cleanup(): Promise<void> {
-  await admin(async (db) => {
-    const like = `${P}%`;
-    await db.$executeRawUnsafe(`DELETE FROM "SiteVisit" WHERE id LIKE $1`, like);
-    await db.$executeRawUnsafe(
-      `DELETE FROM "Notification" WHERE "userId" LIKE $1 OR "leadId" LIKE $1`,
-      like,
-    );
-    await db.$executeRawUnsafe(`DELETE FROM "AuditLog" WHERE "userId" LIKE $1`, like);
-    await db.$executeRawUnsafe(`DELETE FROM "Lead" WHERE id LIKE $1`, like);
-    await db.$executeRawUnsafe(`DELETE FROM "Team" WHERE id LIKE $1`, like);
-    await db.$executeRawUnsafe(`DELETE FROM "Project" WHERE id LIKE $1`, like);
-    await db.$executeRawUnsafe(`DELETE FROM "User" WHERE id LIKE $1`, like);
-  });
-}
-
 describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
   vi.setConfig({ testTimeout: 60_000 });
   let service: VisitRemindersService;
@@ -81,16 +71,10 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
 
   beforeAll(async () => {
     const ps = { $client: prisma as unknown as PrismaClient } as PrismaService;
-    await cleanup();
-    const owner = await admin((db) =>
-      db.user.findFirst({
-        where: { organizationId: ORG, role: 'OWNER', deletedAt: null },
-        select: { id: true },
-      }),
-    );
-    if (owner === null) throw new Error('fixture: org has no OWNER');
-    ids.owner = owner.id;
+    tenant = await createTestTenant('visit-reminders');
+    ORG = tenant.organizationId;
     for (const [id, role] of [
+      [ids.owner, 'OWNER'],
       [ids.admin, 'ADMIN'],
       [ids.exec, 'SALES_EXEC'],
       [ids.tc, 'TELECALLER'],
@@ -168,10 +152,10 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
   });
 
   afterAll(async () => {
-    await admin((db) =>
-      db.organization.update({ where: { id: ORG }, data: { visitReminderLeadMinutes: 60 } }),
-    );
-    await cleanup();
+    // The org cascades to its users, team, project, leads, visits and the
+    // notifications the cron wrote. No shared row was touched, so nothing to
+    // restore either.
+    await tenant.dispose();
   });
 
   const seedVisit = (id: string, minutesAhead: number, leadId = ids.lead) =>
@@ -195,15 +179,20 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
     await seedVisit(ids.soon, 30);
     await seedVisit(ids.later, 180, ids.lead2);
 
-    const sent = await service.tick();
-    expect(sent).toBeGreaterThanOrEqual(1);
+    // The return value is deliberately not asserted. `tick()` scans EVERY
+    // organization in the database, so a suite running in parallel can process this
+    // tenant's visit first and leave this tick with nothing due (it returns 0).
+    // What the spec claims is that the reminder reached the right four people
+    // exactly once, which holds whoever's tick delivered it - the inboxes below
+    // are the assertion.
+    await withCronTickLock(tenant, () => service.tick());
 
     for (const who of [ids.exec, ids.tc, ids.mgr, ids.owner]) {
       expect(await inbox(who)).toContain(ids.lead);
     }
 
     // Second tick: no duplicate for the soon visit, and the later one is outside 60 min.
-    await service.tick();
+    await withCronTickLock(tenant, () => service.tick());
     expect(await inbox(ids.exec)).toHaveLength(1);
     const later = await admin((db) =>
       db.siteVisit.findUnique({ where: { id: ids.later }, select: { reminderSentAt: true } }),
@@ -215,7 +204,7 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
     await admin((db) =>
       db.organization.update({ where: { id: ORG }, data: { visitReminderLeadMinutes: 240 } }),
     );
-    await service.tick();
+    await withCronTickLock(tenant, () => service.tick());
     const later = await admin((db) =>
       db.siteVisit.findUnique({ where: { id: ids.later }, select: { reminderSentAt: true } }),
     );
@@ -229,7 +218,7 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
     await admin((db) =>
       db.siteVisit.update({ where: { id: closed }, data: { status: 'CANCELLED' } }),
     );
-    await service.tick();
+    await withCronTickLock(tenant, () => service.tick());
     const row = await admin((db) =>
       db.siteVisit.findUnique({ where: { id: closed }, select: { reminderSentAt: true } }),
     );
