@@ -294,6 +294,18 @@ async function main() {
   // Demo leads - a spread of states so the inbox, board and filters all render
   // variety, owned by the demo user's team (RLS scopes by owner/team/org).
   // 12 leads = 2 pages (page size 10) so pagination tests can assert page 2.
+  //
+  // IDENTITY RULE (2026-11-22): `phone` and `phoneE164` hold the SAME canonical
+  // digits (country code, no `+`), and the `Lead_phone_equals_phoneE164` CHECK
+  // makes them disagreeing impossible. A fixture written with the bare 10-digit
+  // number now fails the whole script with "Argument `phoneE164` is missing" -
+  // which is what turned the E2E job red. Same normalisation the seed uses.
+  const demoPhone = (raw: string): string => {
+    const digits = raw.replace(/\D/g, '');
+    if (/^[6-9]\d{9}$/.test(digits)) return `91${digits}`;
+    if (/^91[6-9]\d{9}$/.test(digits)) return digits;
+    throw new Error(`demo fixture phone is not an Indian mobile: ${raw}`);
+  };
   const leadDefs = [
     {
       id: DEMO_LEAD_1,
@@ -386,6 +398,8 @@ async function main() {
       where: { id: l.id },
       update: {
         name: l.name,
+        phone: demoPhone(l.phone),
+        phoneE164: demoPhone(l.phone),
         state: l.state,
         source: l.source,
         projectId: demoProject.id,
@@ -397,7 +411,8 @@ async function main() {
       create: {
         id: l.id,
         name: l.name,
-        phone: l.phone,
+        phone: demoPhone(l.phone),
+        phoneE164: demoPhone(l.phone),
         state: l.state,
         source: l.source,
         projectId: demoProject.id,
