@@ -298,7 +298,7 @@ export function LoginForm() {
             label: 'Email or phone',
             type: 'input',
             required: true,
-            placeholder: 'you@shadhilbuilders.in or 98765 43210',
+            placeholder: 'Enter your email or phone number',
             disabled: pending,
             inputProps: {
               // `username` covers both shapes for password managers. The richer
