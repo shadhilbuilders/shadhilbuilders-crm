@@ -510,7 +510,14 @@ export class CustomerProgressService {
     tx: RlsTx,
     actor: JwtPayload,
     photoId: string,
-  ): Promise<{ id: string; unitId: string; key: string; caption: string; stage: string | null }> {
+  ): Promise<{
+    id: string;
+    unitId: string;
+    /** Null on an archived tombstone: the row outlives the bytes it named. */
+    key: string | null;
+    caption: string;
+    stage: string | null;
+  }> {
     const photo = await tx.progressPhoto.findFirst({
       where: { id: photoId, organizationId: actor.organizationId },
       select: { id: true, unitId: true, key: true, caption: true, stage: true },
@@ -602,8 +609,17 @@ export class CustomerProgressService {
     });
 
     // Bytes AFTER the row commits: a failed delete leaves an orphaned blob
-    // (logged) rather than a row pointing at bytes that are gone. Same
-    // posture as the upload's compensation path, inverted.
+    // (logged) rather than a row pointing at bytes that are gone. Same posture
+    // as the upload's compensation path, inverted.
+    //
+    // A tombstone may already have had its keys cleared by the purge cron, in
+    // which case there is nothing left to delete and the warning below would
+    // name a blob that cannot exist.
+    if (removed.key === null) {
+      this.logger.log(`[progress] photo ${removed.id} deleted with no stored key (already purged)`);
+      return { id: removed.id, unitId: removed.unitId };
+    }
+
     try {
       await this.storage.delete(removed.key);
     } catch (err) {

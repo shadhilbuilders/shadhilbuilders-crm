@@ -41,6 +41,10 @@ export interface TimelinePhotoDto {
   createdAt: string;
   creatorName: string | null;
   creatorIsPhotoLead: boolean | null;
+  /**
+   * Same-origin BFF path to the bytes. Empty on an archived tombstone, whose
+   * keys are cleared after the purge (2026-11-23) - no such row exists yet.
+   */
   mediaUrl: string;
   /**
    * May this session be offered the edit/delete controls? Mirrors the
@@ -108,7 +112,13 @@ interface PhotoRow {
   takenAt: Date;
   stage: string | null;
   createdAt: Date;
-  key: string;
+  /**
+   * Null on an archived tombstone (2026-11-23): the purge deletes the objects
+   * and then clears the keys, so the row can outlive the bytes. No such row
+   * exists yet; step 5 gives the DTO its tombstone state and `mediaUrl` its
+   * poster branch, and this file stops lying about the type in the meantime.
+   */
+  key: string | null;
   createdBy: string | null;
 }
 
@@ -162,7 +172,11 @@ export function toTimelinePhotoDto(
     createdAt: row.createdAt.toISOString(),
     creatorName: label?.creator_name ?? null,
     creatorIsPhotoLead: label?.creator_is_photo_lead ?? null,
-    mediaUrl: mediaUrlFor(row.key),
+    // A tombstone has no bytes left to point at (2026-11-23). Until step 5 adds
+    // the DTO's tombstone state and the poster branch, an archived row resolves
+    // to an empty URL; no archived row exists yet, so this branch is unreachable
+    // today and the wire shape is unchanged for every live row.
+    mediaUrl: row.key === null ? '' : mediaUrlFor(row.key),
     canMutate: canMutateRow(row, scope),
   };
 }

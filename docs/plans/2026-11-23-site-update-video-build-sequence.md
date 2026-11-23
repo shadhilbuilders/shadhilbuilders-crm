@@ -79,6 +79,20 @@ A 45 second clip at 2.5 Mbps measured 13.61 MB, which is 13.0 MiB, so the 14MiB 
 
 Steps 1 to 4 change no behaviour a user can see. That is deliberate: the risky structural work lands before any pixel moves.
 
+## Step 1: landed 2026-11-23
+
+One migration, one test file, two small service edits.
+
+`20261123120000_progress_photo_video` carries the schema as planned: `kind` (enum, default PHOTO, no backfill), `key` widened to nullable, the six video columns, `Unit.handoverCompletedAt`, four CHECK constraints added NOT VALID and validated in the same file, three indexes, and `StorageUsage` + `SiteUpdateDelivery` with GRANT, ENABLE, FORCE RLS and policies. The indexes are plain `CREATE UNIQUE INDEX`, not `CONCURRENTLY`: Prisma Migrate wraps a migration in one transaction and `CONCURRENTLY` cannot run inside one. The repo already made that call in `20261118120000_user_phone_partial_unique`, and 13 rows do not justify splitting the file.
+
+The write policies are staff-role gated, and that is a correction caught while this was still uncommitted. Write arms that checked only the organisation let a CUSTOMER login advance `StorageUsage.usedBytes` - and that ledger is what enforces the per-org cap, so a buyer could hand themselves unlimited storage - and let the same buyer mark a WhatsApp delivery SENT. The portal migration already stated the rule it broke: no write arm exists for CUSTOMER on any table. Writes to both new tables now name the staff roles; reads stay org-scoped. The GUC-only service markers appear in no staff list, so a forged `CRON_SERVICE` role carrying a real user id reaches neither a staff arm nor the sentinel-checked cron arm.
+
+`packages/database/test/site-update-video-rls.test.ts` is the proof, 22 cases: every CHECK rejects its half-written row and accepts the boundary case, `kind` still defaults to PHOTO, a member reads and advances the ledger while another org sees nothing, a CUSTOMER is denied write access to both tables, the cron pair claims a PENDING row and a forged role with a real user id is denied, an engineer writes only their own villa's delivery row, and MANAGER cannot delete a batch ADMIN can.
+
+The non-test code changes are `assertPhotoMutable` returning `key: string | null` and `deletePhoto` skipping the storage call when a tombstone has no key left; the mapper's `mediaUrl` returns an empty string for such a row, which no live row can reach. `lastPhotoStage` is untouched, which is what keeps the web typecheck green.
+
+Verified: `pnpm --filter @shadhil/database test` 286 passed across 14 files, backend 1906 passed across 103 files, web 1519 passed across 148 files, backend and web typecheck clean, backend lint clean.
+
 ## Known gaps: ten items, checked before the flag flips
 
 Found by auditing the plan against the code after the gate closed. Items 1 to 4 block step 5 as written; the rest are named risks with a decision attached rather than silent assumptions.

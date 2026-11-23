@@ -292,6 +292,8 @@ model Organization {
   messageRecipients       MessageRecipient[]
   leadFacts               LeadFact[]
   invites                 Invite[]
+  storageUsage            StorageUsage?
+  siteUpdateDeliveries    SiteUpdateDelivery[]
 
   @@index([slug])
 }
@@ -401,17 +403,17 @@ model User {
 
   // Staff invites (2026-11-20). Three named relations - a user can be the
   // inviter, the acceptance target, and the revoker of DIFFERENT invites.
-  invitesSent               Invite[]           @relation("InviteInvitedBy")
-  inviteAccepted            Invite?            @relation("InviteAcceptedBy")
-  invitesRevoked            Invite[]           @relation("InviteRevokedBy")
+  invitesSent    Invite[] @relation("InviteInvitedBy")
+  inviteAccepted Invite?  @relation("InviteAcceptedBy")
+  invitesRevoked Invite[] @relation("InviteRevokedBy")
 
   // Issue #8 slice 2: the Lead a CUSTOMER login belongs to. NULL for every
   // staff role and for a customer whose lead was deleted (SetNull), which is
   // why the portal treats a null pointer as "not provisioned" rather than
   // "no photos". NOT unique: a jointly-bought flat needs two logins on one
   // lead (spec D2).
-  customerLeadId            String?
-  customerLead              Lead?              @relation("CustomerLeadUser", fields: [customerLeadId], references: [id], onDelete: SetNull)
+  customerLeadId String?
+  customerLead   Lead?   @relation("CustomerLeadUser", fields: [customerLeadId], references: [id], onDelete: SetNull)
 
   // better-auth admin() plugin fields (AR-8: required by admin plugin user model)
 
@@ -562,7 +564,7 @@ enum InviteStatus {
 }
 
 model Invite {
-  id               String   @id @default(cuid())
+  id               String       @id @default(cuid())
   organizationId   String
   /// Pinned, lowercased (EmailSchema). The accept payload has NO email field,
   /// so a forwarded link cannot be completed by a different address.
@@ -580,7 +582,7 @@ model Invite {
   teamId           String?
   /// sha256 of the raw token, hex. UNIQUE - the lookup key for the public
   /// accept path.
-  tokenHash        String   @unique
+  tokenHash        String       @unique
   invitedById      String
   status           InviteStatus @default(PENDING)
   /// PENDING past this instant reads as EXPIRED (computed on read by
@@ -588,25 +590,21 @@ model Invite {
   expiresAt        DateTime
   /// Set on create and again on every resend. Delivery is manual (WhatsApp /
   /// copy), so this records when the link was last issued, not a receipt.
-  lastSentAt       DateTime @default(now())
+  lastSentAt       DateTime     @default(now())
   acceptedAt       DateTime?
   /// UNIQUE: one acceptance per user, and it gives the accept transaction a
   /// stable id to put in AuditLog/TeamMember before the User row exists.
-  acceptedByUserId String?  @unique
+  acceptedByUserId String?      @unique
   revokedAt        DateTime?
   revokedById      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   team           Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
   invitedBy      User         @relation("InviteInvitedBy", fields: [invitedById], references: [id], onDelete: Restrict)
   acceptedByUser User?        @relation("InviteAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
   revokedBy      User?        @relation("InviteRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
-
-  @@index([organizationId, status])
-  @@index([email])
-  @@index([expiresAt])
   // One live invite per (org, email lowercased) is enforced by a PARTIAL
   // unique index in the migration (Prisma's schema language cannot express
   // `WHERE status = 'PENDING'`) - same precedent as one_owner and
@@ -614,6 +612,10 @@ model Invite {
   //   CREATE UNIQUE INDEX "Invite_one_pending_per_email"
   //     ON "Invite"("organizationId", lower("email"))
   //     WHERE status = 'PENDING';
+
+  @@index([organizationId, status])
+  @@index([email])
+  @@index([expiresAt])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -673,6 +675,22 @@ model ProjectStaffRole {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// ProgressPhoto.kind (2026-11-23, site update video)
+// ────────────────────────────────────────────────────────────────────────────
+// One timeline holds both kinds. PHOTO is the default so every existing row and
+// every existing write path keeps today's meaning with no backfill: the column
+// addition is `NOT NULL DEFAULT`, which Postgres 11+ performs as metadata only.
+//
+// The extra video invariants live in the migration's CHECK constraints (a live
+// video needs a poster, a duration and a size; an archived tombstone may have
+// none of them). The service layer validates the value before insert, as it
+// already does for ProjectStaffRole.kind.
+enum ProgressPhotoKind {
+  PHOTO
+  VIDEO
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // 5c. ProgressPhoto (site construction progress; issue #7 slice 1)
 // ────────────────────────────────────────────────────────────────────────────
 // One row per uploaded site photo. The unit's project is resolved THROUGH
@@ -681,12 +699,19 @@ model ProjectStaffRole {
 // (local-disk dev / imagekit prod); `key` is the provider's storage key, never
 // a DB blob. RLS policies + GRANTs ship in the same migration (issue #7).
 model ProgressPhoto {
-  id             String   @id @default(cuid())
+  id             String             @id @default(cuid())
   unitId         String
   phaseId        String?
   // T-ORG: denormalized tenant axis so RLS compares a column, not a join.
   organizationId String
-  key            String
+  // PHOTO is the default and there is no backfill: adding a NOT NULL DEFAULT
+  // column is metadata-only on Postgres 11+, so every existing row keeps its
+  // meaning and the migration takes no table rewrite.
+  kind           ProgressPhotoKind  @default(PHOTO)
+  // Nullable since 2026-11-23: an archived tombstone clears its keys after the
+  // bytes are purged, so the row can outlive the object it describes. Every
+  // reader must tolerate null (mapper, media-access, outbound read).
+  key            String?
   mimeType       String
   filename       String
   // Auto-filled server-side: "{phase.name} {month name} {year}" (en-GB,
@@ -705,14 +730,45 @@ model ProgressPhoto {
   // Uploader. Nullable + SetNull so photos survive user deletion (audit
   // trail); the timeline renders "Unknown" for a NULL creator.
   createdBy      String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime           @default(now())
+
+  // ── Video-only columns (2026-11-23) ──────────────────────────────────────
+  // Null on a photo row, always. The CHECK constraints in
+  // 20261123120000_progress_photo_video require poster+duration+size for a
+  // LIVE video and let an archived tombstone hold none of them.
+  //
+  // sizeBytes is the server-verified object size (provider `stat`), never the
+  // client's claim; durationMs is the client's reported duration and the plan
+  // records that trust decision explicitly (known gap 8).
+  sizeBytes  Int?
+  durationMs Int?
+  posterKey  String?
+  // Groups the files written by one note, so three files are one WhatsApp
+  // message and one delivery row. Generated client-side, validated server-side.
+  batchId    String?
+  // Server-issued upload folder id: `/<organizationId>/<uploadId>/`. The record
+  // route refuses a key outside the folder it handed out, and the unique index
+  // below makes a retry replay the same row instead of duplicating it.
+  uploadId   String?
+  // Tombstone marker: set first, keys cleared last, so the purge cron can still
+  // name the objects between the two phases.
+  archivedAt DateTime?
+  hasAudio   Boolean   @default(false)
 
   unit          Unit   @relation(fields: [unitId], references: [id], onDelete: Cascade)
   phase         Phase? @relation(fields: [phaseId], references: [id], onDelete: SetNull)
   createdByUser User?  @relation("ProgressPhotoCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
+  // NULLs are exempt in a Postgres unique index, so photos (uploadId null) and
+  // any row without a key never collide. A video's posterKey may still equal
+  // another row's key: separate indexes cannot prevent that, and the delete
+  // path plus the daily orphan sweep handle it.
+  @@unique([organizationId, unitId, uploadId])
+  @@unique([organizationId, key])
+  @@unique([organizationId, posterKey])
   @@index([unitId, takenAt(sort: Desc)])
   @@index([organizationId])
+  @@index([organizationId, batchId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -879,47 +935,52 @@ model ProjectOption {
 // ────────────────────────────────────────────────────────────────────────────
 
 model Unit {
-  id             String     @id @default(cuid())
-  phaseId        String
+  id                   String     @id @default(cuid())
+  phaseId              String
   // T-ORG: denormalized tenant axis.
-  organizationId String
+  organizationId       String
   // The DOOR number printed on the villa ("A-101", "D-202"). Marketing naming,
   // not the villa's position on a drawing.
-  unitNumber     String
+  unitNumber           String
   // The CMDA plot number (1-125) this villa occupies on the approved layout,
   // when it has been assigned one. DELIBERATELY A SEPARATE FIELD from
   // `unitNumber`: the door number and the plot number are two different
   // identifiers, and the plot map joins on THIS one. Nullable, so a project
   // with no traced layout simply leaves it empty.
-  plotNumber     Int?
-  bhk            Int
-  facing         String?
+  plotNumber           Int?
+  bhk                  Int
+  facing               String?
   // `sqft` is the PLOT area (UI label "Plot sq.ft"). The column/field name is
   // kept to avoid churn across seeds and raw SQL.
-  sqft           Int?
+  sqft                 Int?
   // Built-up area and its rate. `price` (the unit total) is DERIVED server-side
   // as round(buildupSqft * pricePerSqft, 2) and never trusted from the client.
-  buildupSqft    Decimal    @db.Decimal(10, 2)
-  pricePerSqft   Decimal    @db.Decimal(12, 2)
-  price          Decimal    @db.Decimal(12, 2)
-  status         UnitStatus @default(AVAILABLE)
+  buildupSqft          Decimal    @db.Decimal(10, 2)
+  pricePerSqft         Decimal    @db.Decimal(12, 2)
+  price                Decimal    @db.Decimal(12, 2)
+  status               UnitStatus @default(AVAILABLE)
   // Staff-entered handover estimate shown to the buyer in the portal (2026-11-09).
   // Nullable forever: NULL means "not set", and the portal renders nothing for it.
   expectedHandoverDate DateTime?
+  // Actual handover, for video retention (2026-11-23). Retention runs 24 months
+  // from THIS date and nothing is purged while it is null - an expected date is
+  // a guess, and purging a buyer's site video on a guess is not acceptable.
+  handoverCompletedAt  DateTime?
   // Site-engineer assignment (2026-11-10): the single ENGINEER who photographs
   // this unit. NULL = unassigned (invisible to every engineer). SetNull on
   // user delete so the unit survives; assignedAt/assignedById are the who/when.
-  assignedEngineerId String?
-  assignedAt         DateTime?
-  assignedById       String?
-  createdAt      DateTime   @default(now())
+  assignedEngineerId   String?
+  assignedAt           DateTime?
+  assignedById         String?
+  createdAt            DateTime   @default(now())
 
-  assignedEngineer User?          @relation("UnitAssignee", fields: [assignedEngineerId], references: [id], onDelete: SetNull)
-  assignedBy       User?          @relation("UnitAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
-  phase          Phase           @relation(fields: [phaseId], references: [id], onDelete: Cascade)
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  bookings       Booking[]
-  progressPhotos ProgressPhoto[]
+  assignedEngineer     User?                @relation("UnitAssignee", fields: [assignedEngineerId], references: [id], onDelete: SetNull)
+  assignedBy           User?                @relation("UnitAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  phase                Phase                @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  organization         Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bookings             Booking[]
+  progressPhotos       ProgressPhoto[]
+  siteUpdateDeliveries SiteUpdateDelivery[]
 
   @@unique([phaseId, unitNumber])
   // One plot per phase. Postgres treats NULLs as distinct, so any number of
@@ -1668,19 +1729,19 @@ enum OutboundStatus {
 // ────────────────────────────────────────────────────────────────────────────
 
 model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?  @db.Text
+  id             String   @id @default(cuid())
+  userId         String
+  token          String   @unique
+  expiresAt      DateTime
+  ipAddress      String?
+  userAgent      String?  @db.Text
   // better-auth 1.7 admin() plugin: the admin's user id while an admin is
   // impersonating this session's user. Unset on every normal login. Same
   // runtime validator as User.organizationName applies, so the column must
   // exist or every sign-in 500s with "Prisma schema mismatch".
   impersonatedBy String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1690,16 +1751,16 @@ model Session {
 }
 
 model Account {
-  id           String    @id @default(cuid())
-  userId       String
-  accountId    String
-  providerId   String
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
   // better-auth >=1.7 writes issuer on credential accounts ("local:credential")
-  issuer       String?
-  accessToken  String?   @db.Text
-  refreshToken String?   @db.Text
-  idToken      String?   @db.Text
-  expiresAt    DateTime?
+  issuer                String?
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  expiresAt             DateTime?
   // better-auth 1.7 (2026-11-14 upgrade) account model: per-token expiry plus
   // the granted OAuth scope. Nullable and empty for password logins. `expiresAt`
   // above is the single legacy expiry this schema has carried since 1.2; it is
@@ -1708,9 +1769,9 @@ model Account {
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
   scope                 String?   @db.Text
-  password     String?   @db.Text
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1860,4 +1921,69 @@ enum WhatsappUnknownContactStatus {
   PENDING
   CONVERTED
   SPAM
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// StorageUsage (2026-11-23, site update video)
+// ────────────────────────────────────────────────────────────────────────────
+// One row per organisation: the tenant's video byte ledger. The per-org cap is a
+// sentence without this table, because the number has to live somewhere the
+// server can increment on record and decrement on delete.
+//
+// `usedBytes` advances from the SERVER-verified object size (`stat`), never from
+// a client claim. `reservedBytes` is the advisory in-flight amount held while a
+// signed upload is open: a signed token allows repeated uploads inside its 600
+// second window with no server in the loop, so a pre-signing check can only ever
+// be guidance. The daily orphan sweep is what keeps the two honest.
+//
+// BigInt on purpose: a byte ledger that overflows at 2 GiB is a bug waiting for
+// its first video-heavy tenant.
+model StorageUsage {
+  organizationId String   @id
+  usedBytes      BigInt   @default(0)
+  reservedBytes  BigInt   @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// SiteUpdateDelivery (2026-11-23, site update video)
+// ────────────────────────────────────────────────────────────────────────────
+// One row per NOTE, not per file: a note with three photos and a clip is one
+// WhatsApp message, so `batchId` (generated client-side when the note starts and
+// sent with every file of it) is the key. @@unique([organizationId, batchId]) is
+// what makes a retried send idempotent.
+//
+// SKIPPED_NO_TEMPLATE exists because the clip leg waits for a Meta-approved
+// video template: a send that cannot happen must be recorded as skipped, never
+// as a silent drop.
+model SiteUpdateDelivery {
+  id             String                   @id @default(cuid())
+  organizationId String
+  batchId        String
+  unitId         String
+  status         SiteUpdateDeliveryStatus @default(PENDING)
+  templateName   String?
+  wamid          String?
+  errorCode      String?
+  attempts       Int                      @default(0)
+  sentAt         DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, batchId])
+  // The cron's scan: PENDING rows for one org, oldest first.
+  @@index([organizationId, status, createdAt])
+}
+
+enum SiteUpdateDeliveryStatus {
+  PENDING
+  SENT
+  SKIPPED_WINDOW
+  SKIPPED_NO_TEMPLATE
+  FAILED
 }
