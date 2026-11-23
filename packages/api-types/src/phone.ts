@@ -4,7 +4,8 @@ import {
   isSupportedCountry,
   parsePhoneNumberFromString,
   type CountryCode,
-} from 'libphonenumber-js/min';
+} from 'libphonenumber-js/mobile';
+import mobileExamples from 'libphonenumber-js/examples.mobile.json';
 
 /**
  * Phone identity for the CRM.
@@ -20,6 +21,15 @@ import {
  *      The one exception is named: `legacy-national`, which is the Indian
  *      assumption, importable and grep-able so it cannot be reached by
  *      forgetting an argument.
+ *
+ *   3. A lead phone must be a MOBILE number. Validation reads libphonenumber's
+ *      MOBILE metadata (`libphonenumber-js/mobile`), not the general one, so
+ *      the national rules are the ones for a phone someone can be messaged on:
+ *      an Indian number is 10 digits starting 6-9, a US number is 10 digits
+ *      starting 2-9, a UAE mobile is 9 digits, and so on. The general metadata
+ *      accepts 1234567890 in India because it is a possible landline, which is
+ *      the value that used to reach the leads table. Every outbound path here
+ *      is WhatsApp, so a landline is not a usable lead phone.
  *
  * `parsePhone` never returns a silently-wrong number and `leadPhoneColumns`
  * makes "wrote one column and forgot the other" unrepresentable.
@@ -39,11 +49,7 @@ export type PhoneInput =
   | { source: 'legacy-national'; raw: string };
 
 export type PhoneParseReason =
-  | 'EMPTY'
-  | 'UNPARSEABLE'
-  | 'COUNTRY_REQUIRED'
-  | 'WRONG_COUNTRY'
-  | 'UNKNOWN_COUNTRY';
+  'EMPTY' | 'UNPARSEABLE' | 'COUNTRY_REQUIRED' | 'WRONG_COUNTRY' | 'UNKNOWN_COUNTRY';
 
 export class PhoneParseError extends Error {
   readonly reason: PhoneParseReason;
@@ -84,7 +90,11 @@ export function toPhoneInput(raw: string, country?: string | null): PhoneInput {
   if (country === null || country === undefined || country === '') {
     return { source: 'legacy-national', raw };
   }
-  return { source: 'typed', raw, country: isCountryCode(country) ? country : (country as CountryCode) };
+  return {
+    source: 'typed',
+    raw,
+    country: isCountryCode(country) ? country : (country as CountryCode),
+  };
 }
 
 /** Country list for the picker, each with its dial code. */
@@ -115,6 +125,104 @@ function safeRegionName(display: Intl.DisplayNames, code: CountryCode): string {
   } catch {
     return code;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Per-country mobile rules
+// ---------------------------------------------------------------------------
+
+/**
+ * National digits in a mobile number for this country: India 10, US 10, UAE 9,
+ * Singapore 8, Germany 11.
+ *
+ * Read from libphonenumber's own example numbers (`examples.mobile.json`), one
+ * real-shape mobile per country, rather than from the raw metadata table: the
+ * table's `possibleLengths` covers every number type at once (India lists
+ * 8..13), which is a terrible typing cap, and its shape is an implementation
+ * detail. The example is the number the library itself uses to demonstrate a
+ * valid mobile in that country.
+ *
+ * Where a country allows more than one mobile length (Brazil and Germany are
+ * 10 or 11) this returns the longer example; the field never blocks a value
+ * that is already VALID, so the shorter form still goes through.
+ */
+export function mobileNationalLength(country: CountryCode): number {
+  const digits = (MOBILE_EXAMPLES[country] ?? '').replace(/\D/g, '');
+  // Unknown country: E.164's ceiling. It only affects a typing cap, and the
+  // server still refuses anything the metadata cannot validate.
+  return digits === '' ? 15 : digits.length;
+}
+
+/** One real-shape mobile per country, from the library's own examples file. */
+const MOBILE_EXAMPLES = mobileExamples as Record<string, string | undefined>;
+
+/** The typing cap for a field showing this country's national number. */
+export function maxNationalDigits(country: CountryCode | null | undefined): number {
+  if (country === null || country === undefined || !isCountryCode(country)) return 15;
+  return mobileNationalLength(country);
+}
+
+/**
+ * True when these national digits are a complete, message-able mobile number
+ * in that country. This is the rule the forms and the typing cap share.
+ */
+export function isValidMobileNumber(nationalDigits: string, country: CountryCode): boolean {
+  const digits = nationalDigits.replace(/\D/g, '');
+  if (digits === '') return false;
+  if (!isCountryCode(country)) return false;
+  return parsePhoneNumberFromString(digits, country)?.isValid() === true;
+}
+
+/**
+ * Cut a typed/pasted value down to what the selected country accepts.
+ *
+ * A value with a leading `+` declares its own country, so it carries its own
+ * length and passes untouched: pasting `+1 650 234 5678` while India is on the
+ * trigger is the exact case this field exists to support, and the server then
+ * validates it against the US rules.
+ *
+ * A national value keeps at most the country's mobile length. TRUNCATING (not
+ * rejecting) is what makes the field stop at ten digits for India: rejecting a
+ * keystroke means re-rendering the last accepted text, and under fast typing
+ * that text is a render behind, so the field rewinds and lands on digits the
+ * operator never typed. Cutting the new value keeps every accepted digit.
+ */
+export function limitPhoneTyping(
+  typed: string,
+  country: CountryCode | null | undefined,
+): string {
+  if (typed.trimStart().startsWith('+')) return typed;
+  const max = maxNationalDigits(country);
+  let out = '';
+  let digits = 0;
+  for (const char of typed) {
+    if (char >= '0' && char <= '9') {
+      if (digits >= max) continue;
+      digits += 1;
+    }
+    out += char;
+  }
+  return out;
+}
+
+/**
+ * The sentence for a refusal, naming the country and its length where the
+ * reason is country-specific. "That does not look like a valid number for the
+ * selected country" tells an operator nothing about which digit is wrong;
+ * "India takes a 10-digit mobile" does.
+ */
+export function phoneErrorMessage(
+  reason: PhoneParseReason,
+  country?: CountryCode | null,
+): string {
+  if (reason !== 'WRONG_COUNTRY' || country === null || country === undefined) {
+    return PHONE_ERRORS[reason];
+  }
+  if (!isCountryCode(country)) return PHONE_ERRORS[reason];
+  const name =
+    listCountries().find((option) => option.code === country)?.name ?? String(country);
+  const length = mobileNationalLength(country);
+  return `That is not a valid mobile number for ${name} (${length} digits)`;
 }
 
 /** Strips spaces, dashes, dots and brackets. Keeps a leading `+`. */
@@ -197,7 +305,7 @@ export function parsePhone(input: PhoneInput): ParsedPhone {
       if (international?.isValid()) {
         return { e164: digitsOnly(international.number), region: international.country ?? null };
       }
-      throw new PhoneParseError('WRONG_COUNTRY');
+      throw new PhoneParseError('WRONG_COUNTRY', phoneErrorMessage('WRONG_COUNTRY', input.country));
     }
   }
 }

@@ -2,12 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DOMESTIC_COUNTRY,
+  PHONE_ERRORS,
   PhoneParseError,
   formatPhone,
   isCountryCode,
+  isValidMobileNumber,
   leadPhoneColumns,
+  limitPhoneTyping,
   listCountries,
+  maxNationalDigits,
+  mobileNationalLength,
   parsePhone,
+  phoneErrorMessage,
   phoneSearchTerms,
   telHref,
   tryParsePhone,
@@ -54,10 +60,86 @@ describe('parsePhone - typed input', () => {
   });
 
   it('rejects an empty string and an unknown country', () => {
-    expect(() => parsePhone({ source: 'typed', raw: '   ', country: 'IN' })).toThrow(PhoneParseError);
+    expect(() => parsePhone({ source: 'typed', raw: '   ', country: 'IN' })).toThrow(
+      PhoneParseError,
+    );
     expect(() =>
       parsePhone({ source: 'typed', raw: '9876543210', country: 'ZZ' as never }),
     ).toThrow(PhoneParseError);
+  });
+});
+
+describe('per-country mobile rules', () => {
+  it('takes the national length from the country, not from a global 10', () => {
+    expect(mobileNationalLength('IN')).toBe(10);
+    expect(mobileNationalLength('US')).toBe(10);
+    expect(mobileNationalLength('AE')).toBe(9);
+    expect(mobileNationalLength('SG')).toBe(8);
+  });
+
+  it('refuses a 10-digit Indian LANDLINE: a lead phone must be a mobile', () => {
+    // 1234567890 is a possible Indian number of the right length, which is why
+    // the general metadata accepted it and it reached the leads table. It is not
+    // a mobile, so nothing can be sent to it.
+    const result = tryParsePhone({ source: 'typed', raw: '1234567890', country: 'IN' });
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toBe('WRONG_COUNTRY');
+  });
+
+  it('applies each country rule to its own numbers', () => {
+    // India: 10 digits starting 6-9. US: 10 digits starting 2-9.
+    expect(parsePhone({ source: 'typed', raw: '9876543210', country: 'IN' })).toEqual({
+      e164: '919876543210',
+      region: 'IN',
+    });
+    expect(parsePhone({ source: 'typed', raw: '6502345678', country: 'US' })).toEqual({
+      e164: '16502345678',
+      region: 'US',
+    });
+    expect(
+      tryParsePhone({ source: 'typed', raw: '1234567890', country: 'US' }).ok,
+    ).toBe(false);
+  });
+
+  it('names the country and its length in the refusal', () => {
+    const error = (() => {
+      try {
+        parsePhone({ source: 'typed', raw: '1234567890', country: 'IN' });
+        return null;
+      } catch (thrown) {
+        return thrown as PhoneParseError;
+      }
+    })();
+    expect(error?.message).toBe('That is not a valid mobile number for India (10 digits)');
+    // Reasons that are not country-specific keep the one shared sentence.
+    expect(phoneErrorMessage('EMPTY', 'IN')).toBe(PHONE_ERRORS.EMPTY);
+  });
+
+  it('gives the field a typing cap per country, and 15 where there is none', () => {
+    expect(maxNationalDigits('IN')).toBe(10);
+    expect(maxNationalDigits('AE')).toBe(9);
+    expect(maxNationalDigits(null)).toBe(15);
+    expect(maxNationalDigits('ZZ' as never)).toBe(15);
+  });
+
+  it('exposes the same rule the cap uses', () => {
+    expect(isValidMobileNumber('9876543210', 'IN')).toBe(true);
+    expect(isValidMobileNumber('1234567890', 'IN')).toBe(false);
+    expect(isValidMobileNumber('', 'IN')).toBe(false);
+  });
+
+  it('stops typing at the country length, and lets an international paste through', () => {
+    // India: ten digits, then the field stops taking keystrokes.
+    expect(limitPhoneTyping('98765 4321', 'IN')).toBe('98765 4321');
+    expect(limitPhoneTyping('98765 43210', 'IN')).toBe('98765 43210');
+    // The 11th and 12th digits are dropped, separators kept.
+    expect(limitPhoneTyping('98765 432100', 'IN')).toBe('98765 43210');
+    expect(limitPhoneTyping('98765 4321000', 'IN')).toBe('98765 43210');
+    // The same shape in a shorter country stops sooner.
+    expect(limitPhoneTyping('9876543210', 'SG')).toBe('98765432');
+    // A leading `+` declares its own country: a US number pasted while India
+    // is selected must go through, and the server validates it as a US number.
+    expect(limitPhoneTyping('+1 650 234 5678', 'IN')).toBe('+1 650 234 5678');
   });
 });
 
