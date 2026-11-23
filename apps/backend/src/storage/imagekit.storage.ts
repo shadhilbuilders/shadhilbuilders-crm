@@ -28,8 +28,35 @@ import { randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import ImageKit from 'imagekit';
 
-import type { StorageProvider, StoredFile } from './storage.provider';
+import {
+  UPLOAD_AUTH_TTL_SECONDS,
+  type ByteRange,
+  type StorageProvider,
+  type StoredFile,
+  type StoredObjectInfo,
+  type StreamedObject,
+  type UploadAuth,
+  type UploadAuthRequest,
+} from './storage.provider';
 import { looksLikeJpeg, looksLikePng } from './sniff-mime';
+
+/** End-to-end response headers worth forwarding; nothing else leaks upstream. */
+const FORWARDED_HEADERS = [
+  'content-type',
+  'content-length',
+  'content-range',
+  'accept-ranges',
+  'etag',
+] as const;
+
+function pickHeaders(from: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of FORWARDED_HEADERS) {
+    const value = from.get(name);
+    if (value !== null) out[name] = value;
+  }
+  return out;
+}
 
 /** Strip path separators / traversal tokens from a filename so a
  *  user-supplied name cannot escape the folder root. */
@@ -41,6 +68,8 @@ function sanitizeFilename(name: string): string {
 export class ImageKitStorage implements StorageProvider {
   private readonly logger = new Logger(ImageKitStorage.name);
   private readonly imagekit: ImageKit;
+  private readonly publicKey: string;
+  private readonly urlEndpoint: string;
 
   constructor() {
     const pub = process.env.IMAGEKIT_PUBLIC_KEY;
@@ -53,6 +82,8 @@ export class ImageKitStorage implements StorageProvider {
           '(or use MEDIA_STORAGE=local for LocalDiskStorage).',
       );
     }
+    this.publicKey = pub;
+    this.urlEndpoint = endpoint;
     this.imagekit = new ImageKit({ publicKey: pub, privateKey: priv, urlEndpoint: endpoint });
   }
 
@@ -82,15 +113,21 @@ export class ImageKitStorage implements StorageProvider {
 
   async read(key: string): Promise<Buffer | null> {
     try {
-      const url = this.publicUrl(key);
+      const url = this.signedOriginalUrl(key);
       if (!url) return null;
-      // `?tr=orig-true` is REQUIRED: a bare CDN URL is delivered through
+      // The URL is SIGNED and carries `tr=orig-true` INSIDE the signature
+      // (signedOriginalUrl): a private object 403s without `ik-s`, and
+      // appending anything to a signed URL also 403s because the signature
+      // covers the whole query string. Signing a public object's URL is
+      // harmless, so one path serves both.
+      //
+      // `tr=orig-true` is REQUIRED: a bare CDN URL is delivered through
       // ImageKit's default transformation pipeline, which re-encodes images
       // (verified: a stored 1,080,993-byte PNG came back as a 457,474-byte
       // JPEG). read() must return the ORIGINAL bytes - the outbound Meta /media
       // upload sends these bytes to the customer, so a lossy derivative both
       // misrepresents the file and fails Meta's own type checks.
-      const res = await fetch(`${url}?tr=orig-true`);
+      const res = await fetch(url);
       if (!res.ok) {
         this.logger.warn(`[media] imagekit read failed key=${key} status=${res.status}`);
         return null;
@@ -170,6 +207,124 @@ export class ImageKitStorage implements StorageProvider {
         `[media] imagekit delete failed key=${key}: ${err instanceof Error ? err.message : String(err)} - blob orphaned`,
       );
     }
+  }
+
+  /**
+   * A signed, short-lived URL for the ORIGINAL bytes of `key`.
+   *
+   * The transformation is part of what gets signed. Measured 2026-11-23 on a
+   * 14,268,660 byte private upload: the plain signed URL served 6,159,488
+   * bytes (ImageKit re-encodes video unless told not to), and appending
+   * `?tr=orig-true` to that signed URL returned 403. So the URL is built once,
+   * here, and never touched afterwards. It never leaves the provider.
+   */
+  private signedOriginalUrl(key: string): string | null {
+    if (!key) return null;
+    const path = key.startsWith('/') ? key : `/${key}`;
+    return this.imagekit.url({
+      path,
+      signed: true,
+      expireSeconds: UPLOAD_AUTH_TTL_SECONDS,
+      transformation: [{ raw: 'orig-true' }],
+    });
+  }
+
+  /** Exact-path lookup through the list API (the same trick `delete` uses). */
+  private async findFile(
+    key: string,
+  ): Promise<{ size?: number; mime?: string; isPrivateFile?: boolean } | null> {
+    const segments = key.split('/').filter(Boolean);
+    const name = segments.pop();
+    if (!name) return null;
+    const files = await this.imagekit.listFiles({
+      path: '/' + segments.join('/'),
+      name,
+      limit: 10,
+    });
+    const list: unknown[] = Array.isArray(files)
+      ? files
+      : Array.isArray((files as { response?: unknown[] }).response)
+        ? (files as { response: unknown[] }).response
+        : [];
+    const wanted = key.startsWith('/') ? key : `/${key}`;
+    const match = list.find(
+      (f) =>
+        (f as { type?: string }).type === 'file' &&
+        (f as { filePath?: string }).filePath === wanted,
+    );
+    return (match as { size?: number; mime?: string; isPrivateFile?: boolean } | undefined) ?? null;
+  }
+
+  async stat(key: string): Promise<StoredObjectInfo | null> {
+    try {
+      const file = await this.findFile(key);
+      if (!file || typeof file.size !== 'number') return null;
+      return {
+        size: file.size,
+        mimeType: file.mime ?? 'application/octet-stream',
+        // Absent means "not marked private". Never assume private on a gap:
+        // the record route refuses a public clip, so the safe default is public.
+        isPrivate: file.isPrivateFile === true,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `[media] imagekit stat error key=${key}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  async readStream(key: string, range?: ByteRange): Promise<StreamedObject | null> {
+    try {
+      const url = this.signedOriginalUrl(key);
+      if (!url) return null;
+      const headers: Record<string, string> = {};
+      if (range) headers.range = `bytes=${range.start}-${range.end ?? ''}`;
+      // redirect: 'follow' is fetch's default and is kept on purpose: any
+      // Location is consumed here, so a signed URL never reaches the browser.
+      const res = await fetch(url, { headers });
+      if (res.status === 416) {
+        await res.body?.cancel();
+        return {
+          status: 416,
+          headers: pickHeaders(res.headers),
+          body: null,
+        };
+      }
+      if (!res.ok || !res.body) {
+        this.logger.warn(`[media] imagekit stream failed key=${key} status=${res.status}`);
+        await res.body?.cancel();
+        return null;
+      }
+      // A 200 to a ranged request means upstream ignored the range; report the
+      // truth rather than relabelling it as 206.
+      return {
+        status: res.status === 206 ? 206 : 200,
+        headers: pickHeaders(res.headers),
+        body: res.body as ReadableStream<Uint8Array>,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `[media] imagekit stream error key=${key}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  createUploadAuth(req: UploadAuthRequest): UploadAuth {
+    const expire = Math.floor(Date.now() / 1000) + UPLOAD_AUTH_TTL_SECONDS;
+    const { token, signature } = this.imagekit.getAuthenticationParameters(undefined, expire);
+    return {
+      transport: 'direct',
+      publicKey: this.publicKey,
+      urlEndpoint: this.urlEndpoint,
+      token,
+      expire,
+      signature,
+      folder: `/${req.organizationId}/${req.uploadId}/`,
+      maxBytes: req.maxBytes,
+      isPrivateFile: true,
+    };
   }
 
   publicUrl(key: string): string | null {

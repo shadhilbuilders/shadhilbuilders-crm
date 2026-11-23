@@ -93,6 +93,20 @@ The non-test code changes are `assertPhotoMutable` returning `key: string | null
 
 Verified: `pnpm --filter @shadhil/database test` 286 passed across 14 files, backend 1906 passed across 103 files, web 1519 passed across 148 files, backend and web typecheck clean, backend lint clean.
 
+## Step 2: landed 2026-11-23
+
+The provider seam, with no route change.
+
+`StorageProvider` gains `stat(key)`, `readStream(key, range?)` and an optional `createUploadAuth(req)`, with `UploadAuth` as the discriminated `direct | inline` union. `stat` and `readStream` return null for a missing key rather than throwing. `readStream` reports `206`, `416` (null body) or `200`, and a `200` answer to a ranged request stays a `200`: it is not relabelled.
+
+`ImageKitStorage` now builds every read URL once through `signedOriginalUrl()`: `imagekit.url({ signed: true, expireSeconds: 600, transformation: [{ raw: 'orig-true' }] })`. The real SDK places the transformation in the **path** (`/tr:orig-true/<key>`), not the query string, and the query carries only `ik-s` and `ik-t`. That is the form measured against the live CDN, and `imagekit-signing.test.ts` pins it against the real SDK with no mock. `read()` uses the same URL, so whole-file consumers (the outbound Meta upload) can read a private object; signing a public object's URL is harmless. Existing behaviour is pinned: the one assertion that expected `?tr=orig-true` appended now expects the signed URL, and every other media test is untouched.
+
+`stat` uses the list API's exact-path match (as `delete` does) and treats a missing `isPrivateFile` as **public**, because the record route refuses a public clip and the safe reading of a gap is the one that refuses.
+
+Gap 4 is closed with a number: local `createUploadAuth` returns `{ transport: 'inline', maxBytes }` carrying `MAX_VIDEO_BYTES = 14,680,064`, the same figure as the `ProgressPhoto_size_cap` CHECK. Base64 of that is about 19.6MB of JSON, inside the 25MB both hops allow, so a real 13.6MB clip uploads in dev.
+
+Verified: storage suite 107 passed across 8 files, backend typecheck and `eslint src/storage` clean. **Not verified:** the live-CDN rows of the proof (a private object served at full byte count, 206 on Range, 403 at the bare URL) were measured earlier with the same `ik.url` call and are not re-run in CI, since that needs real credentials.
+
 ## Known gaps: ten items, checked before the flag flips
 
 Found by auditing the plan against the code after the gate closed. Items 1 to 4 block step 5 as written; the rest are named risks with a decision attached rather than silent assumptions.
@@ -100,7 +114,7 @@ Found by auditing the plan against the code after the gate closed. Items 1 to 4 
 - [ ] **1. Poster production is unspecified.** Nothing in the current body says how the frame is made, yet the CHECK makes `posterKey` mandatory for a live video. Fix: canvas grab at about one second, `toBlob('image/jpeg', 0.8)`, max 1280px wide, fall back to the first decodable frame, and a failed poster never blocks the save. **Step 5.**
 - [ ] **2. The poster would land public.** Images go through `/api/media` base64, which stores them public, leaking exactly the frame the private-video decision protects. Fix: the poster uploads private through the same signed folder and the record route verifies both objects. **Step 5.**
 - [ ] **3. `mediaUrl` points at the clip.** `progress-photo.mapper.ts:165` is `mediaUrlFor(row.key)`, so a video row renders its MP4 into every `<img>`. Fix: `kind === 'VIDEO' ? mediaUrlFor(posterKey) : mediaUrlFor(key)`, with a mapper test using a video row. **Step 5.**
-- [ ] **4. Local dev cannot upload a real clip.** `createUploadAuth` returns `{transport:'inline', maxBytes}` with no number, against a 13.6MB clip and a historical 8MB inline ceiling. Fix: name the number, either 16MB inline for local or a short dev fixture, and say which. **Steps 2 and 7.**
+- [x] **4. Local dev cannot upload a real clip. (closed in step 2)** `createUploadAuth` returns `{transport:'inline', maxBytes}` with no number, against a 13.6MB clip and a historical 8MB inline ceiling. Fix: name the number, either 16MB inline for local or a short dev fixture, and say which. **Steps 2 and 7.**
 - [ ] **5. `upload-auth` is unthrottled.** `ThrottlerModule` is imported only in `users.module.ts:12`, not globally, and each token is reusable for 600s. Fix: throttle the route, or record the acceptance in the plan's decision table. **Step 5.**
 - [ ] **6. The deep link's return path has no mechanism.** No `callbackUrl`/`redirectTo` exists in `apps/web`, and an unvalidated target is an open redirect. Fix: same-origin portal paths only, allowlisted, and state where the target travels. **Step 8.**
 - [ ] **7. iPhone library clips always fail.** A Photos recording is `.mov`, refused by design, so iOS supports in-app recording only. Fix: say so in the capture copy and in the device gate row, not only in the failure table. **Step 7.**

@@ -22,6 +22,66 @@ export interface StoredFile {
   size: number;
 }
 
+/** Byte range requested by a client, both ends inclusive (HTTP semantics). */
+export interface ByteRange {
+  start: number;
+  /** Omitted means "to the end of the object". */
+  end?: number;
+}
+
+/** What the provider knows about a stored object without reading its bytes. */
+export interface StoredObjectInfo {
+  /** Real size in bytes as the storage layer holds it, never a client claim. */
+  size: number;
+  mimeType: string;
+  /** True when the object is not reachable without a signature. */
+  isPrivate: boolean;
+}
+
+/**
+ * A streamed read. `status` is 206 when a range was honoured, 416 when it
+ * lies outside the object (body is null then), and 200 otherwise. Headers are
+ * the end-to-end ones the route should forward (content-type, content-length,
+ * content-range, accept-ranges, etag); a signature never appears in them.
+ */
+export interface StreamedObject {
+  status: 200 | 206 | 416;
+  headers: Record<string, string>;
+  body: ReadableStream<Uint8Array> | null;
+}
+
+/** Inputs for a browser-direct upload grant. */
+export interface UploadAuthRequest {
+  organizationId: string;
+  /** Server-issued folder id; the record route refuses keys outside it. */
+  uploadId: string;
+  maxBytes: number;
+}
+
+/**
+ * Either the browser uploads straight to the CDN with a short-lived signature
+ * (`direct`), or posts the bytes through the API (`inline`, local disk). The
+ * client has one code path per branch, and dev/CI exercise the `inline` one.
+ */
+export type UploadAuth =
+  | {
+      transport: 'direct';
+      publicKey: string;
+      urlEndpoint: string;
+      token: string;
+      expire: number;
+      signature: string;
+      /** `/<organizationId>/<uploadId>/` */
+      folder: string;
+      maxBytes: number;
+      /** Uploads MUST be private; the record route verifies it via stat(). */
+      isPrivateFile: true;
+    }
+  | { transport: 'inline'; maxBytes: number };
+
+/** Lifetime of an upload grant, seconds. */
+export const UPLOAD_AUTH_TTL_SECONDS = 600;
+
 export interface StorageProvider {
   /**
    * Persist file bytes and return a StoredFile. The key is unique per
@@ -52,4 +112,20 @@ export interface StorageProvider {
    * failed at that point).
    */
   delete(key: string): Promise<void>;
+
+  /**
+   * Size, type and privacy of a stored object, or null when the key does not
+   * exist. The size is what the storage layer measured.
+   */
+  stat(key: string): Promise<StoredObjectInfo | null>;
+
+  /**
+   * Stream an object, optionally a byte range of it. Returns null when the key
+   * does not exist or the read failed upstream (logged by the implementation).
+   * Private objects are signed inside the provider; the signature never leaves.
+   */
+  readStream(key: string, range?: ByteRange): Promise<StreamedObject | null>;
+
+  /** Grant for a browser-direct upload. Absent on providers that cannot. */
+  createUploadAuth?(req: UploadAuthRequest): UploadAuth;
 }

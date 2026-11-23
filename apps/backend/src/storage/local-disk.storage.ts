@@ -7,12 +7,38 @@
 // key namespace, and the per-file cuid keeps the URL unpredictable.
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, realpath, rm, writeFile, stat } from 'node:fs/promises';
-import { existsSync, realpathSync } from 'node:fs';
-import { basename, dirname, join, resolve, sep } from 'node:path';
+import { createReadStream, existsSync, realpathSync } from 'node:fs';
+import { basename, dirname, extname, join, resolve, sep } from 'node:path';
+import { Readable } from 'node:stream';
 
 import { Injectable } from '@nestjs/common';
 
-import type { StorageProvider, StoredFile } from './storage.provider';
+import type {
+  ByteRange,
+  StorageProvider,
+  StoredFile,
+  StoredObjectInfo,
+  StreamedObject,
+  UploadAuth,
+  UploadAuthRequest,
+} from './storage.provider';
+
+/** Local disk keeps no mime column; the extension is the only hint it has. */
+const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.pdf': 'application/pdf',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+};
+
+function mimeForKey(key: string): string {
+  return MIME_BY_EXTENSION[extname(key).toLowerCase()] ?? 'application/octet-stream';
+}
 
 /** Strip path separators / traversal tokens from a filename so a
  *  user-supplied name cannot escape the storage root. */
@@ -174,4 +200,75 @@ export class LocalDiskStorage implements StorageProvider {
     // Local disk has no public base; served via the proxied GET /api/media.
     return null;
   }
+
+  /**
+   * Local disk has no CDN, so the bytes travel through the API: the client
+   * takes the `inline` branch with the same ceiling the server enforces.
+   */
+  createUploadAuth(req: UploadAuthRequest): UploadAuth {
+    return { transport: 'inline', maxBytes: req.maxBytes };
+  }
+
+  async stat(key: string): Promise<StoredObjectInfo | null> {
+    const target = await this.containedPath(key);
+    if (target === null) return null;
+    try {
+      const st = await stat(target);
+      if (!st.isFile()) return null;
+      // Nothing on local disk is reachable except through the authenticated
+      // media route, so every object is private in the sense that matters.
+      return { size: st.size, mimeType: mimeForKey(key), isPrivate: true };
+    } catch {
+      return null;
+    }
+  }
+
+  async readStream(key: string, range?: ByteRange): Promise<StreamedObject | null> {
+    const target = await this.containedPath(key);
+    if (target === null) return null;
+    let size: number;
+    try {
+      const st = await stat(target);
+      if (!st.isFile()) return null;
+      size = st.size;
+    } catch {
+      return null;
+    }
+
+    const baseHeaders = { 'accept-ranges': 'bytes', 'content-type': mimeForKey(key) };
+    if (range === undefined) {
+      return {
+        status: 200,
+        headers: { ...baseHeaders, 'content-length': String(size) },
+        body: size === 0 ? emptyBody() : toWebStream(createReadStream(target)),
+      };
+    }
+
+    const start = range.start;
+    const end = Math.min(range.end ?? size - 1, size - 1);
+    if (!Number.isInteger(start) || start < 0 || start >= size || end < start) {
+      return {
+        status: 416,
+        headers: { ...baseHeaders, 'content-range': `bytes */${size}` },
+        body: null,
+      };
+    }
+    return {
+      status: 206,
+      headers: {
+        ...baseHeaders,
+        'content-length': String(end - start + 1),
+        'content-range': `bytes ${start}-${end}/${size}`,
+      },
+      body: toWebStream(createReadStream(target, { start, end })),
+    };
+  }
+}
+
+function toWebStream(node: Readable): ReadableStream<Uint8Array> {
+  return Readable.toWeb(node) as unknown as ReadableStream<Uint8Array>;
+}
+
+function emptyBody(): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({ start: (c) => c.close() });
 }

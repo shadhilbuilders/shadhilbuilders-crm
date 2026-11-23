@@ -12,6 +12,12 @@ import { ImageKitStorage } from './imagekit.storage';
 const uploadMock = vi.hoisted(() => vi.fn());
 const listFilesMock = vi.hoisted(() => vi.fn());
 const deleteFileMock = vi.hoisted(() => vi.fn());
+const urlMock = vi.hoisted(() =>
+  vi.fn(
+    (o: { path: string }) => `https://ik.imagekit.io/org${o.path}?tr=orig-true&ik-s=sig&ik-t=999`,
+  ),
+);
+const authMock = vi.hoisted(() => vi.fn());
 
 // Mock the imagekit SDK (module is a CJS `export = ImageKit` class; the
 // `import X from 'imagekit'` resolves to its `.default`, so the factory must
@@ -22,6 +28,8 @@ vi.mock('imagekit', () => ({
     upload = uploadMock;
     listFiles = listFilesMock;
     deleteFile = deleteFileMock;
+    url = urlMock;
+    getAuthenticationParameters = authMock;
   },
 }));
 
@@ -163,7 +171,17 @@ describe('ImageKitStorage', () => {
 
     await s.read('/org/a/b.txt');
 
-    expect(fetchSpy).toHaveBeenCalledWith('https://ik.imagekit.io/org/org/a/b.txt?tr=orig-true');
+    // The transformation rides INSIDE a signed URL, built once by the SDK.
+    expect(urlMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/org/a/b.txt',
+        signed: true,
+        transformation: [{ raw: 'orig-true' }],
+      }),
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://ik.imagekit.io/org/org/a/b.txt?tr=orig-true&ik-s=sig&ik-t=999',
+    );
   });
 
   it('serves JPEG bytes stored under a .png key instead of refusing', async () => {
@@ -235,5 +253,136 @@ describe('ImageKitStorage', () => {
 
     const s = new ImageKitStorage();
     await expect(s.delete('/org-1/abc/photo.png')).resolves.toBeUndefined();
+  });
+
+  describe('video seam (site update video, step 2)', () => {
+    function make(): ImageKitStorage {
+      process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
+      process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
+      return new ImageKitStorage();
+    }
+
+    function streamOf(bytes: number[]): ReadableStream<Uint8Array> {
+      return new ReadableStream({
+        start(c) {
+          c.enqueue(new Uint8Array(bytes));
+          c.close();
+        },
+      });
+    }
+
+    it('stat reports the stored size, mime and privacy from the exact path', async () => {
+      listFilesMock.mockResolvedValue([
+        { type: 'file', filePath: '/org-1/u1/other.mp4', size: 1, mime: 'video/mp4' },
+        {
+          type: 'file',
+          filePath: '/org-1/u1/clip.mp4',
+          size: 14268660,
+          mime: 'video/mp4',
+          isPrivateFile: true,
+        },
+      ]);
+      await expect(make().stat('/org-1/u1/clip.mp4')).resolves.toEqual({
+        size: 14268660,
+        mimeType: 'video/mp4',
+        isPrivate: true,
+      });
+    });
+
+    it('stat treats a missing privacy flag as PUBLIC, never private', async () => {
+      listFilesMock.mockResolvedValue([
+        { type: 'file', filePath: '/o/u/c.mp4', size: 5, mime: 'video/mp4' },
+      ]);
+      expect((await make().stat('/o/u/c.mp4'))?.isPrivate).toBe(false);
+    });
+
+    it('stat is null for an absent key and for an SDK failure', async () => {
+      listFilesMock.mockResolvedValueOnce([]);
+      expect(await make().stat('/o/u/none.mp4')).toBeNull();
+      listFilesMock.mockRejectedValueOnce(new Error('boom'));
+      expect(await make().stat('/o/u/c.mp4')).toBeNull();
+    });
+
+    it('readStream sends the range and reports 206 with the range headers', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
+        new Response(streamOf([1, 2]), {
+          status: 206,
+          headers: {
+            'content-range': 'bytes 1000-2000/14268660',
+            'content-length': '1001',
+            'accept-ranges': 'bytes',
+            'set-cookie': 'secret=1',
+          },
+        }),
+      );
+      const out = await make().readStream('/o/u/c.mp4', { start: 1000, end: 2000 });
+
+      expect(fetchSpy.mock.calls[0][1]).toEqual({ headers: { range: 'bytes=1000-2000' } });
+      expect(out?.status).toBe(206);
+      expect(out?.headers['content-range']).toBe('bytes 1000-2000/14268660');
+      expect(out?.headers['set-cookie']).toBeUndefined();
+      expect(out?.body).not.toBeNull();
+    });
+
+    it('readStream uses an open-ended range and never leaks the signed URL', async () => {
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response(streamOf([1]), { status: 206 }));
+      const out = await make().readStream('/o/u/c.mp4', { start: 5000000 });
+
+      expect(fetchSpy.mock.calls[0][1]).toEqual({ headers: { range: 'bytes=5000000-' } });
+      expect(JSON.stringify(out?.headers)).not.toMatch(/ik-s|ik-t|signature/);
+    });
+
+    it('readStream with no range is a 200 and sends no Range header', async () => {
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response(streamOf([1]), { status: 200 }));
+      const out = await make().readStream('/o/u/c.mp4');
+
+      expect(fetchSpy.mock.calls[0][1]).toEqual({ headers: {} });
+      expect(out?.status).toBe(200);
+    });
+
+    it('readStream reports a 200 honestly when upstream ignored the range', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValue(new Response(streamOf([1]), { status: 200 }));
+      expect((await make().readStream('/o/u/c.mp4', { start: 1, end: 2 }))?.status).toBe(200);
+    });
+
+    it('readStream surfaces 416 with no body, and null on an upstream 403', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+        new Response(null, { status: 416, headers: { 'content-range': 'bytes */10' } }),
+      );
+      const bad = await make().readStream('/o/u/c.mp4', { start: 99 });
+      expect(bad).toEqual({ status: 416, headers: { 'content-range': 'bytes */10' }, body: null });
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(new Response('no', { status: 403 }));
+      expect(await make().readStream('/o/u/c.mp4')).toBeNull();
+    });
+
+    it('createUploadAuth issues a private direct grant scoped to the folder', () => {
+      authMock.mockReturnValue({ token: 'tok', signature: 'sig', expire: 0 });
+      const before = Math.floor(Date.now() / 1000);
+      const auth = make().createUploadAuth({
+        organizationId: 'org-1',
+        uploadId: 'up-1',
+        maxBytes: 14680064,
+      });
+
+      expect(auth).toMatchObject({
+        transport: 'direct',
+        publicKey: 'pub',
+        urlEndpoint: 'https://ik.imagekit.io/org',
+        token: 'tok',
+        signature: 'sig',
+        folder: '/org-1/up-1/',
+        maxBytes: 14680064,
+        isPrivateFile: true,
+      });
+      if (auth.transport !== 'direct') throw new Error('expected direct');
+      expect(auth.expire).toBeGreaterThanOrEqual(before + 600);
+      expect(auth.expire).toBeLessThanOrEqual(before + 602);
+      expect(JSON.stringify(auth)).not.toContain('priv');
+    });
   });
 });
