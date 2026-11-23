@@ -293,6 +293,7 @@ model Organization {
   leadFacts               LeadFact[]
   invites                 Invite[]
   storageUsage            StorageUsage?
+  projectStorageUsage     ProjectStorageUsage[]
   siteUpdateDeliveries    SiteUpdateDelivery[]
 
   @@index([slug])
@@ -849,6 +850,7 @@ model Project {
   projectTeams   ProjectTeam[]
   projectOptions ProjectOption[]
   milestones     ProjectMilestone[]
+  storageUsage   ProjectStorageUsage?
   staffRoles     ProjectStaffRole[] @relation("ProjectStaffRoleProject")
   organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1945,6 +1947,24 @@ model StorageUsage {
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// ProjectStorageUsage (2026-11-23): the per-project half of the video cap. Moves
+// in the same transaction as StorageUsage, from the server-verified size, under a
+// conditional UPDATE so the cap holds under concurrency. The limits live in
+// config (SITE_VIDEO_*_CAP_BYTES), not here.
+// ────────────────────────────────────────────────────────────────────────────
+model ProjectStorageUsage {
+  projectId      String   @id
+  organizationId String
+  usedBytes      BigInt   @default(0)
+  updatedAt      DateTime @updatedAt
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────

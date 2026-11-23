@@ -61,6 +61,9 @@ async function cleanup(): Promise<void> {
   await adminPrisma.siteUpdateDelivery.deleteMany({
     where: { organizationId: { in: [ORG_A, ORG_B] }, batchId: { startsWith: 'suv' } },
   });
+  await adminPrisma.projectStorageUsage.deleteMany({
+    where: { projectId: { in: [PROJ_A, PROJ_B] } },
+  });
   await adminPrisma.storageUsage.deleteMany({
     where: { organizationId: { in: [ORG_A, ORG_B] } },
   });
@@ -374,6 +377,99 @@ maybe('Site update video - schema invariants + RLS (step 1)', () => {
         where: { organizationId: ORG_A },
       });
       expect(after.usedBytes).toBe(before.usedBytes);
+    });
+  });
+
+  // ── ProjectStorageUsage ──────────────────────────────────────────────────
+
+  describe('ProjectStorageUsage', () => {
+    const row = (projectId: string, organizationId: string, usedBytes = 0n) => ({
+      projectId,
+      organizationId,
+      usedBytes,
+    });
+
+    it('is one row per project', async () => {
+      await adminPrisma.projectStorageUsage.create({ data: row(PROJ_A, ORG_A) });
+      await expect(
+        adminPrisma.projectStorageUsage.create({ data: row(PROJ_A, ORG_A) }),
+      ).rejects.toThrow();
+    });
+
+    it('rejects a negative balance, on this ledger and the org one', async () => {
+      await expect(
+        adminPrisma.projectStorageUsage.update({
+          where: { projectId: PROJ_A },
+          data: { usedBytes: -1n },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        adminPrisma.storageUsage.update({
+          where: { organizationId: ORG_A },
+          data: { usedBytes: -1n },
+        }),
+      ).rejects.toThrow();
+    });
+
+    it('lets a member read and advance their own org project ledger', async () => {
+      const after = await withRlsContext(prisma, engA, (tx) =>
+        tx.projectStorageUsage.update({
+          where: { projectId: PROJ_A },
+          data: { usedBytes: 7_000_000n },
+        }),
+      );
+      expect(after.usedBytes).toBe(7_000_000n);
+      await adminPrisma.projectStorageUsage.update({
+        where: { projectId: PROJ_A },
+        data: { usedBytes: 0n },
+      });
+    });
+
+    it("does not leak another org's project ledger", async () => {
+      await adminPrisma.projectStorageUsage.create({ data: row(PROJ_B, ORG_B, 5n) });
+      const seen = await withRlsContext(prisma, engA, (tx) =>
+        tx.projectStorageUsage.findMany({ where: { projectId: PROJ_B } }),
+      );
+      expect(seen).toHaveLength(0);
+    });
+
+    it('refuses to let a member insert a ledger row for another org', async () => {
+      await expect(
+        withRlsContext(prisma, engA, (tx) =>
+          tx.projectStorageUsage.create({ data: row(PROJ_B, ORG_B) }),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('denies a CUSTOMER writing the ledger, and a forged cron role', async () => {
+      await expect(
+        withRlsContext(prisma, custA, (tx) =>
+          tx.projectStorageUsage.update({
+            where: { projectId: PROJ_A },
+            data: { usedBytes: 999_999n },
+          }),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        withRlsContext(prisma, cronForge, (tx) =>
+          tx.projectStorageUsage.update({ where: { projectId: PROJ_A }, data: { usedBytes: 2n } }),
+        ),
+      ).rejects.toThrow();
+      const after = await adminPrisma.projectStorageUsage.findUniqueOrThrow({
+        where: { projectId: PROJ_A },
+      });
+      expect(after.usedBytes).toBe(0n);
+    });
+
+    it('lets the canonical cron pair move the ledger', async () => {
+      const byCron = await withRlsContext(prisma, cronA, (tx) =>
+        tx.projectStorageUsage.update({ where: { projectId: PROJ_A }, data: { usedBytes: 3n } }),
+      );
+      expect(byCron.usedBytes).toBe(3n);
+      await adminPrisma.projectStorageUsage.update({
+        where: { projectId: PROJ_A },
+        data: { usedBytes: 0n },
+      });
     });
   });
 

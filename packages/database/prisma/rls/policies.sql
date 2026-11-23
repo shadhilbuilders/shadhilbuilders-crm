@@ -2439,3 +2439,255 @@ CREATE POLICY auditlog_insert_invite_accept ON "AuditLog"
     AND current_setting('app.user_id', true) IS NOT NULL
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
+
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Site update video (2026-11-23): StorageUsage, SiteUpdateDelivery,
+-- ProjectStorageUsage.
+-- Applied by 20261123120000_progress_photo_video and
+-- 20261123140000_project_storage_usage. Added here afterwards because step 1
+-- shipped its policies in the migration only; this file is the canonical copy.
+-- ────────────────────────────────────────────────────────────────────────────
+-- ── 8. Table-level GRANTs ──────────────────────────────────────────────────
+-- Rule from issue #7 slice 1: model + GRANTs + policies in ONE migration. A new
+-- table without its grant inserts nothing, silently.
+GRANT SELECT, INSERT, UPDATE, DELETE ON "StorageUsage" TO shadhil_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "SiteUpdateDelivery" TO shadhil_app;
+
+-- ── 9. RLS: ENABLE + FORCE ─────────────────────────────────────────────────
+-- FORCE is what makes the policies bind the table OWNER too. Without it, a
+-- connection that happens to arrive as the migration role bypasses everything.
+ALTER TABLE "StorageUsage" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "StorageUsage" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "SiteUpdateDelivery" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "SiteUpdateDelivery" FORCE ROW LEVEL SECURITY;
+
+-- ── 10. StorageUsage policies ──────────────────────────────────────────────
+-- READ is org-scoped: the ledger backs a visible cap indicator and discloses
+-- nothing about another person's data, so every role in the org may see it.
+--
+-- WRITE is STAFF-only. The first draft scoped the write arms to the
+-- organisation alone, and the step-1 proof suite showed what that admits: a
+-- CUSTOMER login, and any actor holding the CRON_SERVICE marker with a real
+-- user id, could advance `usedBytes`. The per-org cap is enforced by this
+-- ledger, so a buyer could hand themselves unlimited storage by being in the
+-- org. The repo already states the rule this violated: "NO WRITE ARM EXISTS FOR
+-- CUSTOMER ON ANY TABLE" (20261106160000_customer_portal_slice2:38).
+--
+-- CRON_SERVICE and the other GUC-only markers are named nowhere in the staff
+-- list on purpose. They are not staff roles; the cron has its own arm below,
+-- which demands BOTH the role and the sentinel user id, so admitting the marker
+-- here as well would let a forged role borrow a real user's id.
+CREATE POLICY storage_usage_select_member ON "StorageUsage"
+  FOR SELECT
+  USING ("organizationId" = current_setting('app.user_org_id', true));
+
+CREATE POLICY storage_usage_insert_staff ON "StorageUsage"
+  FOR INSERT
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'ENGINEER', 'SALES_EXEC', 'TELECALLER')
+  );
+
+CREATE POLICY storage_usage_update_staff ON "StorageUsage"
+  FOR UPDATE
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'ENGINEER', 'SALES_EXEC', 'TELECALLER')
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'ENGINEER', 'SALES_EXEC', 'TELECALLER')
+  );
+
+-- The purge cron decrements usage after deleting bytes. Both GUCs are required:
+-- a caller who forges the role but keeps their own user id falls through and is
+-- denied (same impersonation guard as reminder_cron_service).
+CREATE POLICY storage_usage_cron_service ON "StorageUsage"
+  FOR ALL
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
+  );
+
+-- ── 11. SiteUpdateDelivery policies ────────────────────────────────────────
+-- Same membership join ProgressPhoto uses: Unit has no projectId, so the
+-- project resolves through Phase, and membership is ProjectTeam -> TeamMember
+-- or the linked team's manager. ADMIN is org-wide. An ENGINEER additionally has
+-- to hold the villa (assignedEngineerId), matching the 2026-11-10 assignment
+-- scoping rather than the looser team-membership arm.
+--
+-- Every write arm names the STAFF roles explicitly. A membership join alone
+-- would admit a CUSTOMER who was added to a team by mistake, and the GUC-only
+-- markers (CRON_SERVICE, PUBLIC_API, INVITE_ACCEPT) are not staff at all - the
+-- cron has its own arm, which demands both the role and the sentinel user id.
+CREATE POLICY site_update_delivery_select_member ON "SiteUpdateDelivery"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR (
+        current_setting('app.user_role', true) IN
+          ('MANAGER', 'ENGINEER', 'SALES_EXEC', 'TELECALLER')
+        AND EXISTS (
+          SELECT 1
+          FROM "Unit" u
+          JOIN "Phase" ph ON ph."id" = u."phaseId"
+          JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+          WHERE u."id" = "SiteUpdateDelivery"."unitId"
+            AND pt."organizationId" = current_setting('app.user_org_id', true)
+            AND (
+              current_setting('app.user_role', true) <> 'ENGINEER'
+              OR u."assignedEngineerId" = current_setting('app.user_id', true)
+            )
+            AND (
+              EXISTS (
+                SELECT 1 FROM "TeamMember" tm
+                WHERE tm."teamId" = pt."teamId"
+                  AND tm."userId" = current_setting('app.user_id', true)
+              )
+              OR EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = pt."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              )
+            )
+        )
+      )
+    )
+  );
+
+-- INSERT: the same member arm. The delivery row is written by whoever recorded
+-- the update, so no separate creator binding is needed - unit membership is the
+-- binding, and the org check is fail-closed for a NULL org GUC.
+CREATE POLICY site_update_delivery_insert_member ON "SiteUpdateDelivery"
+  FOR INSERT
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR (
+        current_setting('app.user_role', true) IN
+          ('MANAGER', 'ENGINEER', 'SALES_EXEC', 'TELECALLER')
+        AND EXISTS (
+          SELECT 1
+          FROM "Unit" u
+          JOIN "Phase" ph ON ph."id" = u."phaseId"
+          JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+          WHERE u."id" = "SiteUpdateDelivery"."unitId"
+            AND pt."organizationId" = current_setting('app.user_org_id', true)
+            AND (
+              current_setting('app.user_role', true) <> 'ENGINEER'
+              OR u."assignedEngineerId" = current_setting('app.user_id', true)
+            )
+            AND (
+              EXISTS (
+                SELECT 1 FROM "TeamMember" tm
+                WHERE tm."teamId" = pt."teamId"
+                  AND tm."userId" = current_setting('app.user_id', true)
+              )
+              OR EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = pt."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              )
+            )
+        )
+      )
+    )
+  );
+
+-- UPDATE is the send path (status, wamid, attempts) and the cron's claim. It is
+-- ROLE-scoped rather than villa-scoped so a status flip never depends on the
+-- villa still being assigned to the person who sent it, and STAFF-scoped rather
+-- than org-scoped because a buyer has no business marking a delivery SENT.
+CREATE POLICY site_update_delivery_update_staff ON "SiteUpdateDelivery"
+  FOR UPDATE
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'ENGINEER', 'SALES_EXEC', 'TELECALLER')
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'ENGINEER', 'SALES_EXEC', 'TELECALLER')
+  );
+
+-- DELETE is an admin-class concern (cleanup of a bad batch), never a member one.
+CREATE POLICY site_update_delivery_delete_admin ON "SiteUpdateDelivery"
+  FOR DELETE
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ADMIN'
+  );
+
+-- The cron claim: both GUCs required, exactly like reminder_cron_service. The
+-- delivery row is claimed by the outbound job under
+-- withRlsContext({ userId: 'cron-service', role: 'CRON_SERVICE' }).
+CREATE POLICY site_update_delivery_cron_service ON "SiteUpdateDelivery"
+  FOR ALL
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
+  );
+
+-- ProjectStorageUsage
+GRANT SELECT, INSERT, UPDATE, DELETE ON "ProjectStorageUsage" TO shadhil_app;
+
+ALTER TABLE "ProjectStorageUsage" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ProjectStorageUsage" FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY project_storage_usage_select_member ON "ProjectStorageUsage"
+  FOR SELECT
+  USING ("organizationId" = current_setting('app.user_org_id', true));
+
+CREATE POLICY project_storage_usage_insert_staff ON "ProjectStorageUsage"
+  FOR INSERT
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'ENGINEER', 'SALES_EXEC', 'TELECALLER')
+  );
+
+CREATE POLICY project_storage_usage_update_staff ON "ProjectStorageUsage"
+  FOR UPDATE
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'ENGINEER', 'SALES_EXEC', 'TELECALLER')
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'ENGINEER', 'SALES_EXEC', 'TELECALLER')
+  );
+
+CREATE POLICY project_storage_usage_cron_service ON "ProjectStorageUsage"
+  FOR ALL
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
+  );
