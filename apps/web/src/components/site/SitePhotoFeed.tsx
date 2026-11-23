@@ -153,6 +153,10 @@ function deliveryNoteOf(row: {
 const DELIVERY_WORDS = {
   PENDING: 'Sending to buyer…',
   SENT: 'Sent to buyer',
+  // Meta's receipts. "Sent" already means accepted, so these say what actually
+  // happened on the phone, which is the only part the buyer controls.
+  DELIVERED: 'Delivered to buyer',
+  READ: 'Read by buyer',
   SKIPPED_WINDOW: 'Not sent: buyer window closed',
   SKIPPED_NO_TEMPLATE: 'Not sent: no approved template',
   SKIPPED_NO_BUYER: 'Not sent: no buyer on this unit',

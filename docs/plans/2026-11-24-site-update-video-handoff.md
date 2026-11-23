@@ -15,12 +15,14 @@ Read first, in this order:
 - Steps 1-6 were committed at `dd475f7`. Steps 7 and 8, the marketing-consent capture and the
   `SITE_UPDATE_WHATSAPP` switch are now COMMITTED on `main` in that order (four commits, then the
   switch). Nothing is pushed: local `main` is ahead of `origin/main`, and pushing is the deploy.
-- Backend: 2171 tests green across 121 files. Database: 301 green across 15 files, including
-  `consent-rls.test.ts`. Web: 1896 green across 181 files. `tsc` and `eslint` clean in both apps.
-- Three migrations are applied to dev and test: `20261123160000_site_update_delivery_no_buyer`,
+- Backend: 2176 tests green across 121 files. Database: 301 green across 15 files, including
+  `consent-rls.test.ts`. Web: 1896 green across 181 files plus the two receipt labels. `tsc` and
+  `eslint` clean in both apps.
+- Five migrations are applied to dev and test: `20261123160000_site_update_delivery_no_buyer`,
   `20261123200000_site_update_delivery_no_consent`,
   `20261123193000_site_update_delivery_skipped_disabled`,
-  `20261123194500_outbound_message_site_update_delivery`. The Prisma client is regenerated in the
+  `20261123194500_outbound_message_site_update_delivery`,
+  `20261123201000_site_update_delivery_receipts`. The Prisma client is regenerated in the
   build and is not committed; run `pnpm --filter @shadhil/database generate` after pulling.
 
 ## Do not break these
@@ -59,6 +61,12 @@ dist/main.js`; the repo-root `.env` already sets `MEDIA_STORAGE=imagekit`, so pa
   best effort: a failure there logs and leaves the row PENDING, because rolling back a send Meta
   already accepted would message the buyer twice. Runs under CRON_SERVICE, which
   `site_update_delivery_cron_service` already allows.
+- Meta's receipts move it further: the inbound webhook maps `delivered` and `read` onto
+  DELIVERED and READ (`reportToDelivery`), in the same transaction and org context as the
+  OutboundMessage update. FORWARD ONLY, with each transition naming its allowed from-states
+  (DELIVERED from SENT, READ from SENT or DELIVERED, FAILED from SENT), because receipts arrive
+  out of order and Meta retries them: a late "delivered" must not un-read a message the buyer
+  already opened. SENT means "Meta accepted"; DELIVERED and READ are what happened on the phone.
 - A skipped delivery queues no outbox row, so nothing exists to retry. Re-sending a
   `SKIPPED_DISABLED` or `SKIPPED_NO_*` batch is NOT implemented: the row records that it was
   skipped, and a re-send feature would have to rebuild the message from the stored row.

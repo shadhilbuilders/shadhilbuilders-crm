@@ -50,6 +50,8 @@ export type TimelinePhoto = {
   whatsappStatus?:
     | 'PENDING'
     | 'SENT'
+    | 'DELIVERED'
+    | 'READ'
     | 'SKIPPED_WINDOW'
     | 'SKIPPED_NO_TEMPLATE'
     | 'SKIPPED_NO_BUYER'

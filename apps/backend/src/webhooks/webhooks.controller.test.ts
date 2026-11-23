@@ -569,6 +569,117 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     expect(updated?.status).toBe('DELIVERED');
   });
 
+  // ── Meta receipts on the site-update row (2026-11-23) ────────────
+  // The delivery row used to stop at SENT, so a message the buyer had read still
+  // read "Sent to buyer" to staff. These pin the three properties that matter:
+  // the receipt lands on the linked delivery row, it moves forward, and a late
+  // duplicate cannot walk it back.
+  it('carries delivered and read receipts onto the linked site-update delivery', async () => {
+    const org = 'ceid01lpfe1esm8jwsxid41k28';
+    const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const wamid = `wamid.test.delivery.${tag}`;
+    const admin = { userId: TEST_USER_ID, role: 'ADMIN' as const, organizationId: org };
+    const seeded = await withRlsContext(
+      runtimePrisma as unknown as PrismaClient,
+      admin,
+      async (tx) => {
+        const unit = await tx.unit.findFirst({
+          where: { organizationId: org },
+          select: { id: true },
+        });
+        if (unit === null) return null;
+        const delivery = await tx.siteUpdateDelivery.create({
+          data: {
+            organizationId: org,
+            batchId: `test-batch-receipt-${tag}`,
+            unitId: unit.id,
+            status: 'SENT',
+          },
+          select: { id: true },
+        });
+        const msg = await tx.message.create({
+          data: {
+            leadId: knownLeadId,
+            userId: TEST_USER_ID,
+            direction: 'OUT',
+            channel: 'WHATSAPP',
+            body: 'site update',
+            organizationId: org,
+          },
+          select: { id: true },
+        });
+        await tx.outboundMessage.create({
+          data: {
+            messageId: msg.id,
+            leadId: knownLeadId,
+            sendType: 'TEMPLATE',
+            templateName: 'shadhil_site_update_image',
+            status: 'SENT',
+            attempts: 1,
+            lastAttemptAt: new Date(),
+            wamid,
+            siteUpdateDeliveryId: delivery.id,
+            organizationId: org,
+          },
+        });
+        return { deliveryId: delivery.id, messageId: msg.id };
+      },
+    );
+    if (seeded === null) {
+      // No seeded villa in this database to hang a delivery row on. Saying so is
+      // better than a green test that proved nothing.
+      expect(seeded).toBeNull();
+      return;
+    }
+
+    const receipt = (status: string) => ({
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          changes: [
+            {
+              field: 'messages',
+              value: { statuses: [{ id: wamid, status, timestamp: '1700000000' }] },
+            },
+          ],
+        },
+      ],
+    });
+    const delivered = () =>
+      withRlsContext(runtimePrisma as unknown as PrismaClient, admin, async (tx) => {
+        const row = await tx.siteUpdateDelivery.findUnique({
+          where: { id: seeded.deliveryId },
+          select: { status: true },
+        });
+        return row?.status;
+      });
+
+    try {
+      await controller.whatsappInbound(receipt('delivered'));
+      expect(await delivered()).toBe('DELIVERED');
+
+      await controller.whatsappInbound(receipt('read'));
+      expect(await delivered()).toBe('READ');
+
+      // Out-of-order and duplicated receipts are normal from Meta. A late
+      // "delivered" must not un-read a message the buyer has already opened.
+      await controller.whatsappInbound(receipt('delivered'));
+      expect(await delivered()).toBe('READ');
+
+      // A contradictory later receipt cannot rewrite what happened either: the
+      // failed-from-SENT transition is not open once the buyer has read it.
+      await controller.whatsappInbound(receipt('failed'));
+      expect(await delivered()).toBe('READ');
+    } finally {
+      await withRlsContext(runtimePrisma as unknown as PrismaClient, admin, async (tx) => {
+        // Deleting the message cascades to the outbox row; the delivery row is
+        // SetNull-linked, so it has to go explicitly.
+        await tx.message.deleteMany({ where: { id: seeded.messageId } });
+        await tx.siteUpdateDelivery.deleteMany({ where: { id: seeded.deliveryId } });
+      });
+    }
+  });
+
   // ── T-WA-MULTITENANT (2026-11-19) ────────────────────────────────
   // Both regressions below were live in prod: a status callback for a row in
   // any org other than PUBLIC_ORG_ID matched nothing (the row stayed SENT while

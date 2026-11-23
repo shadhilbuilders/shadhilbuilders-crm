@@ -45,7 +45,7 @@ import { tryParsePhone } from '@shadhil/api-types';
 
 import { Public } from '../auth/public.decorator';
 import { prisma as barePrisma, withRlsContext } from '@shadhil/database';
-import { listOrganizationIds } from '../common/cron-orgs';
+import { cronContextFor, listOrganizationIds } from '../common/cron-orgs';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import type { StorageProvider } from '../storage/storage.provider';
 import { InboundChatNotifierService } from '../chat/inbound-chat-notifier.service';
@@ -266,17 +266,64 @@ export class WebhooksController {
     return [publicOrgId, ...all.filter((id) => id !== publicOrgId)];
   }
 
-  // ── Status update handler ─────────────────────────────────────────
-  // Map Meta's `status` string to our OutboundStatus enum, then
-  // find the matching OutboundMessage by metaMessageId (the wamid
-  // Meta gave us when we sent the message) and update its status.
-  // Returns true if updated, false if not found (caller increments
-  // `ignored`).
+  /**
+   * Carry a Meta receipt onto the site-update delivery row it belongs to.
+   *
+   * The staff row reads `SiteUpdateDelivery.status`, and until now only the send
+   * path ever wrote it, so a delivered message still said "Sent". SENT means
+   * "Meta accepted"; DELIVERED and READ are what actually happened on the phone.
+   *
+   * FORWARD ONLY. Receipts arrive out of order (read can land before delivered,
+   * and Meta retries them), so each transition names the states it may come
+   * from: DELIVERED from SENT, READ from SENT or DELIVERED, FAILED from SENT.
+   * Without that guard a late "delivered" would replace "read" and quietly
+   * un-read a message the buyer had already opened.
+   *
+   * Never touches a row that has not been accepted yet. A delivery that is still
+   * PENDING belongs to the send path (which is mid-retry), and one that is
+   * SKIPPED_* has no wamid at all - the join simply matches nothing.
+   */
+  private async reportToDelivery(
+    tx: { $executeRawUnsafe: (query: string, ...values: unknown[]) => Promise<number> },
+    wamid: string,
+    receipt: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED',
+  ): Promise<void> {
+    // From-states per receipt. A lookup table, not string building: every value
+    // is a literal in this file, so nothing here can be influenced by the
+    // webhook payload.
+    const from: Record<typeof receipt, string> = {
+      // Meta does not send "sent" back to us as a delivery state worth acting
+      // on, and if it did the row is already SENT: no transition.
+      SENT: "d.status = 'NEVER'",
+      DELIVERED: "d.status = 'SENT'",
+      READ: "d.status IN ('SENT', 'DELIVERED')",
+      // Accepted, then refused by Meta (undeliverable, re-engagement window,
+      // quality). Same word the worker uses, because the meaning is the same:
+      // the buyer never got it.
+      FAILED: "d.status = 'SENT'",
+    };
+    const errorCode = receipt === 'FAILED' ? `, "errorCode" = 'SEND_FAILED'` : '';
+    await tx.$executeRawUnsafe(
+      `UPDATE "SiteUpdateDelivery" d
+          SET "status" = $1::"SiteUpdateDeliveryStatus"${errorCode}
+         FROM "OutboundMessage" o
+        WHERE o."siteUpdateDeliveryId" = d.id
+          AND o."wamid" = $2
+          AND ${from[receipt]}`,
+      receipt,
+      wamid,
+    );
+  }
+
+  /** Meta accepted, delivered, read or refused a message we sent. */
   private async handleStatusUpdate(
     status: { id?: string; status?: string; recipient_id?: string },
     metadata: { phone_number_id?: string } | undefined,
   ): Promise<boolean> {
     if (!status.id || !status.status) return false;
+    // Captured before the closures below: narrowing on `status.id` does not
+    // survive into an async callback, and the wamid is the whole correlation.
+    const wamid = status.id;
     const ourStatus = mapMetaStatus(status.status);
     if (ourStatus === null) {
       // Unknown Meta status (e.g. a new one they add). Log and ignore.
@@ -291,17 +338,19 @@ export class WebhooksController {
     for (const organizationId of orgIds) {
       const updated = await withRlsContext(
         barePrisma,
-        {
-          userId: 'CRON_SERVICE',
-          role: 'CRON_SERVICE',
-          organizationId,
-        },
+        // cronContextFor, not a hand-written literal: the delivery row's policy
+        // also checks app.user_id = 'cron-service', and this block now writes
+        // that table too. One context, both tables, one place that defines it.
+        cronContextFor(organizationId),
         async (tx) => {
-          return await tx.$executeRawUnsafe(
+          const outboxUpdated = await tx.$executeRawUnsafe(
             `UPDATE "OutboundMessage" SET status = $1::"OutboundStatus" WHERE "wamid" = $2`,
             ourStatus,
-            status.id,
+            wamid,
           );
+          if (outboxUpdated === 0) return 0;
+          await this.reportToDelivery(tx, wamid, ourStatus);
+          return outboxUpdated;
         },
       );
       if (updated > 0) return true;

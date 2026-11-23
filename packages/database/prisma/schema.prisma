@@ -2039,6 +2039,14 @@ enum SiteUpdateDeliveryStatus {
    */
   SKIPPED_DISABLED
   SENT
+  /**
+   * Meta reported the message reached the buyer's phone (2026-11-23 receipt
+   * mapping). SENT only means Meta accepted it; this is the one that means
+   * something happened on the other end.
+   */
+  DELIVERED
+  /** The buyer opened the message. Terminal: nothing in this flow goes higher. */
+  READ
   SKIPPED_WINDOW
   SKIPPED_NO_TEMPLATE
   FAILED

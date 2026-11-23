@@ -46,6 +46,15 @@ describe('staff delivery status', () => {
     expect(card({ whatsappStatus: 'SENT' })).toContain('Sent to buyer');
   });
 
+  it('distinguishes delivered and read from merely sent', () => {
+    // Meta's receipts (2026-11-23). "Sent" only means accepted; these two are
+    // what the buyer's phone actually did, and a staff member chasing a buyer
+    // needs to see the difference.
+    expect(card({ whatsappStatus: 'DELIVERED' })).toContain('Delivered to buyer');
+    expect(card({ whatsappStatus: 'READ' })).toContain('Read by buyer');
+    expect(card({ whatsappStatus: 'SENT' })).not.toContain('Delivered to buyer');
+  });
+
   it('explains a closed window without sounding like an error', () => {
     const html = card({ whatsappStatus: 'SKIPPED_WINDOW' });
     expect(html).toContain('Not sent: buyer window closed');
