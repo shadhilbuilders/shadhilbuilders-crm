@@ -9,7 +9,9 @@ import { cn } from '@paalstack/react-ui/lib';
 import {
   DOMESTIC_COUNTRY,
   isCountryCode,
+  limitPhoneTyping,
   listCountries,
+  maxNationalDigits,
   nationalDigitsOf,
   regionOf,
   type CountryCode,
@@ -29,8 +31,6 @@ import {
  * library call.
  */
 
-export type IntlPhoneSize = 'sm' | 'md' | 'lg';
-
 export interface IntlPhoneInputProps {
   /** Canonical E.164 digits, no `+`. Empty string for "no number". */
   value: string;
@@ -45,7 +45,6 @@ export interface IntlPhoneInputProps {
   name?: string;
   disabled?: boolean;
   placeholder?: string;
-  size?: IntlPhoneSize;
   'aria-invalid'?: boolean;
   'aria-describedby'?: string;
   /** Forwarded to the real input - react-hook-form's `field.onBlur` needs it. */
@@ -57,15 +56,38 @@ export interface IntlPhoneInputProps {
 const COUNTRIES = listCountries().map((country) => ({
   label: `${country.name} ${country.dialCode}`,
   value: country.code,
+  dialCode: country.dialCode,
 }));
 
-const HEIGHTS: Record<IntlPhoneSize, string> = {
-  sm: 'h-9',
-  md: 'h-10',
-  lg: 'min-h-11',
-};
+const callingCodeOf = (code: CountryCode): string =>
+  COUNTRIES.find((option) => option.value === code)?.dialCode ?? '';
 
+/**
+ * What the library is given: canonical E.164 with the `+`.
+ *
+ * Its own NATIONAL formatting is what the input shows, and for India and the
+ * UAE that format carries the trunk prefix (`098765 43210`, `050 123 4567`).
+ * The typed path never produces that, so see `stripTrunkPrefix` for the one
+ * place it is removed, at display time only.
+ */
 const toLibraryValue = (digits: string): string => (digits ? `+${digits.replace(/\D/g, '')}` : '');
+
+/**
+ * Remove the trunk `0` the library adds when it formats a complete number, so a
+ * lead loaded for editing shows `98765 43210` and not `098765 43210`.
+ *
+ * Only when the shown digits are exactly a `0` in front of the canonical
+ * national number: Italy and a few others keep a leading `0` as part of the
+ * number itself, and stripping theirs would corrupt the value. Display only -
+ * the library still formats and parses everything else.
+ */
+function stripTrunkPrefix(shown: string, canonicalNational: string): string {
+  if (!shown || !canonicalNational) return shown;
+  const digits = shown.replace(/\D/g, '');
+  if (digits !== `0${canonicalNational}`) return shown;
+  const at = shown.indexOf('0');
+  return at < 0 ? shown : shown.slice(0, at) + shown.slice(at + 1);
+}
 
 export function IntlPhoneInput({
   value,
@@ -75,7 +97,6 @@ export function IntlPhoneInput({
   name,
   disabled,
   placeholder,
-  size = 'md',
   className,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
@@ -106,14 +127,53 @@ export function IntlPhoneInput({
     (next: string) => {
       if (!isCountryCode(next)) return;
       setCountry(next);
-      // Changing the country keeps the digits and re-reports with the new
-      // country; it never clears the field or rewrites the subscriber part.
-      onChange(nationalDigitsOf(value, next), next);
+      if (!value) {
+        onChange('', next);
+        return;
+      }
+      /**
+       * The value crossing this boundary is canonical E.164 DIGITS, so the new
+       * country's calling code has to be re-attached. Reporting the bare
+       * national digits stored `9876543210`, which the field then parsed as
+       * Iran's +98: the trigger jumped to the wrong country and digits
+       * disappeared. The national part is also cut to the new country's mobile
+       * length, because the field cannot show more digits than the template and
+       * a stored number that the display silently drops is worse than a cut.
+       */
+      const national = nationalDigitsOf(value, next).slice(0, maxNationalDigits(next));
+      onChange(`${callingCodeOf(next)}${national}`, next);
     },
     [onChange, value],
   );
 
-  const dialCode = COUNTRIES.find((option) => option.value === country)?.label.split(' ').pop() ?? '';
+  /**
+   * A paste that carries its own country (`+1 650 234 5678` while the trigger
+   * says India) must not go through the national template: the formatter drops
+   * the `+`, the digits are read against India, and the number is stored as
+   * 91 650 234 5678. That is the exact corruption this field exists to stop, so
+   * the paste is handled here, before the library formats it.
+   */
+  const handlePasteText = React.useCallback(
+    (raw: string): boolean => {
+      const text = raw.trim();
+      if (!text.startsWith('+')) return false;
+      const digits = text.replace(/\D/g, '');
+      // Too short to carry a country code: the field's normal rules should
+      // answer, with the error naming the field.
+      if (digits.length < 4) return false;
+      const resolved = regionOf(digits);
+      if (!resolved) return false;
+      setCountry(resolved);
+      onChange(digits, resolved);
+      return true;
+    },
+    [onChange],
+  );
+
+  const dialCode =
+    COUNTRIES.find((option) => option.value === country)
+      ?.label.split(' ')
+      .pop() ?? '';
 
   // The library renders this component AS the input. A change of its identity
   // therefore unmounts and remounts the field - dropping focus and the caret on
@@ -121,32 +181,34 @@ export function IntlPhoneInput({
   const live = React.useRef({
     ariaDescribedBy,
     ariaInvalid,
+    canonicalValue: value,
     className,
     country,
     dataQa,
     dialCode,
     disabled,
     handleCountry,
+    handlePasteText,
     id,
     name,
     onBlur,
     placeholder,
-    size,
   });
   live.current = {
     ariaDescribedBy,
     ariaInvalid,
+    canonicalValue: value,
     className,
     country,
     dataQa,
     dialCode,
     disabled,
     handleCountry,
+    handlePasteText,
     id,
     name,
     onBlur,
     placeholder,
-    size,
   };
 
   const shell = React.useCallback(
@@ -157,9 +219,41 @@ export function IntlPhoneInput({
     // in charge of what the operator sees.
     (props: { value?: string; onChange?: React.ChangeEventHandler<HTMLInputElement> }) => {
       const s = live.current;
+
+      /**
+       * Typing STOPS at the country's mobile length: 10 for India and the US,
+       * 9 for the UAE, 8 for Singapore. `limitPhoneTyping` owns that rule,
+       * including the `+` exemption for a number that carries its own country.
+       *
+       * The keystroke itself is refused first (see `handleKeyDown`). Cutting the
+       * value alone was not enough: `react-phone-number-input` formats through
+       * `input-format`, so handing it one digit too many makes it rewrite the
+       * string and drop an already-typed digit - typing 11 digits into the India
+       * field left 9 in the box. Refusing the extra key keeps every accepted
+       * digit, and the value cut stays as the guard for paste, which arrives in
+       * one shot with no keystroke to refuse.
+       */
+      const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        if (!/^\d$/.test(event.key)) return;
+        const el = event.currentTarget;
+        // Replacing a selection does not lengthen the number, so it is allowed.
+        const replacing = Math.max(0, (el.selectionEnd ?? 0) - (el.selectionStart ?? 0));
+        const typed = el.value.trimStart();
+        if (typed.startsWith('+')) return;
+        const digits = typed.replace(/\D/g, '').length - replacing;
+        if (digits >= maxNationalDigits(s.country)) event.preventDefault();
+      };
+
+      const handleChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+        const limited = limitPhoneTyping(event.target.value, s.country);
+        if (limited !== event.target.value) event.target.value = limited;
+        props.onChange?.(event);
+      };
+
       return (
         <InputGroup
-          className={cn(HEIGHTS[s.size], s.disabled && 'opacity-60', s.className)}
+          className={cn(s.disabled && 'opacity-60', s.className)}
           addonStart={
             <Popover
               trigger={
@@ -192,8 +286,18 @@ export function IntlPhoneInput({
             inputMode: 'tel',
             disabled: s.disabled,
             placeholder: s.placeholder,
-            value: props.value ?? '',
-            onChange: props.onChange,
+            value: stripTrunkPrefix(
+              props.value ?? '',
+              nationalDigitsOf(s.canonicalValue, s.country),
+            ),
+            onChange: handleChange,
+            onKeyDown: handleKeyDown,
+            onPaste: (event: React.ClipboardEvent<HTMLInputElement>) => {
+              // Handled before the library formats: see `handlePasteText`.
+              if (s.handlePasteText(event.clipboardData.getData('text'))) {
+                event.preventDefault();
+              }
+            },
             onBlur: s.onBlur,
             'aria-invalid': s.ariaInvalid,
             'aria-describedby': s.ariaDescribedBy,
@@ -211,7 +315,6 @@ export function IntlPhoneInput({
       inputComponent={shell}
       metadata={metadata}
       country={country}
-      defaultCountry={country}
       value={toLibraryValue(value) || undefined}
       onChange={handleValue}
       international={false}

@@ -31,22 +31,17 @@ function inputValue(html: string, qa: string): string {
   return /value="([^"]*)"/.exec(input)?.[1] ?? '';
 }
 
-/** Digits only, minus the trunk prefix the domestic format prints. */
-function digitsOf(html: string, qa: string): string {
-  return inputValue(html, qa)
-    .replace(/\D/g, '')
-    .replace(/^0+/, '');
-}
-
 describe('LeadEditFormBody', () => {
   const noopSubmit = () => undefined;
 
   it('renders prefilled name/phone/email from the lead row', () => {
     const html = renderToStaticMarkup(<LeadEditFormBody lead={lead} onSubmit={noopSubmit} />);
     expect(html).toContain('Priya Sharma');
-    // The field is prefilled with the stored canonical digits; the domestic
-    // format renders them with the national trunk prefix (0).
-    expect(digitsOf(html, 'lead-edit-phone')).toBe('9876543210');
+    // The field is prefilled with the stored canonical digits and shows them
+    // the way typing produces them: national, no trunk `0`. libphonenumber's
+    // own national format prints `098765 43210`, which is not the number that
+    // gets stored, so the field strips it (see IntlPhoneInput.stripTrunkPrefix).
+    expect(inputValue(html, 'lead-edit-phone')).toBe('98765 43210');
     expect(html).toContain('priya@example.com');
   });
 
