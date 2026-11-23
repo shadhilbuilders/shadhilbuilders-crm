@@ -279,4 +279,41 @@ chat attachment read does a scan). If that shows up in a trace, add
 URL surface, and the BFF already carries the session; (b) a `MediaObject` table - a
 migration plus a backfill for a problem two indexed lookups solve.
 
+## Test health
+
+### `auto-assign.service.test.ts` flakes on the shared test database
+
+**What:** `autoAssignLeads = false → manager owns the lead (pending) > routes to the creating
+team manager with ownerType MANAGER` failed once in a full backend run (one file, one test,
+2175/2176 green), then passed alone (25/25) and in the next full run (2176/2176). Nothing in
+that run touched leads, teams or assignment.
+
+**Why it matters:** this suite runs against a shared database and other specs seed the same
+fixture org, teams and managers. A single flaky spec costs a full re-run to tell apart from a
+real failure, and the cheap habit it teaches is to re-run until green, which is how a real
+regression gets waved through.
+
+**Evidence:** the failing run's assertion text was not captured. Recorded facts: the test name
+above, `apps/backend/src/leads/auto-assign.service.test.ts:435`, `1 failed | 2175 passed`.
+
+**Likely mechanism, unconfirmed.** Two candidates, both visible in the file:
+
+1. The test sets `TEAM_B.autoAssignLeads = false` and never restores it. Anything that creates a
+   lead in TEAM_B afterwards in the same run sees manager-owns instead of auto-assign. That is a
+   within-file ordering dependency, so it should be deterministic - unless a second vitest process
+   shares the database, which is exactly what happened while the web suite was running.
+2. `phone: '+9199' + ((Date.now() + 300) % 1e8)` is a millisecond-derived number, and the clean-up
+   in `afterAll` does not run if a run is killed. A leftover row with the same phone can make
+   `service.create` return a pre-existing lead, whose `ownerId` is whatever assigned it the first
+   time.
+
+**Fix:** restore `autoAssignLeads` in `afterEach`; build the phone from `RUN_TAG` (already defined
+in the file) instead of a millisecond offset so a leftover row cannot collide; and on the next
+occurrence capture the assertion text rather than only the summary line.
+
+**Effort:** S.
+**Priority:** P2. It hides real failures and it already cost one full re-run. The durable version
+of this is per-file isolation (own org, or a transaction that rolls back), which is a bigger job
+worth doing once rather than per spec.
+
 ## Completed
