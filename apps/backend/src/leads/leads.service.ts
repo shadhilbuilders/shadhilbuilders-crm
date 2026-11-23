@@ -41,6 +41,7 @@ import type { JwtPayload } from '@shadhil/auth';
 
 import { PROJECT_ACTIVE, LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
 import { deriveWhatsAppReachability } from './whatsapp-reachability';
+import { newestMarketingConsentRow } from '../customer-progress/site-update-consent';
 import type {
   BulkDeleteLeadsResult,
   CreateLeadDto,
@@ -558,6 +559,10 @@ export class LeadsService {
       if (row === null) {
         throw new NotFoundException(`Lead ${leadId} not found`);
       }
+      // The newest MARKETING row on the consent ledger: the same read the
+      // site-update send decision makes, so the panel and the sender cannot
+      // disagree about whether this buyer opted in.
+      const consent = await newestMarketingConsentRow(tx, leadId);
       return {
         id: row.id,
         name: row.name,
@@ -574,6 +579,8 @@ export class LeadsService {
         projectId: row.projectId,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
+        marketingConsent: consent === null ? 'never-asked' : consent.granted ? 'granted' : 'denied',
+        marketingConsentAt: consent?.grantedAt.toISOString() ?? null,
         // Evidence, not a check: the Cloud API cannot answer "is this number
         // on WhatsApp" before a send, so this says what we actually know.
         whatsapp: await deriveWhatsAppReachability(tx as unknown as PrismaClient, leadId),

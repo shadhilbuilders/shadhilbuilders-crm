@@ -7,12 +7,14 @@ import { Module } from '@nestjs/common';
 
 import { LeadsController } from './leads.controller';
 import { LeadsService } from './leads.service';
+import { LeadConsentController } from './lead-consent.controller';
+import { LeadConsentService } from './lead-consent.service';
 import { LeadFactsController } from './lead-facts.controller';
 import { LeadFactsService } from './lead-facts.service';
 
 @Module({
-  controllers: [LeadsController, LeadFactsController],
-  providers: [LeadsService, LeadFactsService],
-  exports: [LeadsService, LeadFactsService],
+  controllers: [LeadsController, LeadFactsController, LeadConsentController],
+  providers: [LeadsService, LeadFactsService, LeadConsentService],
+  exports: [LeadsService, LeadFactsService, LeadConsentService],
 })
 export class LeadsModule {}

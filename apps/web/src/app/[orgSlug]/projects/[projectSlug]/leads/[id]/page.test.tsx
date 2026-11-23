@@ -45,6 +45,10 @@ vi.mock('@/hooks/queries/crm', () => ({
   useDecideLeadFact: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   // 2026-11-23: deletion is available from this page for admins/owners.
   useDeleteLead: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  // 2026-11-23: the page now renders LeadMarketingConsent, which owns the
+  // consent ledger write. Not under test here; it needs a hook that resolves so
+  // this suite keeps asserting the page's own state matrix.
+  useRecordLeadConsent: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }));
 
 vi.mock('@/components/shared/LeadActionPanel', () => ({

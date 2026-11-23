@@ -36,6 +36,8 @@ import type {
   BulkDeleteLeadsResult,
   LeadFactsResponse,
   LeadFactRow,
+  RecordLeadConsentDto,
+  RecordLeadConsentResult,
   LeadStateTransitionDto,
   RescheduleVisitDto,
   SendContactMessageDto,
@@ -212,6 +214,33 @@ export function useLead(id: string | null) {
     queryKey: ['leads', id] as const,
     enabled: id !== null && id.length > 0,
     queryFn: ({ signal }) => api<LeadDetail>(`/leads/${id as string}`, { signal }),
+  });
+}
+
+/**
+ * Record a marketing opt-in or opt-out on the lead's consent ledger
+ * (2026-11-23). The site-update WhatsApp templates were approved as MARKETING,
+ * so this answer is what the sender reads before it will message a buyer
+ * outside the 24-hour reply window. Nothing else writes Consent rows.
+ *
+ * The mutation appends (never updates), so the response's `changed: false`
+ * means the newest row already said this - a double click, not a failure.
+ */
+export function useRecordLeadConsent(leadId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RecordLeadConsentDto) => {
+      if (leadId === null) {
+        return Promise.reject(new Error('Lead id required'));
+      }
+      return api<RecordLeadConsentResult>(`/leads/${leadId}/consent`, {
+        method: 'POST',
+        json: body,
+      });
+    },
+    onSuccess: () => {
+      invalidateLeadCaches(queryClient, leadId ?? undefined);
+    },
   });
 }
 

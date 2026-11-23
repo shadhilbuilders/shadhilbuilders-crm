@@ -27,6 +27,7 @@ import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { LeadActionPanel } from '@/components/shared/LeadActionPanel';
 import { LeadFactsPanel } from '@/components/leads/lead-facts-panel';
+import { LeadMarketingConsent } from '@/components/leads/lead-marketing-consent';
 import { LeadChatPane } from '@/components/shared/LeadChatPane';
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
 import { LeadVisitPanel } from '@/components/shared/LeadVisitPanel';
@@ -146,6 +147,7 @@ export default function LeadDetailPage() {
           {/* Left - lead info + actions + timeline */}
           <div className="space-y-4">
             <LeadInfoCard lead={lead} />
+            <LeadMarketingConsent lead={lead} />
             <LeadFactsPanel leadId={lead.id} />
             <LeadActionPanel lead={lead} />
             <LeadVisitPanel lead={lead} />

@@ -232,7 +232,67 @@ export const WhatsAppReachabilitySchema = z.object({
 });
 export type WhatsAppReachability = z.infer<typeof WhatsAppReachabilitySchema>;
 
+/**
+ * The answer to "may we send this buyer marketing messages", in three states.
+ *
+ * Three, not two, because "denied" and "never-asked" are both non-sends but
+ * only one of them is a customer who said no. The site-update WhatsApp
+ * templates were approved as MARKETING, so this is the answer the send
+ * decision reads (see site-update-consent.ts on the backend).
+ */
+export const LeadConsentAnswerSchema = z.enum(['granted', 'denied', 'never-asked']);
+export type LeadConsentAnswer = z.infer<typeof LeadConsentAnswerSchema>;
+
+/**
+ * How a marketing opt-in was obtained. The database column is a free string
+ * (older rows carry names this list does not know), but a NEW row is written
+ * by one of these paths, so the endpoint accepts only these. `call_verbal` is
+ * the default in the UI: that is how a builder's sales team actually gets it.
+ */
+export const LeadConsentSourceSchema = z.enum([
+  'call_verbal',
+  'in_person',
+  'whatsapp_button',
+  'booking_form',
+]);
+export type LeadConsentSource = z.infer<typeof LeadConsentSourceSchema>;
+
+/**
+ * POST /api/leads/:id/consent - append one row to the MARKETING consent
+ * ledger for this lead.
+ *
+ * `consentType` is not a field: MARKETING is the only consent whose answer the
+ * product acts on today (the site-update templates). Opening the other two
+ * (DATA_PROCESSING, COMMUNICATION) is a separate decision with its own
+ * surfaces, not something to fold into this endpoint silently.
+ */
+export const RecordLeadConsentDtoSchema = z.object({
+  granted: z.boolean(),
+  source: LeadConsentSourceSchema,
+  note: z.string().trim().max(500).optional(),
+});
+export type RecordLeadConsentDto = z.infer<typeof RecordLeadConsentDtoSchema>;
+
+/**
+ * What the endpoint answers. `changed` is false when the newest row already
+ * says this - a rep clicking twice must not append a second row to a ledger
+ * whose whole point is that each row is a moment in time.
+ */
+export const RecordLeadConsentResultSchema = z.object({
+  changed: z.boolean(),
+  answer: LeadConsentAnswerSchema,
+  recordedAt: z.string().nullable(),
+});
+export type RecordLeadConsentResult = z.infer<typeof RecordLeadConsentResultSchema>;
+
 export type LeadDetail = z.infer<typeof LeadDetailSchema> & {
+  /**
+   * The newest MARKETING consent answer for this lead, and when it was given.
+   * Optional like `whatsapp` below: `undefined` means the server did not
+   * compute it, which is not the same as `never-asked`.
+   */
+  marketingConsent?: LeadConsentAnswer;
+  marketingConsentAt?: string | null;
   /**
    * Whether this lead can actually receive a WhatsApp message. Derived from
    * evidence (an inbound message, or Meta's 131026), never guessed: the Cloud
