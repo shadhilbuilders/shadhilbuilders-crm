@@ -67,7 +67,7 @@ export class OutboundService {
     // fallback would never fire and Meta would get templateName '' —
     // a 132001 that names nothing useful.
     chatReply: process.env.WA_TEMPLATE_CHAT_REPLY || 'shadhil_chat_reply',
-    visitFollowup: process.env.WA_TEMPLATE_VISIT_FOLLOWUP || 'shadhil_visit_followup',
+    visitFollowup: process.env.WA_TEMPLATE_VISIT_FOLLOWUP || 'shadhil_site_visit_followup',
     visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER || 'shadhil_visit_reminder',
   };
 
@@ -280,7 +280,7 @@ export class OutboundService {
         // template body - Meta rejects out-of-order parameters.
         // See apps/backend/src/whatsapp/whatsapp.client.ts for
         // the full template specs (3 templates: shadhil_chat_reply,
-        // shadhil_visit_followup, shadhil_visit_reminder).
+        // shadhil_site_visit_followup, shadhil_visit_reminder).
         //
         // We sort the values alphabetically by key for a stable
         // order. The chat service writes the keys in a specific

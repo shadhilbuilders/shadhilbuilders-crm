@@ -21,7 +21,7 @@ describe('site-update URL button', () => {
     expect(hasUrlButton(SITE_UPDATE_TEMPLATE_IMAGE)).toBe(true);
     for (const other of [
       'shadhil_chat_reply',
-      'shadhil_visit_followup',
+      'shadhil_site_visit_followup',
       'shadhil_visit_reminder',
       'shadhil_welcome_enquiry',
     ]) {

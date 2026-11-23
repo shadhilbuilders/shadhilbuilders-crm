@@ -47,7 +47,7 @@
 //    When sent: chat service → outbound.send() with
 //               templateName: 'shadhil_chat_reply', sendType: TEMPLATE
 //
-// 2. shadhil_visit_followup  (MARKETING, en)  ← env: WA_TEMPLATE_VISIT_FOLLOWUP
+// 2. shadhil_site_visit_followup  (MARKETING, en)  ← env: WA_TEMPLATE_VISIT_FOLLOWUP
 //    Category:  Marketing, on Meta's recommendation (2026-11-11). A
 //                MARKETING template is ACCEPTED by the API and then SILENTLY
 //                DROPPED when the sender is still a Meta test number - see
@@ -64,7 +64,7 @@
 //    Variables: {{1}} = lead first name (max 60 chars)
 //                {{2}} = project name (max 60 chars)
 //    When sent: visit → site-visit service → outbound.send() with
-//               templateName: 'shadhil_visit_followup', sendType: TEMPLATE
+//               templateName: 'shadhil_site_visit_followup', sendType: TEMPLATE
 //               (scheduled 24-48h after the site visit)
 //
 // 3. shadhil_visit_reminder  (UTILITY, en)  ← env: WA_TEMPLATE_VISIT_REMINDER
@@ -118,7 +118,7 @@
 //
 // Env-var name mapping (defaults to the template name itself):
 //   WA_TEMPLATE_CHAT_REPLY            default 'shadhil_chat_reply'
-//   WA_TEMPLATE_VISIT_FOLLOWUP        default 'shadhil_visit_followup'
+//   WA_TEMPLATE_VISIT_FOLLOWUP        default 'shadhil_site_visit_followup'
 //   WA_TEMPLATE_VISIT_REMINDER        default 'shadhil_visit_reminder'
 //   WA_TEMPLATE_SITE_UPDATE_VIDEO     default 'shadhil_site_update_video'
 //   WA_TEMPLATE_SITE_UPDATE_IMAGE     default 'shadhil_site_update_image'

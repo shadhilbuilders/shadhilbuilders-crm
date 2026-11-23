@@ -12,7 +12,7 @@ Date: 2026-11-11
 
 The visit templates ask the customer to reply:
 
-- `shadhil_visit_followup` — "Are you still interested? Reply YES to chat."
+- `shadhil_site_visit_followup` — "Are you still interested? Reply YES to chat."
 - `shadhil_visit_reminder` — "Reply YES to confirm or RESCHEDULE."
 
 Nothing on the receiving side reads that reply today.
@@ -184,14 +184,14 @@ Editing a template's body in WhatsApp Manager does not change its approval
 category or its parameter count, so the following ships with **zero** code
 change and removes the false promise immediately:
 
-- `shadhil_visit_followup`: "Hi {{1}}, just following up on your site visit for
+- `shadhil_site_visit_followup`: "Hi {{1}}, just following up on your site visit for
   {{2}}. Are you still interested? Reply YES and our team will call you."
 - `shadhil_visit_reminder`: "Your site visit for {{1}} is on {{2}}. Reply YES and
   our team will confirm, or RESCHEDULE if you need another time."
 
 Still 2 parameters each and still starts and ends on static text, so neither
 edit needs a code change. Category is Meta's to advise on, and the operator
-accepted Marketing for both (`shadhil_visit_followup` and `shadhil_chat_reply`
+accepted Marketing for both (`shadhil_site_visit_followup` and `shadhil_chat_reply`
 are Marketing as of 2026-11-11); the consequence is delivery, not approval —
 from a Meta test sender a Marketing template is accepted and then dropped, so
 expect nothing to arrive until a real sender is registered.
@@ -230,5 +230,5 @@ untouched (no new table).
 - `NO` / cancel semantics.
 - Auto-replying to the customer. An ack template would be a third template and a
   third approval; the reply that matters is the staff call, not a robot "ok".
-- Wiring `shadhil_visit_followup` / `shadhil_visit_reminder` to an actual sender
+- Wiring `shadhil_site_visit_followup` / `shadhil_visit_reminder` to an actual sender
   (separate gap: nothing enqueues either today, so neither is sent by this app).
