@@ -61,6 +61,8 @@ export type TimelinePhoto = {
     | null;
   /** When the buyer opened it (staff only, ISO). Only meaningful with READ. */
   whatsappReadAt?: string | null;
+  /** When it reached the phone (staff only, ISO). Pairs with whatsappReadAt. */
+  whatsappDeliveredAt?: string | null;
 };
 
 export type TimelineResponse = {

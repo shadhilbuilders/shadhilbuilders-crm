@@ -304,22 +304,33 @@ export class WebhooksController {
       FAILED: "d.status = 'SENT'",
     };
     const errorCode = receipt === 'FAILED' ? `, "errorCode" = 'SEND_FAILED'` : '';
-    // The stamp is written in the same statement as the status, from Meta's own
-    // timestamp: the read happened on the phone, not when this worker drained
-    // the webhook. The from-state guard still applies, so the first read stands
-    // and a replayed receipt cannot move the time.
-    const readStamp = receipt === 'READ' ? `, "readAt" = $3::timestamptz` : '';
+    // Stamps ride on the same statement as the status, from Meta's own
+    // timestamp: this is when the phone did the thing, not when this worker
+    // drained the webhook. The from-state guard still applies, so the first
+    // delivery stands and a replayed receipt cannot move either time.
+    const stamps: Record<typeof receipt, { set: string; bindsStamp: boolean }> = {
+      SENT: { set: '', bindsStamp: false },
+      DELIVERED: { set: `, "deliveredAt" = $3::timestamptz`, bindsStamp: true },
+      // A read proves delivery. When the delivered receipt never arrived, the
+      // read time is the only evidence we have, and it understates the wait
+      // (a 0 gap) instead of inventing one or going negative.
+      READ: {
+        set: `, "readAt" = $3::timestamptz, "deliveredAt" = COALESCE(d."deliveredAt", $3::timestamptz)`,
+        bindsStamp: true,
+      },
+      FAILED: { set: errorCode, bindsStamp: false },
+    };
+    const { set, bindsStamp } = stamps[receipt];
     await tx.$executeRawUnsafe(
       `UPDATE "SiteUpdateDelivery" d
-          SET "status" = $1::"SiteUpdateDeliveryStatus"${errorCode}${readStamp}
+          SET "status" = $1::"SiteUpdateDeliveryStatus"${set}
          FROM "OutboundMessage" o
         WHERE o."siteUpdateDeliveryId" = d.id
           AND o."wamid" = $2
           AND ${from[receipt]}`,
       receipt,
       wamid,
-      // Unused (and never bound into the SQL) for every other receipt.
-      ...(receipt === 'READ' ? [receivedAt.toISOString()] : []),
+      ...(bindsStamp ? [receivedAt.toISOString()] : []),
     );
   }
 

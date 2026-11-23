@@ -84,6 +84,12 @@ export interface TimelinePhotoDto {
    * status is anything but READ, and for every case whatsappStatus is null.
    */
   whatsappReadAt?: string | null;
+  /**
+   * When it reached the phone (staff only, ISO). Paired with whatsappReadAt so
+   * the client can say how long the buyer sat on it; null wherever the status is
+   * null, and for every row saved before the receipt mapping existed.
+   */
+  whatsappDeliveredAt?: string | null;
 }
 
 export interface TimelineResponseDto {
@@ -319,7 +325,7 @@ export async function readTimelinePage(
   // own timeline omits it: it is our bookkeeping, not their record.
   const deliveryByBatch = new Map<
     string,
-    { status: SiteUpdateDeliveryStatus; readAt: Date | null }
+    { status: SiteUpdateDeliveryStatus; readAt: Date | null; deliveredAt: Date | null }
   >();
   if (args.scope.viewer !== null) {
     const batches = [...new Set(page.map((r) => r.batchId).filter((b): b is string => b !== null))];
@@ -331,10 +337,13 @@ export async function readTimelinePage(
       const delegate = (
         tx as unknown as {
           siteUpdateDelivery?: {
-            findMany(
-              a: unknown,
-            ): Promise<
-              Array<{ batchId: string; status: SiteUpdateDeliveryStatus; readAt: Date | null }>
+            findMany(a: unknown): Promise<
+              Array<{
+                batchId: string;
+                status: SiteUpdateDeliveryStatus;
+                readAt: Date | null;
+                deliveredAt: Date | null;
+              }>
             >;
           };
         }
@@ -344,10 +353,14 @@ export async function readTimelinePage(
           ? []
           : await delegate.findMany({
               where: { organizationId: args.organizationId, batchId: { in: batches } },
-              select: { batchId: true, status: true, readAt: true },
+              select: { batchId: true, status: true, readAt: true, deliveredAt: true },
             });
       for (const d of deliveries) {
-        deliveryByBatch.set(d.batchId, { status: d.status, readAt: d.readAt });
+        deliveryByBatch.set(d.batchId, {
+          status: d.status,
+          readAt: d.readAt,
+          deliveredAt: d.deliveredAt,
+        });
       }
     }
   }
@@ -362,6 +375,10 @@ export async function readTimelinePage(
       args.scope.viewer === null || r.batchId === null
         ? null
         : (deliveryByBatch.get(r.batchId)?.readAt?.toISOString() ?? null),
+    whatsappDeliveredAt:
+      args.scope.viewer === null || r.batchId === null
+        ? null
+        : (deliveryByBatch.get(r.batchId)?.deliveredAt?.toISOString() ?? null),
   }));
   const last = page[page.length - 1];
   return {

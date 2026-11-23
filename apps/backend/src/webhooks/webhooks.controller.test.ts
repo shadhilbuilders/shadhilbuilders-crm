@@ -632,14 +632,14 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
       return;
     }
 
-    const receipt = (status: string) => ({
+    const receipt = (status: string, ts = '1700000000') => ({
       object: 'whatsapp_business_account',
       entry: [
         {
           changes: [
             {
               field: 'messages',
-              value: { statuses: [{ id: wamid, status, timestamp: '1700000000' }] },
+              value: { statuses: [{ id: wamid, status, timestamp: ts }] },
             },
           ],
         },
@@ -649,7 +649,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
       withRlsContext(runtimePrisma as unknown as PrismaClient, admin, async (tx) =>
         tx.siteUpdateDelivery.findUnique({
           where: { id: seeded.deliveryId },
-          select: { status: true, readAt: true },
+          select: { status: true, readAt: true, deliveredAt: true },
         }),
       );
     const delivered = async () => (await deliveryRow())?.status;
@@ -657,26 +657,31 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     try {
       await controller.whatsappInbound(receipt('delivered'));
       expect(await delivered()).toBe('DELIVERED');
-      // Delivered is not read: the stamp appears with the read receipt only.
+      // Delivered is not read: the delivery stamp appears alone.
       expect((await deliveryRow())?.readAt).toBeNull();
+      expect((await deliveryRow())?.deliveredAt?.toISOString()).toBe('2023-11-14T22:13:20.000Z');
 
-      await controller.whatsappInbound(receipt('read'));
+      // Meta's own timestamp, an hour later, not our processing time: the read
+      // happened on the phone, and the row says when that was.
+      await controller.whatsappInbound(receipt('read', '1700003600'));
       expect(await delivered()).toBe('READ');
-      // Meta's own timestamp (2023-11-14T22:13:20Z), not our processing time:
-      // the read happened on the phone, and the row says when that was.
-      expect((await deliveryRow())?.readAt?.toISOString()).toBe('2023-11-14T22:13:20.000Z');
+      expect((await deliveryRow())?.readAt?.toISOString()).toBe('2023-11-14T23:13:20.000Z');
+      // COALESCE keeps the real delivery time instead of overwriting it with the
+      // read: the gap between the two is the whole point of storing both.
+      expect((await deliveryRow())?.deliveredAt?.toISOString()).toBe('2023-11-14T22:13:20.000Z');
 
       // Out-of-order and duplicated receipts are normal from Meta. A late
       // "delivered" must not un-read a message the buyer has already opened.
       await controller.whatsappInbound(receipt('delivered'));
       expect(await delivered()).toBe('READ');
-      expect((await deliveryRow())?.readAt?.toISOString()).toBe('2023-11-14T22:13:20.000Z');
+      expect((await deliveryRow())?.readAt?.toISOString()).toBe('2023-11-14T23:13:20.000Z');
+      expect((await deliveryRow())?.deliveredAt?.toISOString()).toBe('2023-11-14T22:13:20.000Z');
 
       // A contradictory later receipt cannot rewrite what happened either: the
       // failed-from-SENT transition is not open once the buyer has read it.
       await controller.whatsappInbound(receipt('failed'));
       expect(await delivered()).toBe('READ');
-      expect((await deliveryRow())?.readAt?.toISOString()).toBe('2023-11-14T22:13:20.000Z');
+      expect((await deliveryRow())?.readAt?.toISOString()).toBe('2023-11-14T23:13:20.000Z');
     } finally {
       await withRlsContext(runtimePrisma as unknown as PrismaClient, admin, async (tx) => {
         // Deleting the message cascades to the outbox row; the delivery row is

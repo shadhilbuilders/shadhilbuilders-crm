@@ -2006,6 +2006,17 @@ model SiteUpdateDelivery {
    * forward-only, so the first read is the read.
    */
   readAt         DateTime?
+  /**
+   * When Meta reported the message reached the buyer's phone, from its receipt
+   * timestamp (2026-11-23). Paired with readAt so the staff row can say how long
+   * the buyer sat on it, which is the difference between "they have not seen it"
+   * and "they have seen it and not replied".
+   *
+   * A read receipt also fills this when it is still null: a read proves delivery,
+   * and the read time is then the only evidence we have. That understates the
+   * wait (a 0 gap) rather than inventing one, and never goes negative.
+   */
+  deliveredAt    DateTime?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
 

@@ -71,6 +71,39 @@ describe('staff delivery status', () => {
     expect(noStamp).not.toContain('Read by buyer,');
   });
 
+  it('stamps a delivery and says how long the buyer sat on it', () => {
+    const deliveredAt = new Date(NOW.getTime() - 3 * 60 * 60_000).toISOString();
+    const readAt = new Date(NOW.getTime() - 60_000).toISOString();
+
+    // Delivered: the time it reached the phone.
+    const delivered = card({ whatsappStatus: 'DELIVERED', whatsappDeliveredAt: deliveredAt });
+    expect(delivered).toContain('Delivered to buyer, Today,');
+
+    // Read: the time they opened it, plus the wait. That pair is the difference
+    // between "has not seen it" and "has seen it and is not replying".
+    const read = card({
+      whatsappStatus: 'READ',
+      whatsappReadAt: readAt,
+      whatsappDeliveredAt: deliveredAt,
+    });
+    expect(read).toContain('Read by buyer, Today,');
+    expect(read).toContain('(2h later)');
+
+    // One stamp only: no gap is invented from a missing delivery time.
+    const readOnly = card({ whatsappStatus: 'READ', whatsappReadAt: readAt });
+    expect(readOnly).toContain('Read by buyer, Today,');
+    expect(readOnly).not.toContain('later');
+
+    // A read stamped before delivery is clock skew or a lost receipt: say
+    // nothing rather than "-1h later".
+    const skewed = card({
+      whatsappStatus: 'READ',
+      whatsappReadAt: deliveredAt,
+      whatsappDeliveredAt: readAt,
+    });
+    expect(skewed).not.toContain('later');
+  });
+
   it('explains a closed window without sounding like an error', () => {
     const html = card({ whatsappStatus: 'SKIPPED_WINDOW' });
     expect(html).toContain('Not sent: buyer window closed');

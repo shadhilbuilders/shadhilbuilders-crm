@@ -147,6 +147,7 @@ function deliveryNoteOf(
   row: {
     whatsappStatus?: keyof typeof DELIVERY_WORDS | null;
     whatsappReadAt?: string | null;
+    whatsappDeliveredAt?: string | null;
   },
   now: Date,
 ): string | null {
@@ -154,14 +155,49 @@ function deliveryNoteOf(
   if (status === null || status === undefined) return null;
   const words = DELIVERY_WORDS[status];
   if (words === null || words === undefined) return null;
-  // A read is the one outcome where WHEN matters: "Read by buyer" a minute ago
-  // and read last Tuesday lead to different next calls. Same day-terms helper
-  // the capture time uses, so the row never mixes two date styles.
-  if (status === 'READ' && row.whatsappReadAt !== null && row.whatsappReadAt !== undefined) {
-    const when = relativeCaptureTime(row.whatsappReadAt, now);
-    if (when !== '') return `${words}, ${when}`;
+
+  // Delivered and read are the two outcomes where WHEN matters: "read a minute
+  // ago" and "read last Tuesday" lead to different next calls. Same day-terms
+  // helper the capture time uses, so the row never mixes two date styles.
+  const deliveredWhen = dayTerms(row.whatsappDeliveredAt, now);
+  const readWhen = dayTerms(row.whatsappReadAt, now);
+  if (status === 'DELIVERED') return deliveredWhen === null ? words : `${words}, ${deliveredWhen}`;
+  if (status === 'READ') {
+    if (readWhen === null) return words;
+    const satOn = satOnLabel(row.whatsappDeliveredAt, row.whatsappReadAt);
+    return satOn === null ? `${words}, ${readWhen}` : `${words}, ${readWhen} (${satOn})`;
   }
   return words;
+}
+
+/** Day-terms rendering of an optional ISO stamp; null when absent or invalid. */
+function dayTerms(iso: string | null | undefined, now: Date): string | null {
+  if (iso === null || iso === undefined) return null;
+  const when = relativeCaptureTime(iso, now);
+  return when === '' ? null : when;
+}
+
+/**
+ * How long the buyer waited between delivery and opening it ("2h later").
+ *
+ * Only when both stamps exist and the order is sane: a read before delivery is
+ * clock skew or a lost receipt, and "0m later" would be a number we made up.
+ * Under a minute reads "opened on arrival" because "0m later" says nothing.
+ */
+function satOnLabel(
+  deliveredAt: string | null | undefined,
+  readAt: string | null | undefined,
+): string | null {
+  if (!deliveredAt || !readAt) return null;
+  const ms = new Date(readAt).getTime() - new Date(deliveredAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'opened on arrival';
+  if (minutes < 60) return `${minutes}m later`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h later`;
+  const days = Math.floor(hours / 24);
+  return `${days} ${days === 1 ? 'day' : 'days'} later`;
 }
 
 const DELIVERY_WORDS = {
