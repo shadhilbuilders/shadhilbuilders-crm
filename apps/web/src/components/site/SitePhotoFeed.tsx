@@ -20,10 +20,13 @@ import { LuRefreshCw } from '@paalstack/react-icons/lu';
 
 import type { ReactNode } from 'react';
 
+import { VideoBadge } from './VideoBadge';
+
 import { groupByMonth } from '@/components/portal/portal-format';
 import type { TimelinePhoto } from '@/hooks/queries/customer-progress';
 import { constructionStageLabel } from '@/lib/labels';
 import { relativeCaptureTime } from '@/lib/site-photos';
+import { videoTileName } from '@/lib/site-video/format';
 
 /** The first two photos load eagerly (above the fold); the rest lazily. */
 const EAGER_IMAGES = 2;
@@ -138,6 +141,25 @@ function UploadingCard({
   );
 }
 
+/** Play glyph + duration over the poster. Decorative: the button's name carries both. */
+/** Staff-facing words for a delivery outcome; null when there is nothing to say. */
+function deliveryNoteOf(row: {
+  whatsappStatus?: keyof typeof DELIVERY_WORDS | null;
+}): string | null {
+  const status = row.whatsappStatus;
+  return status === null || status === undefined ? null : (DELIVERY_WORDS[status] ?? null);
+}
+
+const DELIVERY_WORDS = {
+  PENDING: 'Sending to buyer…',
+  SENT: 'Sent to buyer',
+  SKIPPED_WINDOW: 'Not sent: buyer window closed',
+  SKIPPED_NO_TEMPLATE: 'Not sent: no approved template',
+  SKIPPED_NO_BUYER: 'Not sent: no buyer on this unit',
+  SKIPPED_NO_CONSENT: 'Not sent: buyer has not opted in',
+  FAILED: 'Not sent: delivery failed',
+} as const;
+
 function PhotoCard({
   photo,
   index,
@@ -153,6 +175,8 @@ function PhotoCard({
   onOpen: () => void;
   actions?: ReactNode;
 }) {
+  const isVideo = photo.kind === 'VIDEO';
+  const deliveryNote = deliveryNoteOf(photo);
   const alt =
     photo.caption.trim().length > 0
       ? `Unit ${unitLabel}, "${photo.caption}"`
@@ -166,13 +190,17 @@ function PhotoCard({
           type="button"
           onClick={onOpen}
           aria-haspopup="dialog"
-          aria-label={`Open the photo from ${relativeCaptureTime(photo.takenAt, now)}`}
+          aria-label={
+            isVideo
+              ? `Open the ${videoTileName(photo.durationMs).toLowerCase()} from ${relativeCaptureTime(photo.takenAt, now)}`
+              : `Open the photo from ${relativeCaptureTime(photo.takenAt, now)}`
+          }
           data-qa="site-photo-open"
           className="focus-visible:ring-ring flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:outline-none"
         >
           {/* Same-origin, cookie-authenticated BFF media URL: next/image's
             optimizer would drop the session. */}
-          <span className="bg-muted-soft block size-20 shrink-0 overflow-hidden rounded-md">
+          <span className="bg-muted-soft relative block size-20 shrink-0 overflow-hidden rounded-md">
             <img
               src={photo.mediaUrl}
               alt={alt}
@@ -183,6 +211,7 @@ function PhotoCard({
               className="size-full object-cover"
               data-qa="progress-photo-thumb"
             />
+            {isVideo ? <VideoBadge durationMs={photo.durationMs} /> : null}
           </span>
           <span className="min-w-0 flex-1">
             {/* The NOTE is the headline: two lines, never truncated. */}
@@ -206,6 +235,18 @@ function PhotoCard({
                 <>
                   {' · '}
                   <span data-qa="progress-stage">{constructionStageLabel(photo.stage)}</span>
+                </>
+              ) : null}
+              {deliveryNote !== null ? (
+                <>
+                  {' · '}
+                  {/* Staff-only bookkeeping, in plain words: support answers
+                      "the buyer says they never got it" without a database
+                      query. Null (buyer view, pre-step-8 row) renders nothing
+                      rather than an ambiguous "not sent". */}
+                  <span data-qa="progress-whatsapp" data-status={photo.whatsappStatus}>
+                    {deliveryNote}
+                  </span>
                 </>
               ) : null}
             </span>

@@ -53,6 +53,10 @@ export const UNIT_ROW_SELECT = {
   // have I not photographed yet", and that answer needs a real timestamp and a
   // real count - not something the browser invents. The newest photo's
   // `takenAt` drives the four-state map; `_count` gives the feed size.
+  //
+  // The recorded STAGE is extras-only (2026-11-23): it comes from
+  // `lastRecordedStage` in `loadUnitUpdateExtras`, which looks at every row
+  // kind, not just photos. A caller that does not load the summary omits it.
   progressPhotos: {
     // PHOTO only (2026-11-23): once a unit can hold a clip, "newest photo" and
     // "how many photos" must not start counting videos. The video-aware
@@ -159,9 +163,6 @@ export function toUnitRow(
     // must never be confused with "photographed long ago".
     lastPhotoAt: newestPhoto?.takenAt.toISOString() ?? null,
     photoCount: row._count.progressPhotos,
-    // Derived from the newest photo, never denormalized. Null means the newest
-    // capture recorded no stage - every surface then says "Stage not set".
-    lastPhotoStage: newestPhoto?.stage ?? null,
     // Omitted (not zero) when the caller did not load the summary.
     ...(extras === undefined ? {} : unitUpdateExtrasToWire(extras)),
     expectedHandoverDate: row.expectedHandoverDate?.toISOString() ?? null,

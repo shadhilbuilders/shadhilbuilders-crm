@@ -866,7 +866,10 @@ export class InventoryService {
 
       // ADMIN/OWNER only above, so this actor always sees money; the flag is
       // passed explicitly rather than assumed so the mapper has one contract.
-      return toUnitRow(created, canSeeUnitMoney(actor.role));
+      // A brand-new unit has no rows yet, so the summary is the empty record -
+      // loaded rather than assumed, so the wire shape matches every other read.
+      const extras = await loadUnitUpdateExtras(tx as unknown as PrismaClient, [created.id]);
+      return toUnitRow(created, canSeeUnitMoney(actor.role), extrasFor(extras, created.id));
     });
   }
 
@@ -1007,8 +1010,11 @@ export class InventoryService {
         },
       });
 
-      // ADMIN/OWNER only above - see the note on `create`.
-      return toUnitRow(updated, canSeeUnitMoney(actor.role));
+      // ADMIN/OWNER only above - see the note on `create`. The summary is
+      // re-read so the returned row carries the same stage/update fields the
+      // detail read would send.
+      const extras = await loadUnitUpdateExtras(tx as unknown as PrismaClient, [updated.id]);
+      return toUnitRow(updated, canSeeUnitMoney(actor.role), extrasFor(extras, updated.id));
     });
   }
 

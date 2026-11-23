@@ -177,30 +177,35 @@ describe('toUnitRow', () => {
     const row = toUnitRow(source(), true);
     expect(row.lastPhotoAt).toBeNull();
     expect(row.photoCount).toBe(0);
-    expect(row.lastPhotoStage).toBeNull();
+    // Neither derived field is in the row select any more: the stage lives in
+    // the summary, so an unloaded summary cannot invent one.
+    expect('lastRecordedStage' in row).toBe(false);
+    expect('lastPhotoStage' in row).toBe(false);
     expect(() => UnitRowSchema.parse(row)).not.toThrow();
   });
 
-  it('derives lastPhotoStage from the newest photo and keeps null when unrecorded', () => {
-    const staged = toUnitRow(
-      source({
-        progressPhotos: [{ takenAt: new Date('2026-11-06T04:30:00.000Z'), stage: 'READY' }],
-        _count: { progressPhotos: 1 },
-      }),
-      true,
-    );
-    expect(staged.lastPhotoStage).toBe('READY');
-
-    // Null on the newest photo is "not recorded", NOT "not started".
-    const unstaged = toUnitRow(
+  it('takes the stage from the summary, not from the newest photo', () => {
+    // The alias is gone: a row whose newest PHOTO recorded nothing must not
+    // invent a stage, and the photo columns no longer decide this field at all.
+    const row = toUnitRow(
       source({
         progressPhotos: [{ takenAt: new Date('2026-11-06T04:30:00.000Z'), stage: null }],
         _count: { progressPhotos: 1 },
       }),
       true,
+      {
+        videoCount: 0,
+        updateCount: 1,
+        lastUpdateAt: new Date('2026-11-06T04:30:00.000Z'),
+        lastRecordedStage: 'READY',
+        lastRecordedStageAt: new Date('2026-11-05T04:30:00.000Z'),
+      },
     );
-    expect(unstaged.lastPhotoStage).toBeNull();
-    expect(() => UnitRowSchema.parse(unstaged)).not.toThrow();
+    // Null on the newest photo is "not recorded", NOT "not started"; the stage
+    // comes from the newest row of ANY kind that recorded one.
+    expect(row.lastRecordedStage).toBe('READY');
+    expect(row.lastRecordedStageAt).toBe('2026-11-05T04:30:00.000Z');
+    expect(() => UnitRowSchema.parse(row)).not.toThrow();
   });
 });
 
@@ -274,7 +279,6 @@ describe('toUnitRow - update summary extras (site update video, step 4)', () => 
     );
     expect(row).toMatchObject({
       photoCount: 2,
-      lastPhotoStage: 'READY',
       videoCount: 1,
       updateCount: 3,
       lastUpdateAt: '2026-11-09T04:30:00.000Z',

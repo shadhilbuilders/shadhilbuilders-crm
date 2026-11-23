@@ -140,6 +140,16 @@ const nextConfig: NextConfig = {
       source: '/visits/:path*',
       headers: [{ key: 'Permissions-Policy', value: 'camera=(self), geolocation=(self)' }],
     },
+    // Site update video: the recorder needs the camera and, when the engineer
+    // turns Audio on, the microphone. Scoped to the site routes only; the rest of
+    // the app keeps camera=() microphone=(). getUserMedia is still only called
+    // when a take starts.
+    {
+      source: '/:orgSlug/projects/:projectSlug/site/:path*',
+      headers: [
+        { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=()' },
+      ],
+    },
   ],
 
   // Proxy NestJS BFF paths to the backend (SSE streams, OpenAPI docs).

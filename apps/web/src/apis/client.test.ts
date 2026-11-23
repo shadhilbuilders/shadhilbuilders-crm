@@ -39,6 +39,18 @@ describe('api() error envelope parsing', () => {
     vi.unstubAllGlobals();
   });
 
+  it('carries the typed retryable flag, and null when the envelope has none', async () => {
+    mockFetchOnce({
+      status: 503,
+      body: { code: 'VIDEO_SAVE_FAILED', message: 'Could not save.', retryable: true },
+    });
+    await expect(api('/x', { method: 'POST' })).rejects.toMatchObject({ retryable: true });
+    mockFetchOnce({ status: 400, body: { code: 'VIDEO_TOO_LONG', message: 'Too long.' } });
+    await expect(api('/x', { method: 'POST' })).rejects.toMatchObject({ retryable: null });
+    mockFetchOnce({ status: 400, body: { message: 'x', retryable: 'yes' } });
+    await expect(api('/x', { method: 'POST' })).rejects.toMatchObject({ retryable: null });
+  });
+
   it('surfaces code + details from a CodedException envelope (409)', async () => {
     mockFetchOnce({
       status: 409,

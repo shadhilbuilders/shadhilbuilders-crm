@@ -155,7 +155,7 @@ describe('wire schemas', () => {
     // "not recorded", never a zero date or a guessed stage.
     lastPhotoAt: null,
     photoCount: 0,
-    lastPhotoStage: null,
+    lastRecordedStage: null,
     createdAt: '2026-10-01T09:00:00.000Z',
   };
 

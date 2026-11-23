@@ -21,7 +21,7 @@ import {
   IconButton,
   Spinner,
 } from '@paalstack/react-ui';
-import { LuCamera, LuChevronLeft } from '@paalstack/react-icons/lu';
+import { LuCamera, LuChevronLeft, LuVideo } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import type { RefObject } from 'react';
 
@@ -46,8 +46,8 @@ export type CaptureHeaderUnit = {
   projectName: string;
   phaseName: string;
   status: string;
-  /** Stage of the newest photo, or null. Rendered "Stage not set" when null. */
-  lastPhotoStage: string | null;
+  /** Stage of the newest row that recorded one, or null. "Stage not set" when null. */
+  lastRecordedStage: string | null;
   photoCount: number;
   lastPhotoAt: string | null;
   /** Shown to read-only viewers (manager/admin/owner): who owns this villa. */
@@ -88,6 +88,16 @@ export type SiteCaptureViewProps = {
   viewer: SitePhotoViewerProps;
   /** Announcements: "Uploading photo..." / "Photo saved." */
   announcement: string;
+  /**
+   * Video capture, present only while SITE_VIDEO_CAPTURE is on (read on the
+   * server). Absent = the photo-only bar, byte for byte.
+   */
+  video?: {
+    onRecord: () => void;
+    /** A video picked from the gallery. */
+    onFile: (file: File | null) => void;
+    fileInputRef: RefObject<HTMLInputElement | null>;
+  };
 };
 
 export function SiteCaptureView({
@@ -115,6 +125,7 @@ export function SiteCaptureView({
   noteDialog,
   viewer,
   announcement,
+  video,
 }: SiteCaptureViewProps) {
   const state = unitPhotoState({ photoCount: unit.photoCount, lastPhotoAt: unit.lastPhotoAt }, now);
   const summary = photoSummaryLine(photos, now);
@@ -184,7 +195,7 @@ export function SiteCaptureView({
                 data-qa="site-unit-stage"
                 data-state={state}
               >
-                {constructionStageOrUnset(unit.lastPhotoStage)}
+                {constructionStageOrUnset(unit.lastRecordedStage)}
               </Badge>
             </div>
           </div>
@@ -216,7 +227,7 @@ export function SiteCaptureView({
               data-qa="site-file-dropzone"
               className="border-0! bg-transparent! p-0! hover:bg-transparent!"
             >
-              <SiteEmptyHero unitNumber={unit.unitNumber} />
+              <SiteEmptyHero unitNumber={unit.unitNumber} videoEnabled={video !== undefined} />
             </FileUploadDropzone>
           ) : null}
 
@@ -294,6 +305,33 @@ export function SiteCaptureView({
               >
                 Take photo
               </Button>
+
+              {video !== undefined ? (
+                <>
+                  <input
+                    ref={video.fileInputRef}
+                    type="file"
+                    accept="video/mp4"
+                    className="hidden"
+                    data-qa="capture-video-input"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      event.target.value = '';
+                      video.onFile(file);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-h-12 flex-1 text-base"
+                    leftIcon={<LuVideo className="size-5" aria-hidden="true" />}
+                    onClick={video.onRecord}
+                    data-qa="capture-video"
+                  >
+                    Video
+                  </Button>
+                </>
+              ) : null}
 
               {/* Same provider as the empty panel: one file state, one handler. */}
               <FileUploadTrigger asChild>

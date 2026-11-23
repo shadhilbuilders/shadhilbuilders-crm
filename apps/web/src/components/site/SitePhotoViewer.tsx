@@ -16,6 +16,9 @@ import { LuChevronLeft, LuChevronRight, LuX } from '@paalstack/react-icons/lu';
 import { formatDay } from '@/components/portal/portal-format';
 import type { TimelinePhoto } from '@/hooks/queries/customer-progress';
 
+import { isPlayableVideo } from '@/lib/site-video/is-video';
+
+import { SiteVideoPlayer } from './SiteVideoPlayer';
 import { ZoomableImage } from './ZoomableImage';
 
 /** `4 November 2026, 4:12 pm` - the unambiguous reading. */
@@ -87,7 +90,10 @@ export function SitePhotoViewer({
       // The panel draws its own 44px close control; the library's 32px one
       // would sit on top of it.
       dialogContentProps={{ showCloseButton: false }}
-      header={{ title: `Unit ${unitNumber} photo`, className: 'sr-only' }}
+      header={{
+        title: `Unit ${unitNumber} ${isPlayableVideo(photo) ? 'video' : 'photo'}`,
+        className: 'sr-only',
+      }}
     >
       <SitePhotoViewerPanel
         photo={photo}
@@ -158,7 +164,7 @@ export function SitePhotoViewerPanel({
           variant="ghost"
           className="size-11"
           icon={<LuX className="size-5" aria-hidden="true" />}
-          aria-label="Close photo"
+          aria-label={isPlayableVideo(photo) ? 'Close video' : 'Close photo'}
           onClick={onClose}
           data-qa="site-photo-close"
         />
@@ -167,7 +173,17 @@ export function SitePhotoViewerPanel({
       {/* Keyed so zoom resets when moving to another photo. The image is
             clipped to this region: before, it overflowed over the header and
             swallowed taps on Back/Close. */}
-      <ZoomableImage key={photo.id} src={photo.mediaUrl} alt={alt} />
+      {isPlayableVideo(photo) ? (
+        <SiteVideoPlayer
+          key={photo.id}
+          src={photo.videoUrl}
+          poster={photo.mediaUrl}
+          durationMs={photo.durationMs}
+          filename={photo.filename}
+        />
+      ) : (
+        <ZoomableImage key={photo.id} src={photo.mediaUrl} alt={alt} />
+      )}
 
       <div className="bg-background/95 border-border border-t px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]">
         {note.length > 0 ? (

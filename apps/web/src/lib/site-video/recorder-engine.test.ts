@@ -1,0 +1,236 @@
+// RecorderEngine.
+// protects= the camera is released on every exit path, MP4 is the only container
+// asked for, the 45 s ceiling stops a take, a too-short tap is discarded, a prompt
+// answered after Close leaves no live track, and audio is requested only when on.
+// fails_when= a track outlives release(), a take keeps recording past 45 s, a
+// sub-second clip is saved, or getUserMedia is called on a WebM-only browser.
+import { describe, expect, it, vi } from 'vitest';
+
+import { RECORDER_MIME } from './constants';
+import { RecorderEngine, type EngineHandlers, type RecorderEnv } from './recorder-engine';
+
+class FakeRecorder {
+  static types = new Set([RECORDER_MIME]);
+  static isTypeSupported = (t: string) => FakeRecorder.types.has(t);
+  static last: FakeRecorder | null = null;
+  state: 'inactive' | 'recording' = 'inactive';
+  ondataavailable: ((e: { data: Blob }) => void) | null = null;
+  onstop: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  constructor(
+    public stream: MediaStream,
+    public options?: MediaRecorderOptions,
+  ) {
+    FakeRecorder.last = this;
+  }
+  start() {
+    this.state = 'recording';
+  }
+  stop() {
+    this.state = 'inactive';
+    this.ondataavailable?.({ data: new Blob([new Uint8Array(50)]) });
+    this.onstop?.();
+  }
+}
+
+function fakeStream(audio = true) {
+  const tracks = [
+    { stop: vi.fn(), kind: 'video' },
+    ...(audio ? [{ stop: vi.fn(), kind: 'audio' }] : []),
+  ];
+  return {
+    tracks,
+    stream: {
+      getTracks: () => tracks,
+      getAudioTracks: () => tracks.filter((t) => t.kind === 'audio'),
+    } as unknown as MediaStream,
+  };
+}
+
+function setup(
+  opts: {
+    reject?: Error;
+    permission?: PermissionState;
+    webmOnly?: boolean;
+    audioTrack?: boolean;
+  } = {},
+) {
+  FakeRecorder.types = new Set(opts.webmOnly ? ['video/webm'] : [RECORDER_MIME]);
+  const clock = { t: 0 };
+  const timers: { fn: () => void; ms: number; id: number; interval: boolean }[] = [];
+  let nextId = 1;
+  const fs = fakeStream(opts.audioTrack ?? true);
+  let resolveMedia: ((s: MediaStream) => void) | null = null;
+  const getUserMedia = vi.fn(
+    () =>
+      new Promise<MediaStream>((resolve, reject) => {
+        if (opts.reject) reject(opts.reject);
+        else resolveMedia = resolve;
+      }),
+  );
+  const env: RecorderEnv = {
+    getUserMedia,
+    MediaRecorder: FakeRecorder as never,
+    permissions: opts.permission
+      ? { query: vi.fn(async () => ({ state: opts.permission }) as PermissionStatus) }
+      : undefined,
+    now: () => clock.t,
+    setTimeout: (fn, ms) => {
+      timers.push({ fn, ms, id: nextId, interval: false });
+      return nextId++;
+    },
+    clearTimeout: (id) => {
+      const i = timers.findIndex((t) => t.id === id);
+      if (i >= 0) timers.splice(i, 1);
+    },
+    setInterval: (fn, ms) => {
+      timers.push({ fn, ms, id: nextId, interval: true });
+      return nextId++;
+    },
+    clearInterval: (id) => {
+      const i = timers.findIndex((t) => t.id === id);
+      if (i >= 0) timers.splice(i, 1);
+    },
+  };
+  const handlers = {
+    onGranted: vi.fn(),
+    onDenied: vi.fn(),
+    onUnsupported: vi.fn(),
+    onTick: vi.fn(),
+    onStopped: vi.fn(),
+    onTooShort: vi.fn(),
+  } satisfies EngineHandlers;
+  const engine = new RecorderEngine(env, handlers);
+  const grant = () => resolveMedia?.(fs.stream);
+  return { engine, handlers, getUserMedia, clock, timers, tracks: fs.tracks, grant };
+}
+
+async function started(s: ReturnType<typeof setup>, audio = false) {
+  const p = s.engine.start(audio);
+  await Promise.resolve();
+  s.grant();
+  await p;
+}
+
+describe('start', () => {
+  it('records MP4 and reports granted', async () => {
+    const s = setup();
+    await started(s);
+    expect(s.handlers.onGranted).toHaveBeenCalledOnce();
+    expect(FakeRecorder.last?.options?.mimeType).toBe(RECORDER_MIME);
+    expect(FakeRecorder.last?.state).toBe('recording');
+  });
+
+  it('never asks for the camera in a WebM-only browser', async () => {
+    const s = setup({ webmOnly: true });
+    await s.engine.start(false);
+    expect(s.handlers.onUnsupported).toHaveBeenCalled();
+    expect(s.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it('requests audio only when the toggle is on', async () => {
+    const off = setup();
+    await started(off, false);
+    expect((off.getUserMedia.mock.calls[0] as unknown[])[0]).toMatchObject({ audio: false });
+    const on = setup();
+    await started(on, true);
+    expect((on.getUserMedia.mock.calls[0] as unknown[])[0]).toMatchObject({ audio: true });
+  });
+
+  it.each([
+    ['NotAllowedError', 'denied', true],
+    ['NotAllowedError', 'prompt', false],
+  ])('maps %s with permission %s to permanent=%s', async (name, permission, permanent) => {
+    const s = setup({
+      reject: Object.assign(new Error(name), { name }),
+      permission: permission as PermissionState,
+    });
+    await s.engine.start(false);
+    expect(s.handlers.onDenied).toHaveBeenCalledWith(permanent);
+  });
+
+  it('maps a missing camera to unsupported', async () => {
+    const s = setup({ reject: Object.assign(new Error('x'), { name: 'NotFoundError' }) });
+    await s.engine.start(false);
+    expect(s.handlers.onUnsupported).toHaveBeenCalled();
+  });
+
+  it('leaves no live track when released while the prompt was open', async () => {
+    const s = setup();
+    const p = s.engine.start(false);
+    await Promise.resolve();
+    s.engine.release();
+    s.grant();
+    await p;
+    expect(s.tracks.every((t) => t.stop.mock.calls.length === 1)).toBe(true);
+    expect(s.handlers.onGranted).not.toHaveBeenCalled();
+  });
+});
+
+describe('stopping', () => {
+  it('delivers an MP4 blob with the measured duration and stops the camera', async () => {
+    const s = setup();
+    await started(s, true);
+    s.clock.t = 12_000;
+    s.engine.stop();
+    const take = s.handlers.onStopped.mock.calls[0]![0];
+    expect(take.durationMs).toBe(12_000);
+    expect(take.hasAudio).toBe(true);
+    expect(take.blob.type).toBe('video/mp4');
+    expect(s.tracks.every((t) => t.stop.mock.calls.length === 1)).toBe(true);
+  });
+
+  it('reports no audio when the browser gave no audio track', async () => {
+    const s = setup({ audioTrack: false });
+    await started(s, true);
+    s.clock.t = 5_000;
+    s.engine.stop();
+    expect(s.handlers.onStopped.mock.calls[0]![0].hasAudio).toBe(false);
+  });
+
+  it('auto-stops at 45 seconds', async () => {
+    const s = setup();
+    await started(s);
+    const limit = s.timers.find((t) => !t.interval)!;
+    expect(limit.ms).toBe(45_000);
+    s.clock.t = 45_000;
+    limit.fn();
+    expect(s.handlers.onStopped.mock.calls[0]![0].durationMs).toBe(45_000);
+  });
+
+  it('discards a tap shorter than one second', async () => {
+    const s = setup();
+    await started(s);
+    s.clock.t = 400;
+    s.engine.stop();
+    expect(s.handlers.onTooShort).toHaveBeenCalled();
+    expect(s.handlers.onStopped).not.toHaveBeenCalled();
+  });
+
+  it('ticks the timer without announcing anything itself', async () => {
+    const s = setup();
+    await started(s);
+    s.clock.t = 3_000;
+    s.timers.find((t) => t.interval)!.fn();
+    expect(s.handlers.onTick).toHaveBeenCalledWith(3_000);
+  });
+});
+
+describe('release', () => {
+  it('stops tracks, clears timers, and delivers nothing afterwards', async () => {
+    const s = setup();
+    await started(s);
+    s.engine.release();
+    expect(s.tracks.every((t) => t.stop.mock.calls.length >= 1)).toBe(true);
+    expect(s.timers).toHaveLength(0);
+    expect(s.handlers.onStopped).not.toHaveBeenCalled();
+    expect(() => s.engine.release()).not.toThrow();
+  });
+});
+
+describe('inCountdown', () => {
+  it('turns on for the last ten seconds only', () => {
+    expect(RecorderEngine.inCountdown(34_999)).toBe(false);
+    expect(RecorderEngine.inCountdown(35_000)).toBe(true);
+  });
+});

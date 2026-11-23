@@ -19,7 +19,9 @@
 import { LuImage } from '@paalstack/react-icons/lu';
 
 import type { TimelinePhoto } from '@/hooks/queries/customer-portal';
+import { VideoBadge } from '@/components/site/VideoBadge';
 import { constructionStageLabel } from '@/lib/labels';
+import { isPlayableVideo } from '@/lib/site-video/is-video';
 
 import { formatDay, photoAlt } from './portal-format';
 import type { PhaseGroup } from './portal-progress';
@@ -59,7 +61,7 @@ function EntryRow({
         onClick={onOpen}
         aria-haspopup="dialog"
         data-qa="portal-photo-open"
-        className="col-span-1 row-span-2 block w-full self-start overflow-hidden border border-[var(--portal-hair)] bg-[var(--portal-tint)] focus-visible:ring-2 focus-visible:ring-[var(--portal-navy)] focus-visible:ring-offset-2 focus-visible:outline-none sm:col-span-2 sm:row-span-1"
+        className="relative col-span-1 row-span-2 block w-full self-start overflow-hidden border border-[var(--portal-hair)] bg-[var(--portal-tint)] focus-visible:ring-2 focus-visible:ring-[var(--portal-navy)] focus-visible:ring-offset-2 focus-visible:outline-none sm:col-span-2 sm:row-span-1"
       >
         {/* Same-origin, cookie-authenticated BFF media URL: next/image's
             optimizer would drop the session, so a plain <img> is correct
@@ -74,6 +76,7 @@ function EntryRow({
           className="aspect-[4/3] w-full object-cover transition-transform duration-700 [transition-timing-function:var(--portal-ease)] group-hover:scale-[1.04] motion-reduce:transition-none"
           data-qa="portal-photo-img"
         />
+        {isPlayableVideo(photo) ? <VideoBadge durationMs={photo.durationMs} /> : null}
       </button>
 
       {hasNote ? (

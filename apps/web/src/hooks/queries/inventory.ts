@@ -76,10 +76,11 @@ export type UnitRow = {
   /** Progress photos on file for this unit. */
   photoCount: number;
   /**
-   * Construction stage of the newest photo, or null when that capture recorded
-   * none. Mirrors the `ConstructionStage` Prisma enum.
+   * Construction stage of the newest row that recorded one, photo or video, or
+   * null when none did. Optional: an unloaded summary omits it. Mirrors the
+   * `ConstructionStage` Prisma enum.
    */
-  lastPhotoStage: ConstructionStage | null;
+  lastRecordedStage?: ConstructionStage | null;
   /** The single site engineer this villa is assigned to (null = unassigned). */
   assignedEngineerId?: string | null;
   assignedEngineerName?: string | null;

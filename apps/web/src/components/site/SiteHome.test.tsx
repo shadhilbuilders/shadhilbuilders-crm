@@ -39,7 +39,7 @@ function unit(over: Partial<UnitRow> & { unitNumber: string }): UnitRow {
     status: 'AVAILABLE',
     lastPhotoAt: null,
     photoCount: 0,
-    lastPhotoStage: null,
+    lastRecordedStage: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...over,
   };
@@ -49,7 +49,7 @@ const FRESH = unit({
   unitNumber: 'B-101',
   photoCount: 2,
   lastPhotoAt: ago(0),
-  lastPhotoStage: 'STRUCTURE',
+  lastRecordedStage: 'STRUCTURE',
 });
 const WEEK = unit({ unitNumber: 'B-102', photoCount: 1, lastPhotoAt: ago(4) });
 const STALE = unit({ unitNumber: 'B-103', photoCount: 6, lastPhotoAt: ago(30) });

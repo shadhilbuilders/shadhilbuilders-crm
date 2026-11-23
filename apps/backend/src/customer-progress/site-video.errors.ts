@@ -31,7 +31,9 @@ export const SITE_VIDEO_ERRORS = {
   VIDEO_CONTAINER_UNSUPPORTED: {
     status: 400,
     retryable: false,
-    message: 'This video format will not play here. Record it in the app.',
+    // One sentence for the whole system: an iPhone Photos recording is the
+    // common cause, and the fix is to record in the app or export as MP4.
+    message: 'iPhone videos are HEVC. Record it in the app, or export it as MP4 first.',
   },
   VIDEO_NOT_PRIVATE: {
     status: 400,

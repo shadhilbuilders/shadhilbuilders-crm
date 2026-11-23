@@ -30,6 +30,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.module';
 import { isAdminClass } from '../users/roles';
 import { UNIT_ROW_SELECT, toUnitRow } from './unit-row';
+import { extrasFor, loadUnitUpdateExtras } from './unit-update-summary';
 
 export const UNIT_ASSIGNED = 'progress.assigned';
 export const UNIT_UNASSIGNED = 'progress.unassigned';
@@ -297,7 +298,10 @@ export class UnitAssignmentService {
         select: UNIT_ROW_SELECT,
       });
       if (unit === null) throw new NotFoundException(`Unit ${unitId} not found.`);
-      return toUnitRow(unit, true);
+      // Same shape as the detail read: the stage lives in the summary now, so
+      // this row would otherwise come back with no stage at all.
+      const extras = await loadUnitUpdateExtras(tx as unknown as PrismaClient, [unit.id]);
+      return toUnitRow(unit, true, extrasFor(extras, unit.id));
     });
   }
 }

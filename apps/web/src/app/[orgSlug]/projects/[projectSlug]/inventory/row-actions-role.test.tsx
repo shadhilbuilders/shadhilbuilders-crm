@@ -98,7 +98,7 @@ const UNIT_ROW = {
   status: 'AVAILABLE',
   lastPhotoAt: null,
   photoCount: 0,
-  lastPhotoStage: null,
+  lastRecordedStage: null,
   createdAt: '2026-09-01T00:00:00.000Z',
 };
 

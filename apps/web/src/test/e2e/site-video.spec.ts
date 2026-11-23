@@ -1,0 +1,173 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { expect, test, type Page } from '@playwright/test';
+
+import { ENGINEER_EMAIL, ENGINEER_PASSWORD, NAV, loginAs } from './helpers';
+
+/**
+ * Site update video, end to end (build-sequence step 7).
+ *
+ * Needs BOTH servers started with SITE_VIDEO_CAPTURE=true and the two storage
+ * caps set (the API refuses to boot with the flag on and the caps unset), and
+ * MEDIA_STORAGE=local so the inline upload transport is exercised and nothing
+ * is pushed to the real CDN.
+ *
+ * Chromium runs with a synthetic camera. If this build cannot encode
+ * `video/mp4;codecs=avc1`, the recorder reports `unsupported` by design and the
+ * record tests fail loudly instead of passing on a different codec.
+ */
+const UNIT_URL = '/shadhil-builders/projects/shadhil-metro-heights/site/cmu55o059000fyju8wvcaj7ch';
+
+test.use({
+  viewport: { width: 393, height: 851 },
+  isMobile: true,
+  hasTouch: true,
+  permissions: ['camera', 'microphone'],
+  launchOptions: {
+    args: [
+      '--use-fake-device-for-media-stream',
+      '--use-fake-ui-for-media-stream',
+      '--enable-features=MediaRecorderEnableMp4Muxer',
+    ],
+  },
+});
+
+async function openCapture(page: Page): Promise<void> {
+  await loginAs(page, ENGINEER_EMAIL, ENGINEER_PASSWORD);
+  await page.goto(UNIT_URL, { ...NAV, timeout: 120_000 });
+  await expect(page.locator('[data-qa="capture-video"]')).toBeVisible({ timeout: 60_000 });
+}
+
+async function recordOneClip(page: Page, ms: number, audio = false): Promise<void> {
+  await page.locator('[data-qa="capture-video"]').click();
+  // Chosen BEFORE Record: a take's tracks are fixed once it starts.
+  if (audio) {
+    await page.locator('[data-qa="recorder-audio"]').click();
+    await expect(page.locator('[data-qa="recorder-audio"]')).toBeChecked();
+  }
+  // The sheet opens ready (Record + Audio); nothing touches the camera until Record.
+  await page.locator('[data-qa="recorder-start"]').click();
+  await expect(page.locator('[data-qa="recorder-stop"]')).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(ms);
+  await page.locator('[data-qa="recorder-stop"]').click();
+  await expect(page.locator('[data-qa="video-preview"]')).toBeVisible({ timeout: 20_000 });
+}
+
+/**
+ * Assert the bytes the API serves are a web-safe MP4: h264 Baseline/Main, no
+ * B-frames, `moov` before `mdat` (so it plays before it fully downloads), and
+ * exactly the audio the recorder claims.
+ */
+function expectClipFile(body: Buffer, opts: { audio: boolean }): void {
+  const dir = mkdtempSync(join(tmpdir(), 'site-video-'));
+  const file = join(dir, 'clip.mp4');
+  writeFileSync(file, body);
+
+  const probe = JSON.parse(
+    execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', file]).toString(),
+  ) as { streams: Array<Record<string, string | number>> };
+  const v = probe.streams.find((s) => s.codec_type === 'video');
+  expect(v?.codec_name).toBe('h264');
+  expect(['Baseline', 'Constrained Baseline', 'Main']).toContain(String(v?.profile));
+  expect(Number(v?.has_b_frames ?? 0)).toBe(0);
+
+  const a = probe.streams.find((s) => s.codec_type === 'audio');
+  if (opts.audio) {
+    expect(a?.codec_name, 'audio was on, so the clip must carry AAC').toBe('aac');
+  } else {
+    expect(a, 'audio defaults off, so the clip must carry no audio track').toBeUndefined();
+  }
+
+  const head = body.subarray(0, Math.min(body.length, 65_536)).toString('latin1');
+  const moov = head.indexOf('moov');
+  const mdat = head.indexOf('mdat');
+  expect(moov, 'moov atom not found in the first 64 KiB').toBeGreaterThan(-1);
+  expect(mdat === -1 || moov < mdat).toBe(true);
+}
+
+test.describe('site update video', () => {
+  test.setTimeout(240_000);
+
+  test('records, saves, and serves a seekable 206 through the BFF', async ({ page }) => {
+    await openCapture(page);
+
+    const mp4 = await page.evaluate(() =>
+      typeof MediaRecorder !== 'undefined'
+        ? MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')
+        : false,
+    );
+    expect(mp4, 'this Chromium cannot record video/mp4;codecs=avc1').toBe(true);
+
+    await recordOneClip(page, 2_500);
+    // Read the row from the SAVE RESPONSE, not the feed: the feed sorts by
+    // `takenAt`, and a fake camera's clock can file a fresh clip behind older
+    // ones (or on a later cursor page), which makes "the first video" wrong.
+    const response = page.waitForResponse(
+      (r) => r.request().method() === 'POST' && /\/videos$/.test(new URL(r.url()).pathname),
+      { timeout: 60_000 },
+    );
+    await page.locator('[data-qa="video-save"]').click();
+    const row = (await (await response).json()) as { id: string; videoUrl: string };
+    expect(row.videoUrl, 'the save response must carry the clip URL').toBeTruthy();
+    await expect(page.locator('[data-qa="video-tile-badge"]').first()).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const url = new URL(row.videoUrl as string, page.url()).toString();
+    const full = await page.context().request.get(url);
+    expect(full.status()).toBe(200);
+    expect(full.headers()['accept-ranges']).toBe('bytes');
+    const body = await full.body();
+    expect(body.length, 'row sizeBytes must be the bytes actually served').toBeGreaterThan(0);
+
+    const ranged = await page.context().request.get(url, { headers: { Range: 'bytes=0-99' } });
+    expect(ranged.status()).toBe(206);
+    expect(ranged.headers()['content-range']).toBe(`bytes 0-99/${body.length}`);
+    expect((await ranged.body()).length).toBe(100);
+
+    expectClipFile(body, { audio: false });
+
+    // The lightbox actually plays it, from the same row that was just saved.
+    await page.locator('[data-qa="video-tile-badge"]').first().click();
+    await expect(page.locator('video').first()).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('offers audio only where the recorder can actually mux it', async ({ page }) => {
+    await openCapture(page);
+    await page.locator('[data-qa="capture-video"]').click();
+    await expect(page.locator('[data-qa="recorder-start"]')).toBeVisible();
+
+    // This build's Chromium supports video/mp4;codecs=avc1 but NOT avc1 with
+    // AAC, and asking anyway records a silent clip. So the switch must be
+    // absent and the honest fallback offered. Where a browser does support it,
+    // the switch is present and a take must then carry AAC - that half needs a
+    // real device and is on the device gate, not here.
+    const canMuxAac = await page.evaluate(() =>
+      MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2'),
+    );
+    if (canMuxAac) {
+      await expect(page.locator('[data-qa="recorder-audio"]')).toBeVisible();
+    } else {
+      await expect(page.locator('[data-qa="recorder-audio"]')).toHaveCount(0);
+      await expect(page.locator('[data-qa="recorder-audio-unavailable"]')).toBeVisible();
+    }
+  });
+
+  test('camera denied falls back to the file picker', async ({ page }) => {
+    await page.addInitScript(() => {
+      const err = new DOMException('Permission denied', 'NotAllowedError');
+      navigator.mediaDevices.getUserMedia = () => Promise.reject(err);
+    });
+    await openCapture(page);
+    await page.locator('[data-qa="capture-video"]').click();
+    // Nothing calls getUserMedia until Record, which is what makes the state honest.
+    await page.locator('[data-qa="recorder-start"]').click();
+    await expect(page.locator('[data-qa="recorder-permission"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-qa="recorder-choose-file"]')).toBeVisible();
+    await expect(page.locator('[data-qa="recorder-live-video"]')).toHaveCount(0);
+    await expect(page.locator('[data-qa="recorder-stop"]')).toHaveCount(0);
+  });
+});

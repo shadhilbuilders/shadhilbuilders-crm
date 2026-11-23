@@ -66,12 +66,6 @@ export const UnitRowSchema = z.object({
   /** How many progress photos the unit has on file. */
   photoCount: z.number().int().min(0),
   /**
-   * The construction stage of the NEWEST photo (derived, never stored on the
-   * unit). Null means the newest capture recorded no stage - render
-   * "Stage not set", never "Not started".
-   */
-  lastPhotoStage: ConstructionStageSchema.nullable(),
-  /**
    * Site update video (2026-11-23): the rest of the derived UnitUpdateSummary.
    * Absent means "this surface did not load it", never zero - so a consumer
    * cannot mistake an unloaded count for an empty feed. The units grid, the
@@ -84,8 +78,8 @@ export const UnitRowSchema = z.object({
   lastUpdateAt: z.iso.datetime({ offset: true }).nullable().optional(),
   /**
    * Stage of the newest row WHERE stage IS NOT NULL, whatever its kind. A newer
-   * clip with no stage moves neither this nor its date. `lastPhotoStage` is the
-   * legacy alias (newest PHOTO's stage) and is deleted with its last reader.
+   * clip with no stage moves neither this nor its date. This REPLACED the
+   * `lastPhotoStage` alias (2026-11-23), which only ever looked at photos.
    */
   lastRecordedStage: ConstructionStageSchema.nullable().optional(),
   lastRecordedStageAt: z.iso.datetime({ offset: true }).nullable().optional(),

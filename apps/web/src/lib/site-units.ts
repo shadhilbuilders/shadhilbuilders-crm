@@ -174,7 +174,13 @@ export function phaseAccentClass(accent: PhaseAccent): string {
 export function siteRowMeta(unit: UnitRow, now: Date): string {
   const facing = unit.facing ?? 'Facing not set';
   const staleness = stalenessLabel(unit.lastPhotoAt, now).toLowerCase();
-  const stage = unit.lastPhotoStage === null ? null : constructionStageLabel(unit.lastPhotoStage);
+  // The newest row of ANY kind that recorded a stage (2026-11-23). Absent when
+  // the surface did not load the summary, so it reads as "not recorded" rather
+  // than inventing one.
+  const stage =
+    unit.lastRecordedStage === null || unit.lastRecordedStage === undefined
+      ? null
+      : constructionStageLabel(unit.lastRecordedStage);
   return [`${unit.bhk} BHK`, facing, ...(stage === null ? [] : [stage]), staleness].join(' · ');
 }
 

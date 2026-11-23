@@ -23,7 +23,9 @@
 import type { ReactNode } from 'react';
 import { LuCamera } from '@paalstack/react-icons/lu';
 
+import { VideoBadge } from '@/components/site/VideoBadge';
 import { constructionStageLabel } from '@/lib/labels';
+import { isPlayableVideo } from '@/lib/site-video/is-video';
 import type { TimelinePhoto } from '@/hooks/queries/customer-portal';
 
 import { formatDay, photoAlt } from './portal-format';
@@ -86,10 +88,10 @@ function PhotoSlot({
       type="button"
       onClick={() => onOpenPhoto(latest.id)}
       data-qa="portal-hero-photo"
-      aria-label={`Open the latest photo: ${photoAlt(latest)}`}
+      aria-label={`Open the latest ${isPlayableVideo(latest) ? 'video' : 'photo'}: ${photoAlt(latest)}`}
       className="group block w-full overflow-hidden border border-[var(--portal-hair)] bg-[var(--portal-tint)] text-left focus-visible:ring-2 focus-visible:ring-[var(--portal-navy)] focus-visible:ring-offset-2 focus-visible:outline-none"
     >
-      <span className={`${frame} block overflow-hidden bg-[var(--portal-hair)]`}>
+      <span className={`${frame} relative block overflow-hidden bg-[var(--portal-hair)]`}>
         {/* Plain <img>: same-origin, cookie-authenticated media (not next/image). */}
         <img
           src={latest.mediaUrl}
@@ -100,6 +102,7 @@ function PhotoSlot({
           decoding="async"
           className="size-full object-cover transition-transform duration-700 [transition-timing-function:var(--portal-ease)] group-hover:scale-[1.025] motion-reduce:transition-none"
         />
+        {isPlayableVideo(latest) ? <VideoBadge durationMs={latest.durationMs} /> : null}
       </span>
       {/* One caption strip, not an overlay. It names the PHASE (the photo's
           context); the engineer's note lives in the ruled column beside it, so

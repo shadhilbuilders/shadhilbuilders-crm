@@ -38,7 +38,7 @@ function unit(over: Partial<UnitRow> & { unitNumber: string }): UnitRow {
     status: 'AVAILABLE',
     lastPhotoAt: null,
     photoCount: 0,
-    lastPhotoStage: null,
+    lastRecordedStage: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...over,
   };
@@ -174,14 +174,19 @@ describe('siteRowMeta', () => {
   it('names the recorded stage as text, and omits it when unrecorded', () => {
     expect(
       siteRowMeta(
-        unit({ unitNumber: 'x', photoCount: 1, lastPhotoAt: ago(3), lastPhotoStage: 'STRUCTURE' }),
+        unit({
+          unitNumber: 'x',
+          photoCount: 1,
+          lastPhotoAt: ago(3),
+          lastRecordedStage: 'STRUCTURE',
+        }),
         NOW,
       ),
     ).toBe('3 BHK · East · Structure · 3 days ago');
     // A null stage is "not recorded" - it must not render "Not started".
     expect(
       siteRowMeta(
-        unit({ unitNumber: 'x', photoCount: 1, lastPhotoAt: ago(3), lastPhotoStage: null }),
+        unit({ unitNumber: 'x', photoCount: 1, lastPhotoAt: ago(3), lastRecordedStage: null }),
         NOW,
       ),
     ).toBe('3 BHK · East · 3 days ago');

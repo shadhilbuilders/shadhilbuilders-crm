@@ -46,7 +46,7 @@ function claim(unitNumber: string, plotNumber: number, status = 'SOLD'): PlotUni
       // for a fixture about availability.
       lastPhotoAt: null,
       photoCount: 0,
-      lastPhotoStage: null,
+      lastRecordedStage: null,
       createdAt: '2026-10-01T09:00:00.000Z',
     },
     booking: null,

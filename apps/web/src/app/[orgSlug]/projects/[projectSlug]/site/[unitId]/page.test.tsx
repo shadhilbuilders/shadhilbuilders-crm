@@ -85,7 +85,7 @@ vi.mock('@/components/inventory/ProgressPhotoActions', () => ({
   ProgressPhotoActions: () => null,
 }));
 
-import SiteCapturePage from './page';
+import { SiteCapturePage } from '@/components/site/SiteCapturePage';
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -95,7 +95,7 @@ async function mount(): Promise<void> {
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root?.render(<SiteCapturePage />);
+    root?.render(<SiteCapturePage videoEnabled={false} />);
   });
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -110,7 +110,7 @@ beforeEach(() => {
       projectName: 'Green Acres',
       phaseName: 'Phase B',
       status: 'AVAILABLE',
-      lastPhotoStage: 'STRUCTURE',
+      lastRecordedStage: 'STRUCTURE',
       photoCount: 0,
       lastPhotoAt: null,
       phaseId: 'phase-b',

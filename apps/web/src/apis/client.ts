@@ -26,13 +26,26 @@ export class ApiError extends Error {
   readonly code: string | null;
   /** Arbitrary structured payload alongside `code` (e.g. affected counts). */
   readonly details: unknown;
+  /**
+   * The server's typed "trying again may work" flag (CodedErrorBody.retryable).
+   * `null` when the envelope did not carry one: callers must not guess from the
+   * status or the message text.
+   */
+  readonly retryable: boolean | null;
 
-  constructor(message: string, status: number, code: string | null = null, details?: unknown) {
+  constructor(
+    message: string,
+    status: number,
+    code: string | null = null,
+    details?: unknown,
+    retryable: boolean | null = null,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.details = details;
+    this.retryable = retryable;
   }
 }
 
@@ -189,12 +202,14 @@ export async function api<T>(
     let human: string | null = null;
     let code: string | null = null;
     let details: unknown;
+    let retryable: boolean | null = null;
     if (detail.length > 0) {
       try {
         const parsed = JSON.parse(detail) as {
           message?: unknown;
           code?: unknown;
           details?: unknown;
+          retryable?: unknown;
         };
         if (typeof parsed.message === 'string') human = parsed.message;
         else if (Array.isArray(parsed.message)) human = parsed.message.join('; ');
@@ -202,6 +217,7 @@ export async function api<T>(
         // machine-readable `code` alongside the human message.
         if (typeof parsed.code === 'string') code = parsed.code;
         if ('details' in parsed) details = parsed.details;
+        if (typeof parsed.retryable === 'boolean') retryable = parsed.retryable;
       } catch {
         /* not JSON - keep raw detail */
       }
@@ -214,6 +230,7 @@ export async function api<T>(
       response.status,
       code,
       details,
+      retryable,
     );
   }
   if (response.status === 204) return undefined as T;

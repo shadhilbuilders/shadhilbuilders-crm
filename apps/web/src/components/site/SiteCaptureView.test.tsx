@@ -91,7 +91,7 @@ const base: SiteCaptureViewProps = {
     projectName: 'Metro Heights',
     phaseName: 'Phase B',
     status: 'AVAILABLE',
-    lastPhotoStage: null,
+    lastRecordedStage: null,
     photoCount: 0,
     lastPhotoAt: null,
   },
@@ -155,7 +155,7 @@ describe('SiteCaptureView chrome', () => {
   });
 
   it('shows a recorded stage in the header', () => {
-    const html = render({ unit: { ...base.unit, lastPhotoStage: 'STRUCTURE' } });
+    const html = render({ unit: { ...base.unit, lastRecordedStage: 'STRUCTURE' } });
     expect(html).toContain('Structure');
   });
 
@@ -203,6 +203,40 @@ describe('SiteCaptureView chrome', () => {
 
   it('reserves room below the feed so the sticky bar never covers a card', () => {
     expect(render()).toContain('pb-28');
+  });
+});
+
+describe('SiteCaptureView video capture (flag)', () => {
+  const video = {
+    onRecord: vi.fn(),
+    onFile: vi.fn(),
+    fileInputRef: createRef<HTMLInputElement>(),
+  };
+
+  it('flag off: the bar is the photo-only bar, with no video control or input', () => {
+    const html = render();
+    expect(html).not.toContain('capture-video');
+    expect(html).toContain('data-qa="site-take-photo"');
+    expect(html).toContain('data-qa="site-gallery-trigger"');
+    expect(html).not.toContain('Add a photo or a clip');
+  });
+
+  it('flag on: a Video target joins the bar, photo markers are unchanged, MP4 only', () => {
+    const html = render({ video });
+    expect(html).toContain('data-qa="capture-video"');
+    expect(html).toContain('data-qa="site-take-photo"');
+    expect(html).toContain('data-qa="site-gallery-trigger"');
+    expect(html).toMatch(/data-qa="capture-video-input"/);
+    expect(html).toContain('accept="video/mp4"');
+  });
+
+  it('flag on: the empty state offers a photo or a clip', () => {
+    expect(render({ video, photos: [] })).toContain('Add a photo or a clip');
+    expect(render({ photos: [] })).toContain('Add the first photo');
+  });
+
+  it('read-only viewers get no video control even with the flag on', () => {
+    expect(render({ video, canCapture: false })).not.toContain('capture-video');
   });
 });
 

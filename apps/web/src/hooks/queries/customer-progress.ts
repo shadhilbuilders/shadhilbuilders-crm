@@ -23,13 +23,39 @@ export type TimelinePhoto = {
   createdAt: string;
   creatorName: string | null;
   creatorIsPhotoLead: boolean | null;
+  /**
+   * Still image for a photo; the POSTER frame for a video, so every existing
+   * <img> consumer keeps working unchanged.
+   */
   mediaUrl: string;
+  /** 'PHOTO' when absent (older servers, flag off). */
+  kind?: 'PHOTO' | 'VIDEO';
+  /** The clip itself, present only for a video. */
+  videoUrl?: string | null;
+  durationMs?: number | null;
+  hasAudio?: boolean | null;
+  archived?: boolean;
   /**
    * Server-computed advisory: may this session be offered the edit/delete
    * controls? Mirrors the RLS mutation predicate. Always present - false for
    * every CUSTOMER - so the buyer and staff timelines share one wire shape.
    */
   canMutate: boolean;
+  /**
+   * Staff only (step 8): how the buyer-facing WhatsApp send for this row's batch
+   * ended. Null on the buyer's own timeline, on a row from before step 8, and
+   * when no delivery row exists - all of which mean "nothing to report", never
+   * "failed".
+   */
+  whatsappStatus?:
+    | 'PENDING'
+    | 'SENT'
+    | 'SKIPPED_WINDOW'
+    | 'SKIPPED_NO_TEMPLATE'
+    | 'SKIPPED_NO_BUYER'
+    | 'SKIPPED_NO_CONSENT'
+    | 'FAILED'
+    | null;
 };
 
 export type TimelineResponse = {
@@ -64,9 +90,10 @@ export type UploadPhotoInput = {
 const PHOTOS_KEY = ['customer-progress', 'photos'] as const;
 
 /**
- * A unit row carries `lastPhotoStage` / `lastPhotoAt` / `photoCount`, all derived
- * from its newest photo. Any photo write must refresh the unit too (single and
- * list keys), or the header badge keeps showing "Stage not set" until a reload.
+ * A unit row carries `lastRecordedStage` / `lastPhotoAt` / `photoCount`, all
+ * derived server-side. Any photo or video write must refresh the unit too
+ * (single and list keys), or the header badge keeps showing "Stage not set"
+ * until a reload.
  */
 function invalidateUnitRows(qc: ReturnType<typeof useQueryClient>, unitId: string): void {
   void qc.invalidateQueries({ queryKey: ['inventory', 'unit', unitId] });

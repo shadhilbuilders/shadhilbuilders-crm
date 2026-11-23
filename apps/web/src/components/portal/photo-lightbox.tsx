@@ -12,9 +12,11 @@ import { useEffect } from 'react';
 import { Dialog, IconButton } from '@paalstack/react-ui';
 import { LuChevronLeft, LuChevronRight, LuX } from '@paalstack/react-icons/lu';
 
+import { SiteVideoPlayer } from '@/components/site/SiteVideoPlayer';
 import { ZoomableImage } from '@/components/site/ZoomableImage';
 import type { TimelinePhoto } from '@/hooks/queries/customer-portal';
 import { constructionStageLabel } from '@/lib/labels';
+import { isPlayableVideo } from '@/lib/site-video/is-video';
 
 import { formatDay, photoAlt } from './portal-format';
 
@@ -141,15 +143,25 @@ export function PhotoLightboxPanel({
       </div>
 
       {/* Keyed so zoom resets on every photo; swipe only fires at 1x. */}
-      <ZoomableImage
-        key={photo.id}
-        src={photo.mediaUrl}
-        alt={photoAlt(photo)}
-        onSwipe={(direction) => {
-          if (direction === 'next') onNext?.();
-          else onPrevious?.();
-        }}
-      />
+      {isPlayableVideo(photo) ? (
+        <SiteVideoPlayer
+          key={photo.id}
+          src={photo.videoUrl}
+          poster={photo.mediaUrl}
+          durationMs={photo.durationMs}
+          filename={photo.filename}
+        />
+      ) : (
+        <ZoomableImage
+          key={photo.id}
+          src={photo.mediaUrl}
+          alt={photoAlt(photo)}
+          onSwipe={(direction) => {
+            if (direction === 'next') onNext?.();
+            else onPrevious?.();
+          }}
+        />
+      )}
 
       <div className="border-border bg-background/90 border-t px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">
         {note.length > 0 ? (

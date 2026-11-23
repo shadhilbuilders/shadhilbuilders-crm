@@ -22,15 +22,26 @@ const STEPS = ['Shoot the unit', 'Add a one-line note', 'The customer sees it to
 export const EMPTY_HERO_CLASS =
   'border-border bg-muted-soft hover:bg-muted w-full cursor-pointer rounded-xl border px-6 py-8 text-center transition-colors active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none motion-reduce:active:scale-100';
 
-export function SiteEmptyHero({ unitNumber }: { unitNumber: string }) {
+export function SiteEmptyHero({
+  unitNumber,
+  videoEnabled = false,
+}: {
+  unitNumber: string;
+  /** Copy changes to "a photo or a clip" only while the flag is on. */
+  videoEnabled?: boolean;
+}) {
   return (
     <Empty
       data-qa="progress-empty"
       className={EMPTY_HERO_CLASS}
       media={<LuCamera className="size-6" aria-hidden="true" />}
       mediaVariant="icon"
-      title="Add the first photo"
-      description={`${unitNumber} has nothing on file yet. Pick photos here, or tap Take photo to shoot one now.`}
+      title={videoEnabled ? 'Add a photo or a clip' : 'Add the first photo'}
+      description={
+        videoEnabled
+          ? `${unitNumber} has nothing on file yet. Pick photos here, tap Take photo, or record a short clip.`
+          : `${unitNumber} has nothing on file yet. Pick photos here, or tap Take photo to shoot one now.`
+      }
       content={
         <span className="text-muted-foreground flex flex-wrap items-center justify-center gap-1 text-xs">
           {STEPS.map((step, index) => (
