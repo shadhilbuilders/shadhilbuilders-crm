@@ -41,11 +41,23 @@ export interface TimelinePhotoDto {
   createdAt: string;
   creatorName: string | null;
   creatorIsPhotoLead: boolean | null;
+  /** PHOTO or VIDEO (2026-11-23). One timeline holds both. */
+  kind: 'PHOTO' | 'VIDEO';
   /**
-   * Same-origin BFF path to the bytes. Empty on an archived tombstone, whose
-   * keys are cleared after the purge (2026-11-23) - no such row exists yet.
+   * Same-origin BFF path to what an `<img>` may render: the photo itself, or a
+   * VIDEO's POSTER. It never points at a clip, so existing image tiles cannot
+   * try to paint an MP4. Empty on an archived tombstone and on a video with no
+   * poster, whose keys are cleared after the purge.
    */
   mediaUrl: string;
+  /** Same-origin path to the clip for a live VIDEO; null for a photo or a tombstone. */
+  videoUrl: string | null;
+  /** Client-reported duration (trusted, bounded 1..45s by a CHECK); null for photos. */
+  durationMs: number | null;
+  /** Whether the clip carries an audio track. False for photos. */
+  hasAudio: boolean;
+  /** True once the clip was purged: the row is a tombstone with no bytes. */
+  archived: boolean;
   /**
    * May this session be offered the edit/delete controls? Mirrors the
    * progress_photo_update/_delete predicate (ADMIN, the creator, or the
@@ -120,6 +132,11 @@ interface PhotoRow {
    */
   key: string | null;
   createdBy: string | null;
+  kind: 'PHOTO' | 'VIDEO';
+  posterKey: string | null;
+  durationMs: number | null;
+  hasAudio: boolean;
+  archivedAt: Date | null;
 }
 
 interface CreatorLabel {
@@ -153,6 +170,16 @@ export function canMutateRow(row: { createdBy: string | null }, scope: ViewerSco
   return row.createdBy !== null && row.createdBy === scope.viewer.userId;
 }
 
+/**
+ * The URL an `<img>` may use. A photo points at its own bytes; a video points
+ * at its POSTER, never at the clip. A row with nothing left to show (a purged
+ * tombstone, or a clip whose poster failed) resolves to an empty string.
+ */
+function imageUrlFor(row: PhotoRow): string {
+  const key = row.kind === 'VIDEO' ? row.posterKey : row.key;
+  return key === null ? '' : mediaUrlFor(key);
+}
+
 /** Map one stored row (+ its creator label) to the wire DTO. */
 export function toTimelinePhotoDto(
   row: PhotoRow,
@@ -172,11 +199,12 @@ export function toTimelinePhotoDto(
     createdAt: row.createdAt.toISOString(),
     creatorName: label?.creator_name ?? null,
     creatorIsPhotoLead: label?.creator_is_photo_lead ?? null,
-    // A tombstone has no bytes left to point at (2026-11-23). Until step 5 adds
-    // the DTO's tombstone state and the poster branch, an archived row resolves
-    // to an empty URL; no archived row exists yet, so this branch is unreachable
-    // today and the wire shape is unchanged for every live row.
-    mediaUrl: row.key === null ? '' : mediaUrlFor(row.key),
+    kind: row.kind,
+    mediaUrl: imageUrlFor(row),
+    videoUrl: row.kind === 'VIDEO' && row.key !== null ? mediaUrlFor(row.key) : null,
+    durationMs: row.durationMs,
+    hasAudio: row.hasAudio,
+    archived: row.archivedAt !== null,
     canMutate: canMutateRow(row, scope),
   };
 }
@@ -238,6 +266,11 @@ export async function readTimelinePage(
       createdAt: true,
       key: true,
       createdBy: true,
+      kind: true,
+      posterKey: true,
+      durationMs: true,
+      hasAudio: true,
+      archivedAt: true,
     },
   });
 

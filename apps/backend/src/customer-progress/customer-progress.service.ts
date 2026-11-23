@@ -326,7 +326,12 @@ export class CustomerProgressService {
           createdAt: photo.createdAt.toISOString(),
           creatorName: await this.userName(tx, actor.sub),
           creatorIsPhotoLead: null,
+          kind: 'PHOTO',
           mediaUrl: mediaUrlFor(stored.key),
+          videoUrl: null,
+          durationMs: null,
+          hasAudio: false,
+          archived: false,
           // The uploader just created this row, so they always hold the creator
           // arm of the mutation predicate. True regardless of role.
           canMutate: true,

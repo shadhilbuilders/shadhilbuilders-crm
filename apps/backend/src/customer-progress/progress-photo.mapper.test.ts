@@ -10,7 +10,12 @@
 //           (packages/database/test/progress-rls.test.ts).
 import { describe, expect, it } from 'vitest';
 
-import { canMutateRow, toTimelinePhotoDto, type ViewerScope } from './progress-photo.mapper';
+import {
+  canMutateRow,
+  mediaUrlFor,
+  toTimelinePhotoDto,
+  type ViewerScope,
+} from './progress-photo.mapper';
 
 const CREATOR = 'user-creator';
 const OTHER = 'user-other';
@@ -78,6 +83,11 @@ describe('toTimelinePhotoDto canMutate wire shape', () => {
     createdAt: new Date('2026-10-01T00:00:00Z'),
     key: 'org/x/a.jpg',
     createdBy: CREATOR,
+    kind: 'PHOTO' as const,
+    posterKey: null,
+    durationMs: null,
+    hasAudio: false,
+    archivedAt: null,
   };
   const label = { creator_name: 'Ravi', creator_is_photo_lead: false };
 
@@ -102,5 +112,83 @@ describe('toTimelinePhotoDto canMutate wire shape', () => {
   it('fails_when= a staff read of another member’s photo claims permission', () => {
     const dto = toTimelinePhotoDto(row, label, scope());
     expect(dto.canMutate).toBe(false);
+  });
+});
+
+describe('toTimelinePhotoDto media for a video row (site update video, step 5)', () => {
+  const video = {
+    id: 'v1',
+    unitId: 'u1',
+    phaseId: null,
+    phase: null,
+    mimeType: 'video/mp4',
+    filename: 'clip.mp4',
+    caption: 'Roof slab',
+    takenAt: new Date('2026-11-20T00:00:00Z'),
+    stage: null,
+    createdAt: new Date('2026-11-20T00:00:00Z'),
+    key: 'org/up1/clip.mp4',
+    createdBy: CREATOR,
+    kind: 'VIDEO' as const,
+    posterKey: 'org/up1/poster.jpg',
+    durationMs: 12000,
+    hasAudio: true,
+    archivedAt: null,
+  };
+  const none = { creator_name: null, creator_is_photo_lead: null };
+  const buyer = { viewer: null, leadsProject: false };
+
+  it('points mediaUrl at the POSTER, never at the clip, so an <img> cannot paint an MP4', () => {
+    const dto = toTimelinePhotoDto(video, none, buyer);
+    expect(dto.mediaUrl).toBe(mediaUrlFor('org/up1/poster.jpg'));
+    expect(dto.mediaUrl).not.toContain('clip.mp4');
+  });
+
+  it('exposes the clip separately as videoUrl, with kind, duration and audio', () => {
+    const dto = toTimelinePhotoDto(video, none, buyer);
+    expect(dto).toMatchObject({
+      kind: 'VIDEO',
+      videoUrl: mediaUrlFor('org/up1/clip.mp4'),
+      durationMs: 12000,
+      hasAudio: true,
+      archived: false,
+    });
+  });
+
+  it('a clip whose poster failed has an empty mediaUrl but still a videoUrl', () => {
+    const dto = toTimelinePhotoDto({ ...video, posterKey: null }, none, buyer);
+    expect(dto.mediaUrl).toBe('');
+    expect(dto.videoUrl).toBe(mediaUrlFor('org/up1/clip.mp4'));
+  });
+
+  it('an archived tombstone has no urls at all and says so', () => {
+    const dto = toTimelinePhotoDto(
+      { ...video, key: null, posterKey: null, archivedAt: new Date('2026-12-01T00:00:00Z') },
+      none,
+      buyer,
+    );
+    expect(dto).toMatchObject({ mediaUrl: '', videoUrl: null, archived: true });
+  });
+
+  it('a photo row keeps its own url, with null video fields', () => {
+    const dto = toTimelinePhotoDto(
+      {
+        ...video,
+        kind: 'PHOTO',
+        key: 'org/x/a.jpg',
+        posterKey: null,
+        durationMs: null,
+        hasAudio: false,
+      },
+      none,
+      buyer,
+    );
+    expect(dto).toMatchObject({
+      kind: 'PHOTO',
+      mediaUrl: mediaUrlFor('org/x/a.jpg'),
+      videoUrl: null,
+      durationMs: null,
+      hasAudio: false,
+    });
   });
 });
