@@ -62,6 +62,15 @@ describe('staff delivery status', () => {
     expect(failed).not.toContain('FAILED</span>');
   });
 
+  it('says a switched-off leg was a choice, not a template gap or a failure', () => {
+    // SITE_UPDATE_WHATSAPP=off. The words must not blame a missing template or a
+    // failed send, because neither happened; the operator stopped it.
+    const html = card({ whatsappStatus: 'SKIPPED_DISABLED' });
+    expect(html).toContain('Not sent: buyer updates switched off');
+    expect(html).not.toContain('no approved template');
+    expect(html).not.toContain('delivery failed');
+  });
+
   it('renders nothing when there is no delivery information', () => {
     for (const status of [null, undefined]) {
       const html = card({ whatsappStatus: status });

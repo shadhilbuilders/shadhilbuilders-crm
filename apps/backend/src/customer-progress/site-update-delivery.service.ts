@@ -56,7 +56,32 @@ export type DeliveryOutcome =
   | 'SKIPPED_NO_BUYER'
   /** The templates are approved as MARKETING and this buyer has no opt-in. */
   | 'SKIPPED_NO_CONSENT'
+  /** The operator switched the WhatsApp leg off. Not a fault, and not a template gap. */
+  | 'SKIPPED_DISABLED'
   | 'FAILED';
+
+/** The one switch an operator has for the buyer-facing leg. */
+export const SITE_UPDATE_WHATSAPP_ENV = 'SITE_UPDATE_WHATSAPP';
+
+/**
+ * Is the WhatsApp leg on? ON unless the operator says otherwise.
+ *
+ * DEFAULT ON, deliberately: a flag that defaults to off would silently stop
+ * every buyer notification on a deployment that never set it, which is exactly
+ * the kind of quiet behaviour change nobody notices until a client asks why the
+ * updates stopped. `off`, `false` and `0` (any case) switch it off; an unset or
+ * empty value leaves it on.
+ *
+ * Read per call, not at module load, so a test can flip it and so a restart is
+ * the only thing needed to change the answer (the env is not watched).
+ */
+export function siteUpdateWhatsAppEnabled(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): boolean {
+  const raw = env[SITE_UPDATE_WHATSAPP_ENV]?.trim().toLowerCase();
+  if (raw === undefined || raw === '') return true;
+  return !(raw === 'off' || raw === 'false' || raw === '0');
+}
 
 export interface DeliveryInput {
   organizationId: string;
@@ -310,6 +335,19 @@ export class SiteUpdateDeliveryService {
    */
   private async enqueue(input: DeliveryInput): Promise<void> {
     const client = input.tx;
+    // THE KILL SWITCH, and the first thing checked (2026-11-23). It sits before
+    // every other branch on purpose: with the leg switched off, a missing
+    // outbox is not a failure to report, the buyer is not looked up, and no
+    // consent read happens. The row keeps the fact that this batch was skipped
+    // BY CHOICE, which is what makes it re-sendable later; dropping the row
+    // instead would lose the update entirely.
+    if (!siteUpdateWhatsAppEnabled()) {
+      await this.settle(input, 'SKIPPED_DISABLED', {
+        errorCode: 'SKIPPED_DISABLED',
+        reason: `${SITE_UPDATE_WHATSAPP_ENV}=off: the buyer-facing site-update leg is switched off`,
+      });
+      return;
+    }
     if (this.deps.outbound === undefined) {
       await this.settle(input, 'FAILED', { errorCode: 'NO_OUTBOUND_SERVICE' });
       return;

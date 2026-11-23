@@ -12,15 +12,15 @@ Read first, in this order:
 
 ## State right now
 
-- Steps 1-6 are COMMITTED. Last commit `dd475f7`.
-- Steps 7 (capture UI) and 8 (WhatsApp delivery) are BUILT, VERIFIED, and **UNCOMMITTED**. Do not
-  assume they are committed. The marketing-consent capture path added on 2026-11-23 is also
-  uncommitted, on top of the same tree.
-- Backend: 2169 tests green across 121 files. Database: 301 green across 15 files, including the
-  new `consent-rls.test.ts`. Web: 1895 green across 181 files. All three re-run 2026-11-23 after
-  the consent work. `tsc` and `eslint` clean in both apps.
-- Two migrations are applied to the dev and test DBs but are part of the uncommitted tree:
-  `20261123160000_site_update_delivery_no_buyer`, `20261123200000_site_update_delivery_no_consent`.
+- Steps 1-6 were committed at `dd475f7`. Steps 7 and 8, the marketing-consent capture and the
+  `SITE_UPDATE_WHATSAPP` switch are now COMMITTED on `main` in that order (four commits, then the
+  switch). Nothing is pushed: local `main` is ahead of `origin/main`, and pushing is the deploy.
+- Backend: 2171 tests green across 121 files. Database: 301 green across 15 files, including
+  `consent-rls.test.ts`. Web: 1896 green across 181 files. `tsc` and `eslint` clean in both apps.
+- Three migrations are applied to dev and test: `20261123160000_site_update_delivery_no_buyer`,
+  `20261123200000_site_update_delivery_no_consent`,
+  `20261123193000_site_update_delivery_skipped_disabled`. The Prisma client is regenerated in the
+  build and is not committed; run `pnpm --filter @shadhil/database generate` after pulling.
 
 ## Do not break these
 
@@ -35,6 +35,11 @@ Read first, in this order:
   the real CDN). The API refuses to boot with the flag on and the caps unset.
 - `site-video-flag-off.spec.ts` deliberately SKIPS on a flag-on server. To prove it, restart the
   web server with `SITE_VIDEO_CAPTURE=false`.
+- The buyer-facing WhatsApp leg has one switch: `SITE_UPDATE_WHATSAPP=off` stops it for photos and
+  video, inside and outside the 24h window, without touching capture. It is checked first in
+  `enqueue()`, so nothing is looked up and nothing is queued; the delivery row records
+  `SKIPPED_DISABLED`, which keeps the batch visible for a re-send. Default is ON. Clearing
+  `WA_TEMPLATE_SITE_UPDATE_*` is NOT the switch: that only skips outside-window sends.
 
 ## Task 1 (highest value): capture marketing consent - DONE 2026-11-23
 
@@ -83,16 +88,19 @@ against the stored object, `1..45s` as a DB CHECK, the recorder's own 45s stop. 
 rejected because Chrome records fragmented MP4, where `mvhd` duration is commonly 0 - a probe would
 guess, and a wrong probe refuses a valid clip.
 
-## Task 3: commit
+## Task 3: commit - DONE 2026-11-23
 
-Steps 7 and 8 are uncommitted by explicit user instruction ("start but don't commit"), and the
-marketing-consent path now sits on top of them: 83 entries in `git status` (33 new, 49 modified, 1
-renamed). Ask before committing. When asked, split sensibly rather than one blob:
+Landed on local `main`, in this order, after "start but don't commit" was lifted:
 
-1. step 7 - recorder, player, badge, site page wrapper, e2e specs, `lib/site-video/`;
-2. step 8 - delivery service/provider/helpers, the two migrations, `.env.example`;
-3. marketing consent - `lead-consent.*`, the `LeadDetail` fields, the web panel + hook;
-4. small fixes - proxy query string, empty note, and the durationMs comment.
+1. `1241242` feat(web): record and play site-update video (step 7) - 62 files;
+2. `d0605a1` feat(progress): send site updates to the buyer over WhatsApp (step 8) - 26 files;
+3. `58208df` feat(leads): record marketing consent on the consent ledger - 12 files;
+4. `8a9e553` fix(web): keep the query string through login, and close the plan's open gaps - 6 files.
+
+Then the switch, as its own commit. Not pushed: pushing main is the deploy, and that is a separate
+decision. Split boundaries followed dependencies rather than filenames - `SitePhotoFeed.tsx` went
+with step 7 because the capture view and two staged tests import `SitePhotoCard` from it, and
+consent came after delivery because the capture service imports the gate delivery introduced.
 
 ## Task 4: needs hardware, cannot be done in CI
 

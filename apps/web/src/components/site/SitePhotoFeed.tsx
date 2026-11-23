@@ -157,6 +157,9 @@ const DELIVERY_WORDS = {
   SKIPPED_NO_TEMPLATE: 'Not sent: no approved template',
   SKIPPED_NO_BUYER: 'Not sent: no buyer on this unit',
   SKIPPED_NO_CONSENT: 'Not sent: buyer has not opted in',
+  // The switch, not a fault: "off" is the operator's decision, and the words say
+  // so rather than blaming a missing template or a failed send.
+  SKIPPED_DISABLED: 'Not sent: buyer updates switched off',
   FAILED: 'Not sent: delivery failed',
 } as const;
 

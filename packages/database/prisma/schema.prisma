@@ -2016,6 +2016,15 @@ enum SiteUpdateDeliveryStatus {
    * never opted in is what erodes a sender number's quality rating.
    */
   SKIPPED_NO_CONSENT
+  /**
+   * Nothing was attempted because the operator switched the WhatsApp leg off
+   * (`SITE_UPDATE_WHATSAPP=off`). A kill switch, not a fault: the site update
+   * itself saved normally. Kept as a row rather than dropping the record so the
+   * batches skipped during a switch-off stay visible and can be re-sent once
+   * the flag goes back on. Distinct from SKIPPED_NO_TEMPLATE: that one means
+   * nobody approved a template, this one means we chose not to send.
+   */
+  SKIPPED_DISABLED
   SENT
   SKIPPED_WINDOW
   SKIPPED_NO_TEMPLATE

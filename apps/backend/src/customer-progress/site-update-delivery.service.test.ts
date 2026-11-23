@@ -13,7 +13,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   deliveryCaption,
   planDelivery,
+  SITE_UPDATE_WHATSAPP_ENV,
   SiteUpdateDeliveryService,
+  siteUpdateWhatsAppEnabled,
   type DeliveryContext,
   type DeliveryInput,
 } from './site-update-delivery.service';
@@ -393,5 +395,42 @@ describe('SiteUpdateDeliveryService', () => {
     const h = harness();
     h.client.siteUpdateDelivery.create.mockRejectedValueOnce(new Error('db down'));
     await expect(h.service.recordAndSend(input)).resolves.toBeUndefined();
+  });
+
+  it('records SKIPPED_DISABLED and touches nothing when the switch is off', async () => {
+    // The kill switch, and the point of it: with SITE_UPDATE_WHATSAPP=off the
+    // update is still saved (the row exists, so it can be re-sent later), but no
+    // buyer is looked up, no consent is read, no message is created and the
+    // outbox is never touched. A switched-off deployment must not look broken.
+    const h = harness();
+    const saved = process.env[SITE_UPDATE_WHATSAPP_ENV];
+    process.env[SITE_UPDATE_WHATSAPP_ENV] = 'off';
+    try {
+      await h.service.recordAndSend({ ...input, tx: h.tx });
+    } finally {
+      if (saved === undefined) delete process.env[SITE_UPDATE_WHATSAPP_ENV];
+      else process.env[SITE_UPDATE_WHATSAPP_ENV] = saved;
+    }
+    expect(h.enqueue).not.toHaveBeenCalled();
+    expect(h.client.booking.findFirst).not.toHaveBeenCalled();
+    expect(h.client.consent.findFirst).not.toHaveBeenCalled();
+    expect(h.client.message.create).not.toHaveBeenCalled();
+    expect(h.client.siteUpdateDelivery.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'SKIPPED_DISABLED' }),
+      }),
+    );
+  });
+
+  it('leaves the leg ON when the switch is unset or empty', async () => {
+    // The default that keeps a deployment which never set the variable working.
+    for (const value of [undefined, '', '  ', 'on', 'true', '1']) {
+      const env: Record<string, string | undefined> = {};
+      if (value !== undefined) env[SITE_UPDATE_WHATSAPP_ENV] = value;
+      expect(siteUpdateWhatsAppEnabled(env)).toBe(true);
+    }
+    for (const value of ['off', 'OFF', ' off ', 'false', '0']) {
+      expect(siteUpdateWhatsAppEnabled({ [SITE_UPDATE_WHATSAPP_ENV]: value })).toBe(false);
+    }
   });
 });
