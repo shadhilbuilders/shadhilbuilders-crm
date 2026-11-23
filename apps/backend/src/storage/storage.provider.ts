@@ -90,7 +90,7 @@ export interface StorageProvider {
    */
   save(
     data: Buffer,
-    meta: { organizationId: string; mimeType: string; filename: string },
+    meta: { organizationId: string; mimeType: string; filename: string; uploadId?: string },
   ): Promise<StoredFile>;
 
   /**
@@ -115,17 +115,28 @@ export interface StorageProvider {
 
   /**
    * Size, type and privacy of a stored object, or null when the key does not
-   * exist. The size is what the storage layer measured.
+   * exist. The size is what the storage layer measured. THROWS when storage
+   * itself fails (outage, auth, 5xx): "absent" and "could not ask" are
+   * different answers and the routes map them to different errors.
    */
   stat(key: string): Promise<StoredObjectInfo | null>;
 
   /**
-   * Stream an object, optionally a byte range of it. Returns null when the key
-   * does not exist or the read failed upstream (logged by the implementation).
-   * Private objects are signed inside the provider; the signature never leaves.
+   * Stream an object, optionally a byte range of it. Returns null only when the
+   * key does not exist; THROWS when storage itself fails. Private objects are
+   * signed inside the provider; the signature never leaves.
    */
   readStream(key: string, range?: ByteRange): Promise<StreamedObject | null>;
 
   /** Grant for a browser-direct upload. Absent on providers that cannot. */
   createUploadAuth?(req: UploadAuthRequest): UploadAuth;
+
+  /**
+   * Delete everything under `/<organizationId>/<uploadId>/`. Idempotent: an
+   * absent folder resolves. Used to cancel an upload that never became a row;
+   * the browser cannot do it itself because it holds no delete credential.
+   * Like `delete`, MUST NOT throw: a failure is logged and the blobs are left
+   * for the orphan sweep.
+   */
+  deleteUploadFolder(organizationId: string, uploadId: string): Promise<void>;
 }

@@ -154,9 +154,11 @@ export class LocalDiskStorage implements StorageProvider {
 
   async save(
     data: Buffer,
-    meta: { organizationId: string; mimeType: string; filename: string },
+    meta: { organizationId: string; mimeType: string; filename: string; uploadId?: string },
   ): Promise<StoredFile> {
-    const id = randomBytes(12).toString('hex');
+    // A server-issued uploadId (verified by the caller) names the folder, so a
+    // record can later prove the bytes sit where the grant said they would.
+    const id = meta.uploadId ?? randomBytes(12).toString('hex');
     const safeName = sanitizeFilename(meta.filename || `file`);
     const key = `${meta.organizationId}/${id}/${safeName}`;
     // save() builds the key itself, so a null here would be a bug in THIS
@@ -221,6 +223,14 @@ export class LocalDiskStorage implements StorageProvider {
     } catch {
       return null;
     }
+  }
+
+  async deleteUploadFolder(organizationId: string, uploadId: string): Promise<void> {
+    const target = await this.containedPath(`${organizationId}/${uploadId}`);
+    if (target === null) return;
+    // rm({ force }) resolves for an absent folder; a real failure is logged by
+    // the caller's catch, never surfaced as a user-facing error.
+    await rm(target, { force: true, recursive: true });
   }
 
   async readStream(key: string, range?: ByteRange): Promise<StreamedObject | null> {

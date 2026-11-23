@@ -89,9 +89,9 @@ export class ImageKitStorage implements StorageProvider {
 
   async save(
     data: Buffer,
-    meta: { organizationId: string; mimeType: string; filename: string },
+    meta: { organizationId: string; mimeType: string; filename: string; uploadId?: string },
   ): Promise<StoredFile> {
-    const id = randomBytes(12).toString('hex');
+    const id = meta.uploadId ?? randomBytes(12).toString('hex');
     const safeName = sanitizeFilename(meta.filename || 'file');
     // folder is org-scoped; fileName gets a unique suffix so re-uploads of
     // the same name never collide with the previous file.
@@ -256,58 +256,76 @@ export class ImageKitStorage implements StorageProvider {
   }
 
   async stat(key: string): Promise<StoredObjectInfo | null> {
-    try {
-      const file = await this.findFile(key);
-      if (!file || typeof file.size !== 'number') return null;
-      return {
-        size: file.size,
-        mimeType: file.mime ?? 'application/octet-stream',
-        // Absent means "not marked private". Never assume private on a gap:
-        // the record route refuses a public clip, so the safe default is public.
-        isPrivate: file.isPrivateFile === true,
-      };
-    } catch (err) {
-      this.logger.warn(
-        `[media] imagekit stat error key=${key}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return null;
-    }
+    // No try/catch on purpose: an SDK failure must reach the caller as a throw,
+    // not as `null`, which would read as "the object does not exist".
+    const file = await this.findFile(key);
+    if (!file || typeof file.size !== 'number') return null;
+    return {
+      size: file.size,
+      mimeType: file.mime ?? 'application/octet-stream',
+      // Absent means "not marked private". Never assume private on a gap:
+      // the record route refuses a public clip, so the safe default is public.
+      isPrivate: file.isPrivateFile === true,
+    };
   }
 
   async readStream(key: string, range?: ByteRange): Promise<StreamedObject | null> {
+    const url = this.signedOriginalUrl(key);
+    if (!url) return null;
+    const headers: Record<string, string> = {};
+    if (range) headers.range = `bytes=${range.start}-${range.end ?? ''}`;
+    // redirect: 'follow' is fetch's default and is kept on purpose: any
+    // Location is consumed here, so a signed URL never reaches the browser.
+    // A network failure rejects out of this method: "could not ask" is not
+    // "does not exist".
+    const res = await fetch(url, { headers });
+    if (res.status === 416) {
+      await res.body?.cancel();
+      return { status: 416, headers: pickHeaders(res.headers), body: null };
+    }
+    if (res.status === 404) {
+      await res.body?.cancel();
+      return null;
+    }
+    if (!res.ok || !res.body) {
+      await res.body?.cancel();
+      this.logger.warn(`[media] imagekit stream failed key=${key} status=${res.status}`);
+      throw new Error(`imagekit stream failed for ${key}: status ${res.status}`);
+    }
+    // A 200 to a ranged request means upstream ignored the range; report the
+    // truth rather than relabelling it as 206.
+    return {
+      status: res.status === 206 ? 206 : 200,
+      headers: pickHeaders(res.headers),
+      body: res.body as ReadableStream<Uint8Array>,
+    };
+  }
+
+  async deleteUploadFolder(organizationId: string, uploadId: string): Promise<void> {
+    const folder = `/${organizationId}/${uploadId}`;
     try {
-      const url = this.signedOriginalUrl(key);
-      if (!url) return null;
-      const headers: Record<string, string> = {};
-      if (range) headers.range = `bytes=${range.start}-${range.end ?? ''}`;
-      // redirect: 'follow' is fetch's default and is kept on purpose: any
-      // Location is consumed here, so a signed URL never reaches the browser.
-      const res = await fetch(url, { headers });
-      if (res.status === 416) {
-        await res.body?.cancel();
-        return {
-          status: 416,
-          headers: pickHeaders(res.headers),
-          body: null,
-        };
+      const files = await this.imagekit.listFiles({ path: folder, limit: 100 });
+      const list: unknown[] = Array.isArray(files)
+        ? files
+        : Array.isArray((files as { response?: unknown[] }).response)
+          ? (files as { response: unknown[] }).response
+          : [];
+      for (const f of list) {
+        const entry = f as { type?: string; fileId?: string; filePath?: string };
+        // Exact-prefix guard: listFiles on a folder returns that folder only,
+        // but never trust a listing to stay inside the path it was asked for.
+        if (
+          entry.type === 'file' &&
+          typeof entry.fileId === 'string' &&
+          entry.filePath?.startsWith(`${folder}/`) === true
+        ) {
+          await this.imagekit.deleteFile(entry.fileId);
+        }
       }
-      if (!res.ok || !res.body) {
-        this.logger.warn(`[media] imagekit stream failed key=${key} status=${res.status}`);
-        await res.body?.cancel();
-        return null;
-      }
-      // A 200 to a ranged request means upstream ignored the range; report the
-      // truth rather than relabelling it as 206.
-      return {
-        status: res.status === 206 ? 206 : 200,
-        headers: pickHeaders(res.headers),
-        body: res.body as ReadableStream<Uint8Array>,
-      };
     } catch (err) {
       this.logger.warn(
-        `[media] imagekit stream error key=${key}: ${err instanceof Error ? err.message : String(err)}`,
+        `[media] imagekit folder delete failed ${folder}: ${err instanceof Error ? err.message : String(err)} - blobs orphaned`,
       );
-      return null;
     }
   }
 

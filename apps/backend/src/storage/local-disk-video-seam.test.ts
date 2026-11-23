@@ -113,4 +113,34 @@ describe('LocalDiskStorage video seam', () => {
       }),
     ).toEqual({ transport: 'inline', maxBytes: 14_680_064 });
   });
+
+  it('save into a server-issued folder, then deleteUploadFolder removes all of it', async () => {
+    const meta = { organizationId: 'org-9', mimeType: 'video/mp4', uploadId: 'up'.padEnd(64, 'a') };
+    const clip = await storage.save(bytes, { ...meta, filename: 'clip.mp4' });
+    const poster = await storage.save(bytes, { ...meta, filename: 'poster.jpg' });
+    expect(clip.key).toBe(`org-9/${meta.uploadId}/clip.mp4`);
+    expect(poster.key).toBe(`org-9/${meta.uploadId}/poster.jpg`);
+
+    await storage.deleteUploadFolder('org-9', meta.uploadId);
+    expect(await storage.stat(clip.key)).toBeNull();
+    expect(await storage.stat(poster.key)).toBeNull();
+  });
+
+  it('deleteUploadFolder leaves a sibling upload alone and resolves for a missing folder', async () => {
+    const other = await storage.save(bytes, {
+      organizationId: 'org-9',
+      mimeType: 'video/mp4',
+      filename: 'keep.mp4',
+      uploadId: 'bb'.padEnd(64, 'b'),
+    });
+    await expect(
+      storage.deleteUploadFolder('org-9', 'cc'.padEnd(64, 'c')),
+    ).resolves.toBeUndefined();
+    expect(await storage.stat(other.key)).not.toBeNull();
+  });
+
+  it('deleteUploadFolder refuses a traversal id instead of escaping the root', async () => {
+    await expect(storage.deleteUploadFolder('org-1', '../..')).resolves.toBeUndefined();
+    expect(await storage.stat(key)).not.toBeNull();
+  });
 });

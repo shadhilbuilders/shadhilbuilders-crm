@@ -296,11 +296,13 @@ describe('ImageKitStorage', () => {
       expect((await make().stat('/o/u/c.mp4'))?.isPrivate).toBe(false);
     });
 
-    it('stat is null for an absent key and for an SDK failure', async () => {
+    it('stat is null for an absent key but THROWS on an SDK failure', async () => {
+      // "does not exist" and "could not ask" must not look the same: the record
+      // route answers 404 for the first and a retryable 503 for the second.
       listFilesMock.mockResolvedValueOnce([]);
       expect(await make().stat('/o/u/none.mp4')).toBeNull();
       listFilesMock.mockRejectedValueOnce(new Error('boom'));
-      expect(await make().stat('/o/u/c.mp4')).toBeNull();
+      await expect(make().stat('/o/u/c.mp4')).rejects.toThrow('boom');
     });
 
     it('readStream sends the range and reports 206 with the range headers', async () => {
@@ -349,15 +351,57 @@ describe('ImageKitStorage', () => {
       expect((await make().readStream('/o/u/c.mp4', { start: 1, end: 2 }))?.status).toBe(200);
     });
 
-    it('readStream surfaces 416 with no body, and null on an upstream 403', async () => {
+    it('readStream surfaces 416 with no body', async () => {
       vi.spyOn(global, 'fetch').mockResolvedValueOnce(
         new Response(null, { status: 416, headers: { 'content-range': 'bytes */10' } }),
       );
       const bad = await make().readStream('/o/u/c.mp4', { start: 99 });
       expect(bad).toEqual({ status: 416, headers: { 'content-range': 'bytes */10' }, body: null });
+    });
+
+    it('readStream is null for a 404 but THROWS on a 403, a 5xx or a network failure', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(new Response('gone', { status: 404 }));
+      expect(await make().readStream('/o/u/c.mp4')).toBeNull();
 
       vi.spyOn(global, 'fetch').mockResolvedValueOnce(new Response('no', { status: 403 }));
-      expect(await make().readStream('/o/u/c.mp4')).toBeNull();
+      await expect(make().readStream('/o/u/c.mp4')).rejects.toThrow(/403/);
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(new Response('x', { status: 502 }));
+      await expect(make().readStream('/o/u/c.mp4')).rejects.toThrow(/502/);
+
+      vi.spyOn(global, 'fetch').mockRejectedValueOnce(new Error('ECONNRESET'));
+      await expect(make().readStream('/o/u/c.mp4')).rejects.toThrow('ECONNRESET');
+    });
+
+    it('save puts a server-issued uploadId in the folder instead of a random one', async () => {
+      uploadMock.mockResolvedValue({ filePath: '/org-1/up-1/clip.mp4' });
+      await make().save(Buffer.from('x'), {
+        organizationId: 'org-1',
+        mimeType: 'video/mp4',
+        filename: 'clip.mp4',
+        uploadId: 'up-1',
+      });
+      expect(uploadMock.mock.calls[0][0].folder).toBe('/org-1/up-1');
+    });
+
+    it('deleteUploadFolder deletes only files inside that folder', async () => {
+      listFilesMock.mockResolvedValue([
+        { type: 'file', fileId: 'f1', filePath: '/org-1/up-1/clip.mp4' },
+        { type: 'file', fileId: 'f2', filePath: '/org-1/up-1/poster.jpg' },
+        { type: 'file', fileId: 'evil', filePath: '/org-2/up-1/clip.mp4' },
+        { type: 'folder', fileId: 'dir', filePath: '/org-1/up-1/sub' },
+      ]);
+      await make().deleteUploadFolder('org-1', 'up-1');
+      expect(listFilesMock).toHaveBeenCalledWith(expect.objectContaining({ path: '/org-1/up-1' }));
+      expect(deleteFileMock.mock.calls.map((c) => c[0])).toEqual(['f1', 'f2']);
+    });
+
+    it('deleteUploadFolder never throws, and an empty folder is a no-op', async () => {
+      listFilesMock.mockResolvedValueOnce([]);
+      await expect(make().deleteUploadFolder('org-1', 'up-1')).resolves.toBeUndefined();
+      listFilesMock.mockRejectedValueOnce(new Error('ik down'));
+      await expect(make().deleteUploadFolder('org-1', 'up-1')).resolves.toBeUndefined();
+      expect(deleteFileMock).not.toHaveBeenCalled();
     });
 
     it('createUploadAuth issues a private direct grant scoped to the folder', () => {
