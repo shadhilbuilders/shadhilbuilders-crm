@@ -247,8 +247,7 @@ Fixed in the working tree on 2026-11-24: `createUploadAuth` now returns `tickets
 matching ticket per slot. The assumption was proved against the live account before any deploy,
 from inside the api container with the real keys: two tickets, both uploads 200 into one folder
 (`/probe-207eabd1/clip.mp4`, `/probe-207eabd1/poster.jpg`), both objects then deleted, and again on the deployed build: `upload-auth` handed back tickets whose
-tokens differ. Not
-deployed yet.
+tokens differ (`0d848934` and `8f2e76f7`). Deployed in `prod-14ccb2c`.
 
 **2. A video's poster answered 404 while its clip answered 200.** `media-access.service.ts`
 resolved a key against `ProgressPhoto.key` only, and a video stores its JPEG in `posterKey`.
@@ -257,8 +256,10 @@ would have shipped with broken tiles. Fixed in the working tree on 2026-11-24 (m
 column, plus a test). Deployed in `prod-14ccb2c`: the fixture's poster now answers `200 image/jpeg`,
 47,518 bytes, to the buyer's own session.
 
-**3. Byte ranges are dropped upstream.** See the correction above. Fixed in the working tree the
-same day (the API cuts the window itself, ADR 0003, two new tests), not deployed.
+**3. Byte ranges are dropped upstream.** See the correction above. Fixed the same day (the API
+cuts the window itself, ADR 0003, two new tests) and deployed in `prod-14ccb2c`: a request for
+`bytes=0-1023` answers 206 with `Content-Range: bytes 0-1023/1700682` and exactly 1024 bytes,
+while a plain GET still answers 200 with all 1,700,682.
 
 What passed, measured over the public origin with the buyer's own session:
 
@@ -270,6 +271,69 @@ What passed, measured over the public origin with the buyer's own session:
 
 The bounce is the one the plan promised: a signed-out buyer keeps the entire path, photo id
 included, in `next`, so the deep link survives the login screen.
+
+## The first real WhatsApp send, and the two defects that stopped it (2026-11-24)
+
+Before this, three batches read `SKIPPED_NO_CONSENT` and no `OutboundMessage` existed for any of
+them. That is the consent ledger working as written: the site update templates are approved as
+MARKETING, and a missing MARKETING row is read as never asked, not as a yes. The first honest send
+therefore needed a number and an opt-in, and both went in on the owner's own handset, `919445450410`,
+with a consent row whose `source` says where the instruction came from.
+
+Two defects then blocked the send. Each was measured on production, and neither is visible from a
+unit test.
+
+**1. Row level security refused every outbox insert.** The api log at 09:46:17 read
+`Invalid prisma.outboundMessage.create() ... Code: 42501 ... new row violates row-level security policy for table "OutboundMessage"`.
+`enqueue()` ran on the bare Prisma client rather than the caller's transaction, so the insert
+carried no `app.user_id` and the policy had nothing to match. Everything before it succeeded: the
+`Message` row was written and the delivery row said PENDING while no send was queued. The three
+chat call sites already passed the transaction; this one did not. It does now, and a delivery that
+cannot be queued settles FAILED with `ENQUEUE_FAILED`, because PENDING is a promise to the staff
+screen that something is on its way.
+
+**2. The image header was built from the wrong column.** With the outbox fixed, Meta answered HTTP
+400 with `132012`, `header: Format mismatch, expected IMAGE, received UNKNOWN`. `mediaKey` was read
+from `posterKey` for anything that was not a clip, and `posterKey` is the JPEG beside a VIDEO row, so
+it is empty on a PHOTO row. The header was dropped and the template arrived with none. The mapping
+now asks what the row is: a photo sends its own key, a clip sends its key, and a clip Meta will not
+take as MP4 sends its poster.
+
+A third gap cost the most time to find and concerned diagnosis rather than delivery. A failed
+delivery receipt was parsed and its `errors` array dropped, so a row could say FAILED with no
+reason stored anywhere. Meta puts its only explanation there. The code, title and
+`error_data.details` are now logged and written to the outbox row.
+
+Measured over the public origin after both fixes, against `prod-600cb11`:
+
+    site update      DELIVERED, 2026-11-24 10:48:54Z
+    wamid            wamid.HBgMOTE5NDQ1NDUwNDEwFQIAERgSNUE2OUZFRDg3ODg3MjUzNjYwAA==
+    outbox row       attempts 1, sendType TEMPLATE, shadhil_site_update_image, no error
+    delivery row     DELIVERED, header IMAGE, batch photo-2026-11-24T16:18:52.678+05:30
+    inbound window   closed; the last inbound on that number is 2026-11-19
+
+One send four minutes earlier was accepted by Meta, came back with a wamid, and was then reported
+failed by a delivery receipt. The identical send after it was delivered. Nothing recorded why,
+which is what the third fix addresses.
+
+The stale rows written while the outbox could not insert anything are closed as FAILED with
+`STALE_BEFORE_RLS_FIX`: `cmwuifb8e005d01o9vlvqcpt1` and `cmwujirni000r01r849pkxqc3`. One row from
+10:16 keeps its old `132012` text and its retries, because it is the evidence for defect 2.
+
+The three commits are `08a6068` (the transaction), `600cb11` (the header column) and `0dfa938`
+(the receipt reason). All are deployed; the api image reads `prod-0dfa938` and both templates are
+configured there, `shadhil_site_update_image` and `shadhil_site_update_video`.
+
+Three things remain open, and none of them is code:
+
+- The templates are approved as MARKETING. A villa progress message is transactional, and MARKETING
+  spends a per-recipient allowance rather than arriving on the strength of the contract.
+  Resubmitting as UTILITY would remove both the frequency cap and the dependency on an opt-in row,
+  and the consent ledger would become a courtesy instead of the delivery precondition.
+- A buyer with no number on the lead cannot be reached at all. That delivery reads
+  `SKIPPED_NO_PHONE` and it is the honest outcome, not a bug.
+- The photos now sitting on A-665 were generated with ffmpeg. They should be deleted through the
+  DELETE routes before this gate is signed off, so nobody later mistakes them for site evidence.
 
 ## If a row fails
 
