@@ -424,7 +424,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     expect(pillCount).toBeGreaterThanOrEqual(1);
   });
 
-  test('BONUS - lead detail renders chat panel with seeded messages', async ({ page }) => {
+  test('BONUS - the completed visit left its check-in in the chat panel', async ({ page }) => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'BONUS depends on a lead created in STEP 3');
     await login(page);
@@ -436,23 +436,14 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
       timeout: 15_000,
     });
 
-    // This lead was created by the test (no seeded chat), so we only
-    // verify that LeadChatPane renders the empty state - the meaningful
-    // contract for a freshly-created lead. (Seeded leads would have
-    // ≥1 chat message per the T-DEMOSET commit.)
+    // STEP 7 marked this lead's visit COMPLETED, which queues the UTILITY
+    // check-in, and the check-in writes its own entry into the thread. So the
+    // pane is no longer empty for a freshly-created lead: the honest assertion
+    // is that the check-in is what landed there, which is also the only proof in
+    // this suite that the completed-visit wiring reaches the customer thread.
     const chat = page.locator('[data-qa="chat-messages"]');
     await expect(chat).toBeVisible({ timeout: 10_000 });
-    const emptyOrLoading = await Promise.race([
-      chat
-        .getByText(/No messages yet/i)
-        .waitFor({ state: 'visible', timeout: 5_000 })
-        .then(() => true),
-      chat
-        .getByText(/Loading messages/i)
-        .waitFor({ state: 'visible', timeout: 5_000 })
-        .then(() => true),
-    ]).catch(() => false);
-    expect(emptyOrLoading).toBeTruthy();
+    await expect(chat.getByText(/Site visit check-in sent/)).toBeVisible({ timeout: 15_000 });
     await shot(page, 'bonus-chat-pane');
   });
 });
