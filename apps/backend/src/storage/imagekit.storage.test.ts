@@ -404,8 +404,16 @@ describe('ImageKitStorage', () => {
       expect(deleteFileMock).not.toHaveBeenCalled();
     });
 
-    it('createUploadAuth issues a private direct grant scoped to the folder', () => {
-      authMock.mockReturnValue({ token: 'tok', signature: 'sig', expire: 0 });
+    it('createUploadAuth issues a private direct grant with one ticket per object', () => {
+      // ImageKit burns a token on its first use, and a take uploads the clip and
+      // its poster into one folder, so ONE token cannot cover both. Measured in
+      // production on 2026-11-24: the poster upload answered 400 "The token ...
+      // has been used before" and no take could be recorded.
+      let n = 0;
+      authMock.mockImplementation(() => {
+        n += 1;
+        return { token: `tok-${n}`, signature: `sig-${n}`, expire: 0 };
+      });
       const before = Math.floor(Date.now() / 1000);
       const auth = make().createUploadAuth({
         organizationId: 'org-1',
@@ -417,15 +425,21 @@ describe('ImageKitStorage', () => {
         transport: 'direct',
         publicKey: 'pub',
         urlEndpoint: 'https://ik.imagekit.io/org',
-        token: 'tok',
-        signature: 'sig',
+        tickets: {
+          clip: { token: 'tok-1', signature: 'sig-1' },
+          poster: { token: 'tok-2', signature: 'sig-2' },
+        },
         folder: '/org-1/up-1/',
         maxBytes: 14680064,
         isPrivateFile: true,
       });
       if (auth.transport !== 'direct') throw new Error('expected direct');
-      expect(auth.expire).toBeGreaterThanOrEqual(before + 600);
-      expect(auth.expire).toBeLessThanOrEqual(before + 602);
+      expect(authMock).toHaveBeenCalledTimes(2);
+      // Same folder, same expiry: only the token and its signature differ.
+      expect(auth.tickets.clip.expire).toBeGreaterThanOrEqual(before + 600);
+      expect(auth.tickets.clip.expire).toBeLessThanOrEqual(before + 602);
+      expect(auth.tickets.poster.expire).toBe(auth.tickets.clip.expire);
+      expect(auth.tickets.clip.token).not.toBe(auth.tickets.poster.token);
       expect(JSON.stringify(auth)).not.toContain('priv');
     });
   });

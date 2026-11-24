@@ -36,9 +36,10 @@ const DIRECT: UploadAuth = {
   transport: 'direct',
   publicKey: 'pub',
   urlEndpoint: 'https://ik.example/x',
-  token: 'tok',
-  expire: 123,
-  signature: 'sig',
+  tickets: {
+    clip: { token: 'tok-clip', expire: 123, signature: 'sig-clip' },
+    poster: { token: 'tok-poster', expire: 123, signature: 'sig-poster' },
+  },
   folder: '/org/up1/',
   maxBytes: 14_680_064,
   isPrivateFile: true,
@@ -110,7 +111,13 @@ describe('direct transport', () => {
     expect(form.get('folder')).toBe('/org/up1/');
     expect(form.get('isPrivateFile')).toBe('true');
     expect(form.get('useUniqueFileName')).toBe('false');
-    expect(form.get('signature')).toBe('sig');
+    expect(form.get('signature')).toBe('sig-clip');
+    // One ImageKit token uploads once. The poster must carry the OTHER ticket,
+    // in the same folder, or its upload is refused and the take never records.
+    expect(forms[1]![1].get('signature')).toBe('sig-poster');
+    expect(forms[1]![1].get('token')).toBe('tok-poster');
+    expect(form.get('token')).toBe('tok-clip');
+    expect(forms[1]![1].get('folder')).toBe('/org/up1/');
 
     const record = calls.at(-1)!;
     expect(record.path).toBe('/customer-progress/units/u1/videos');

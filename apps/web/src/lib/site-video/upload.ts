@@ -20,9 +20,12 @@ export type UploadAuth =
       transport: 'direct';
       publicKey: string;
       urlEndpoint: string;
-      token: string;
-      expire: number;
-      signature: string;
+      /**
+       * ONE TICKET PER OBJECT. ImageKit burns a token on the first upload that
+       * presents it, so the clip and the poster each get their own. The folder
+       * is shared: the record route checks both keys against the upload id.
+       */
+      tickets: Record<'clip' | 'poster', { token: string; signature: string; expire: number }>;
       folder: string;
       maxBytes: number;
       isPrivateFile: true;
@@ -122,13 +125,14 @@ async function sendOne(
     onProgress(blob.size);
     return out.key;
   }
+  const ticket = auth.tickets[slot];
   const form = new FormData();
   form.set('file', blob, slot === 'clip' ? CLIP_FILE : POSTER_FILE);
   form.set('fileName', slot === 'clip' ? CLIP_FILE : POSTER_FILE);
   form.set('publicKey', auth.publicKey);
-  form.set('signature', auth.signature);
-  form.set('expire', String(auth.expire));
-  form.set('token', auth.token);
+  form.set('signature', ticket.signature);
+  form.set('expire', String(ticket.expire));
+  form.set('token', ticket.token);
   form.set('folder', auth.folder);
   form.set('isPrivateFile', 'true');
   form.set('useUniqueFileName', 'false');

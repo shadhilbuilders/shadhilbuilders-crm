@@ -59,6 +59,17 @@ export interface UploadAuthRequest {
 }
 
 /**
+ * One ImageKit upload ticket. SINGLE USE: the provider burns the token on the
+ * first upload that presents it, and a second upload with the same token is
+ * refused with "The token ... has been used before".
+ */
+export interface UploadTicket {
+  token: string;
+  signature: string;
+  expire: number;
+}
+
+/**
  * Either the browser uploads straight to the CDN with a short-lived signature
  * (`direct`), or posts the bytes through the API (`inline`, local disk). The
  * client has one code path per branch, and dev/CI exercise the `inline` one.
@@ -68,9 +79,13 @@ export type UploadAuth =
       transport: 'direct';
       publicKey: string;
       urlEndpoint: string;
-      token: string;
-      expire: number;
-      signature: string;
+      /**
+       * A ticket PER OBJECT. A take uploads two (the clip, then its poster) into
+       * one folder, and one ticket cannot cover both, so the grant carries two.
+       * The folder stays derived from the upload id, which is what the record
+       * route checks.
+       */
+      tickets: Record<'clip' | 'poster', UploadTicket>;
       /** `/<organizationId>/<uploadId>/` */
       folder: string;
       maxBytes: number;

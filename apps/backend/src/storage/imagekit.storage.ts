@@ -37,6 +37,7 @@ import {
   type StreamedObject,
   type UploadAuth,
   type UploadAuthRequest,
+  type UploadTicket,
 } from './storage.provider';
 import { looksLikeJpeg, looksLikePng } from './sniff-mime';
 
@@ -331,14 +332,21 @@ export class ImageKitStorage implements StorageProvider {
 
   createUploadAuth(req: UploadAuthRequest): UploadAuth {
     const expire = Math.floor(Date.now() / 1000) + UPLOAD_AUTH_TTL_SECONDS;
-    const { token, signature } = this.imagekit.getAuthenticationParameters(undefined, expire);
+    // TWO tickets, not one. A take uploads the clip and its poster into the
+    // same folder, and ImageKit burns a token on the first upload that presents
+    // it: reusing it answers 400 "The token ... has been used before" (measured
+    // in production 2026-11-24 on a real recording attempt). The folder cannot
+    // move, because the record route checks both keys against the upload id, so
+    // the second upload needs its own ticket in the same folder.
+    const ticket = (): UploadTicket => {
+      const { token, signature } = this.imagekit.getAuthenticationParameters(undefined, expire);
+      return { token, signature, expire };
+    };
     return {
       transport: 'direct',
       publicKey: this.publicKey,
       urlEndpoint: this.urlEndpoint,
-      token,
-      expire,
-      signature,
+      tickets: { clip: ticket(), poster: ticket() },
       folder: `/${req.organizationId}/${req.uploadId}/`,
       maxBytes: req.maxBytes,
       isPrivateFile: true,
