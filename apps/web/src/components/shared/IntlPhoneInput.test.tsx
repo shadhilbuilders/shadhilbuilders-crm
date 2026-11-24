@@ -104,12 +104,23 @@ describe('IntlPhoneInput country picker', () => {
     expect(source).toMatch(/labelContent: \(/);
   });
 
-  it('keeps the list usable on a phone: 16px search, 44px rows', () => {
+  it('keeps the list usable on a phone: 16px search, 36px rows', () => {
     // iOS Safari zooms the page in on a focused field under 16px and never zooms
-    // back, which would leave the list magnified and half off-screen; 44px is
-    // the tap target. Both are props of the shared picker, not CSS we own.
+    // back, which would leave the list magnified and half off-screen; 36px keeps
+    // a usable number of the 245 countries on screen at once. Both are props of
+    // the shared picker, not CSS we own.
     expect(source).toContain('commandInputClassName="h-10 text-base"');
-    expect(source).toContain('commandItemClassName="min-h-11 py-2"');
+    expect(source).toContain('commandItemClassName="min-h-9 py-2"');
+  });
+
+  it('closes the list as soon as a country is picked', () => {
+    // Left uncontrolled, the sheet stayed open over the field the operator had
+    // just changed. On a phone the popover is modal, so that meant dismissing it
+    // by hand before typing the number.
+    expect(source).toContain('open={s.open}');
+    expect(source).toContain('onOpenChange={s.setOpen}');
+    // ... and the pick itself is what closes it, before the change goes out.
+    expect(source).toMatch(/if \(!isCountryCode\(next\)\) return;\s*setOpen\(false\);/);
   });
 });
 

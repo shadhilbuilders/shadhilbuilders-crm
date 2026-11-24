@@ -142,6 +142,11 @@ export function IntlPhoneInput({
   'data-qa': dataQa,
 }: IntlPhoneInputProps) {
   const [country, setCountry] = React.useState<CountryCode>(defaultCountry);
+  // The list is CONTROLLED (2026-11-24). It used to be uncontrolled, so picking a
+  // country left the sheet open on top of the field the operator had just
+  // changed - and on a phone, where the popover is modal, that meant dismissing
+  // it by hand before typing. Choosing an option now closes it.
+  const [open, setOpen] = React.useState(false);
 
   // The stored value is the source of truth. When it changes from outside
   // (prefill, a server refresh) the trigger follows the number, so the field
@@ -164,6 +169,7 @@ export function IntlPhoneInput({
   const handleCountry = React.useCallback(
     (next: string) => {
       if (!isCountryCode(next)) return;
+      setOpen(false);
       setCountry(next);
       if (!value) {
         onChange('', next);
@@ -227,7 +233,9 @@ export function IntlPhoneInput({
     id,
     name,
     onBlur,
+    open,
     placeholder,
+    setOpen,
   });
   live.current = {
     ariaDescribedBy,
@@ -243,7 +251,9 @@ export function IntlPhoneInput({
     id,
     name,
     onBlur,
+    open,
     placeholder,
+    setOpen,
   };
 
   const shell = React.useCallback(
@@ -295,6 +305,8 @@ export function IntlPhoneInput({
               // interaction, and a non-modal layer lets a stray tap on the page
               // behind it close the list while the keyboard is open.
               modal
+              open={s.open}
+              onOpenChange={s.setOpen}
               trigger={
                 <InputGroupButton
                   type="button"
@@ -321,9 +333,11 @@ export function IntlPhoneInput({
                   // zooms back out - the country list would be magnified and
                   // half off-screen on both iPhones.
                   commandInputClassName="h-10 text-base"
-                  // 44px rows: a flag list is tapped with a thumb, and the
-                  // default row height misses as often as it hits.
-                  commandItemClassName="min-h-11 py-2"
+                  // 36px rows, not 44px (2026-11-24). The list runs to 245
+                  // countries, and the taller row pushed most of it below the
+                  // fold on a phone. The row is full width, so the target stays
+                  // wide even at this height.
+                  commandItemClassName="min-h-9 py-2"
                 />
               }
             />
