@@ -13,13 +13,15 @@
 //     state machine → rejected (server-wins per offline-store LWW).
 //   - COMPLETED still drives the parent lead to VISITED exactly once.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { LEAD_STATES } from '../leads/leads.state-machine';
 import { LeadsService } from '../leads/leads.service';
+
+import { OutboundService, VISIT_CHECKIN_TEMPLATE } from '../whatsapp/outbound.service';
 
 import { VisitsService } from './visits.service';
 
@@ -1221,5 +1223,121 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
     expect(audits).toHaveLength(1);
     expect(audits[0]?.reason).toContain('Superseded');
     expect(audits[0]?.reason).toContain(leadId);
+  });
+});
+
+// The completed-visit check-in (2026-11-24). A visit the exec marks COMPLETED is
+// the one moment the buyer is guaranteed to be thinking about the site, so the
+// UTILITY check-in goes out then, once, through the outbox.
+describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - the completed-visit check-in', () => {
+  let service: VisitsService;
+  let prismaService: PrismaService;
+  let enqueue: ReturnType<typeof vi.fn>;
+
+  beforeAll(async () => {
+    if (prisma === null) return;
+    prismaService = { $client: prisma as unknown as PrismaClient } as PrismaService;
+    enqueue = vi.fn(async () => ({ id: 'outbound-stub' }));
+    service = new VisitsService(prismaService, new LeadsService(prismaService), undefined, {
+      enqueue,
+    } as unknown as OutboundService);
+
+    // The same fixture people the other describes create: a lead cannot be
+    // seeded without its owner, and the visit needs its exec.
+    await adminSeed(async (db) => {
+      await db.project.upsert({
+        where: { id: TEST_PROJECT_ID },
+        update: {},
+        create: {
+          id: TEST_PROJECT_ID,
+          name: `Test Project ${TEST_PROJECT_ID}`,
+          slug: TEST_PROJECT_ID,
+          address: 'test',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      });
+      await db.team.upsert({
+        where: { id: TEAM_ID },
+        update: {},
+        create: {
+          id: TEAM_ID,
+          name: `VOC Check-in Team ${RUN}`,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      });
+      for (const [id, name, role] of [
+        [ADMIN_ID, 'VOC Test Admin', 'ADMIN'],
+        [SE_ID, 'VOC Test SE', 'SALES_EXEC'],
+        [SE2_ID, 'VOC Test SE Two', 'SALES_EXEC'],
+        [TC_ID, 'VOC Test Telecaller', 'TELECALLER'],
+      ] as const) {
+        await db.user.upsert({
+          where: { id },
+          update: { role },
+          create: {
+            id,
+            email: `${id}@example.com`,
+            name,
+            role,
+            mustChangePassword: false,
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          },
+        });
+      }
+    });
+  }, 30_000);
+
+  afterAll(async () => {
+    await cleanupAll();
+  }, 30_000);
+
+  beforeEach(() => {
+    enqueue.mockClear();
+  });
+
+  it('queues one check-in on the transaction that recorded the outcome', async () => {
+    const { leadId, visitId } = await seedLeadWithVisit();
+    await service.updateOutcome(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
+      visitId,
+      outcome: 'COMPLETED',
+      notes: 'plinth inspected',
+    });
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const [payload, tx] = enqueue.mock.calls[0] as [Record<string, unknown>, unknown];
+    expect(payload).toMatchObject({
+      sendType: 'TEMPLATE',
+      templateName: VISIT_CHECKIN_TEMPLATE,
+      leadId,
+      // "VOC Lead 1" is an initials-style name, so the greeting falls back to the
+      // neutral one rather than shouting an acronym at a buyer.
+      templateVars: { '1': 'there', '2': `Test Project ${TEST_PROJECT_ID}` },
+    });
+    // The RLS transaction, not the bare client (42501 otherwise).
+    expect(tx).toBeDefined();
+
+    const thread = await adminSeed((db) =>
+      db.message.findMany({ where: { leadId }, select: { direction: true, body: true } }),
+    );
+    expect(thread).toHaveLength(1);
+    expect(thread[0]?.direction).toBe('OUT');
+    expect(thread[0]?.body).toContain(VISIT_CHECKIN_TEMPLATE);
+  });
+
+  it('sends nothing on a replay of the same outcome', async () => {
+    const { visitId } = await seedLeadWithVisit();
+    const actor = actorFor(ADMIN_ID, 'ADMIN');
+    await service.updateOutcome(actor, visitId, { visitId, outcome: 'COMPLETED' });
+    await service.updateOutcome(actor, visitId, { visitId, outcome: 'COMPLETED' });
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing for NO_SHOW, which is not a visit to ask about', async () => {
+    const { visitId } = await seedLeadWithVisit();
+    await service.updateOutcome(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
+      visitId,
+      outcome: 'NO_SHOW',
+    });
+    expect(enqueue).not.toHaveBeenCalled();
   });
 });

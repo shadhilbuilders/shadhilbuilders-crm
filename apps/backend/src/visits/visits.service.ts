@@ -21,6 +21,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
@@ -28,6 +29,7 @@ import {
   withRlsContext,
   rlsContextFrom,
   type PrismaClient,
+  type RlsTx,
   type VisitStatus,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
@@ -54,6 +56,8 @@ import { LeadsService } from '../leads/leads.service';
 import { resolveVisitStakeholders } from './visit-recipients';
 import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
+import { greetingName, NEUTRAL_GREETING } from '../customer-progress/site-update-greeting';
+import { OutboundService, VISIT_CHECKIN_TEMPLATE } from '../whatsapp/outbound.service';
 import { TeamAccessService } from '../teams/team-access.service';
 
 import { canTransition } from './visits.state-machine';
@@ -136,7 +140,15 @@ export class VisitsService {
     @Optional()
     @Inject(NotificationsService)
     private readonly notifications?: NotificationsService,
+    // @Optional() for the same reason: every existing test factory builds this
+    // service with two or three arguments. Production resolves it through
+    // @Global() WhatsappModule.
+    @Optional()
+    @Inject(OutboundService)
+    private readonly outbound?: OutboundService,
   ) {}
+
+  private readonly logger = new Logger(VisitsService.name);
 
   // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed.
   private readonly teamAccess = new TeamAccessService();
@@ -638,6 +650,11 @@ export class VisitsService {
               name: true,
               state: true,
               projectId: true,
+              // Read here for the completed-visit check-in: without a number
+              // there is nothing to send to, and that is decided before any
+              // Message row is written.
+              phoneE164: true,
+              phone: true,
               owner: { select: { id: true, name: true } },
             },
           },
@@ -964,6 +981,26 @@ export class VisitsService {
         ownerId: existing.lead.owner.id,
       });
 
+      // A visit that just completed has earned one message to the buyer: how did
+      // it go, and would a call help. Sent through the outbox on THIS transaction,
+      // so a refused insert is a real error rather than a row that says PENDING
+      // forever (the 42501 lesson from the site-update path).
+      //
+      // Exactly once, and the guard is the transition itself: the state machine
+      // refuses a second COMPLETED, and the replay branch above returns before
+      // reaching here.
+      // Only a SCHEDULED visit reaches here (the conflict rule above rejects
+      // everything else), so the completion itself is the transition.
+      if (updated.status === 'COMPLETED') {
+        await this.enqueueVisitCheckin(tx, actor, {
+          leadId: updated.leadId,
+          organizationId: existing.organizationId,
+          leadName: updated.lead.name,
+          projectId: existing.lead.projectId,
+          phone: existing.lead.phoneE164 ?? existing.lead.phone,
+        });
+      }
+
       return {
         id: updated.id,
         leadId: updated.leadId,
@@ -980,6 +1017,77 @@ export class VisitsService {
         ...(leadSyncNote !== undefined ? { leadSyncNote } : {}),
       };
     });
+  }
+
+  /**
+   * The completed-visit check-in, queued on the caller's transaction.
+   *
+   * Silent by design when it cannot send: no number means nothing to dial, and a
+   * missing outbound dependency means a test factory, not production.
+   */
+  private async enqueueVisitCheckin(
+    tx: RlsTx,
+    actor: JwtPayload,
+    input: {
+      leadId: string;
+      organizationId: string;
+      leadName: string | null;
+      projectId: string | null;
+      phone: string | null;
+    },
+  ): Promise<void> {
+    if (this.outbound === undefined) return;
+    if (input.phone === null || input.phone.length === 0) {
+      this.logger.warn(
+        `[visits] visit completed for lead ${input.leadId} with no WhatsApp number - check-in not sent`,
+      );
+      return;
+    }
+
+    // {{2}} is the site the visit was for. A lead always has a project, but the
+    // column is nullable in the schema and a null must not become "undefined".
+    const project =
+      input.projectId === null
+        ? null
+        : await tx.project.findUnique({
+            where: { id: input.projectId },
+            select: { name: true },
+          });
+    const site = project?.name ?? null;
+
+    const created = await tx.message.create({
+      data: {
+        leadId: input.leadId,
+        organizationId: input.organizationId,
+        userId: actor.sub,
+        direction: 'OUT',
+        channel: 'WHATSAPP',
+        kind: 'CUSTOMER',
+        body: `Site visit check-in sent (${VISIT_CHECKIN_TEMPLATE}).`,
+      },
+      select: { id: true },
+    });
+
+    await this.outbound.enqueue(
+      {
+        messageId: created.id,
+        organizationId: input.organizationId,
+        leadId: input.leadId,
+        sendType: 'TEMPLATE',
+        templateName: VISIT_CHECKIN_TEMPLATE,
+        // {{1}} the first name, {{2}} the site. The approved template asks how
+        // the visit went and offers a call back; it carries no offer.
+        templateVars: {
+          '1': greetingName(input.leadName ?? ''),
+          '2': site ?? 'your site visit',
+        },
+      },
+      // The RLS transaction, not the bare client: `OutboundMessage` is FORCE RLS
+      // with an insert arm that needs `app.user_id`, which only the caller's
+      // transaction carries. The cast is the same one the site-update path uses;
+      // `enqueue` never touches a lifecycle method the transaction lacks.
+      tx as unknown as Parameters<OutboundService['enqueue']>[1],
+    );
   }
 
   /**

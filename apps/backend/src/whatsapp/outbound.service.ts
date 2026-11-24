@@ -39,6 +39,16 @@ const BACKOFF_MS = [
   4 * 60 * 60_000, // attempt 4: 4 hours (last attempt before FAILED)
 ];
 
+/**
+ * The template a completed site visit is followed up with.
+ *
+ * Named here rather than at the call site so the fallback lives in one place
+ * with the other template names: `WA_TEMPLATE_VISIT_FOLLOWUP` is the same
+ * variable that used to hold the MARKETING `shadhil_site_visit_followup`.
+ */
+export const VISIT_CHECKIN_TEMPLATE =
+  process.env['WA_TEMPLATE_VISIT_FOLLOWUP'] || 'shadhil_site_visit_checkin';
+
 @Injectable()
 export class OutboundService {
   private readonly logger = new Logger(OutboundService.name);
@@ -73,7 +83,7 @@ export class OutboundService {
     // path without a word in the log. See RETIRED_TEMPLATE_NAMES below for the
     // rows that still carry the old names.
     chatReply: process.env.WA_TEMPLATE_CHAT_REPLY || 'shadhil_enquiry_reply',
-    visitFollowup: process.env.WA_TEMPLATE_VISIT_FOLLOWUP || 'shadhil_site_visit_checkin',
+    visitFollowup: VISIT_CHECKIN_TEMPLATE,
     visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER || 'shadhil_visit_reminder',
   };
 
