@@ -81,4 +81,36 @@ describe('IntlPhoneInput input handling', () => {
   });
 });
 
+describe('IntlPhoneInput country picker', () => {
+  it('shows the country flag and the dial code on the trigger', () => {
+    // Two things sit on the trigger: the flag (so the list and the button read
+    // as the same country at a glance) and the dial code (the only part that
+    // says what will be STORED). Neither replaces the other.
+    const html = render('', 'US');
+    const trigger =
+      /<button[^>]*data-qa="phone-country"[^>]*>[\s\S]*?<\/button>/.exec(html)?.[0] ?? '';
+    expect(trigger, 'the country trigger is not rendered').not.toBe('');
+    expect(trigger, 'the trigger carries no flag').toContain('<svg');
+    expect(trigger, 'the trigger does not show the dial code').toContain('+1');
+  });
+
+  it('draws an SVG flag per row, never an emoji pair', () => {
+    // Windows has no flag emoji and Android renders some as two letters, so a
+    // country list built from emoji looks different on every machine. The icons
+    // come from `react-phone-number-input/flags`, which is a real direct
+    // dependency - pnpm's strict layout will not resolve a transitive one.
+    expect(source).toContain("import flags from 'react-phone-number-input/flags';");
+    expect(source).toContain('const Flag = flags[code];');
+    expect(source).toMatch(/labelContent: \(/);
+  });
+
+  it('keeps the list usable on a phone: 16px search, 44px rows', () => {
+    // iOS Safari zooms the page in on a focused field under 16px and never zooms
+    // back, which would leave the list magnified and half off-screen; 44px is
+    // the tap target. Both are props of the shared picker, not CSS we own.
+    expect(source).toContain('commandInputClassName="h-10 text-base"');
+    expect(source).toContain('commandItemClassName="min-h-11 py-2"');
+  });
+});
+
 vi.clearAllMocks();

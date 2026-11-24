@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import metadata from 'libphonenumber-js/min/metadata';
+import flags from 'react-phone-number-input/flags';
 import PhoneInput from 'react-phone-number-input/input-core';
 
 import { InputGroup, InputGroupButton, Popover, PopoverModalContent } from '@paalstack/react-ui';
@@ -53,10 +54,47 @@ export interface IntlPhoneInputProps {
   className?: string;
 }
 
+/**
+ * The flag for a country, from `react-phone-number-input/flags` (which wraps
+ * `country-flag-icons`). SVG rather than the emoji pair, because Windows has no
+ * flag emoji at all and Android renders some as bare letter pairs - a country
+ * picker that shows a different thing per platform is worse than one that shows
+ * a flag everywhere.
+ *
+ * The wrapper fixes the box so the list rows keep a straight left edge: the
+ * sources are 3x2 with varying intrinsic sizes.
+ */
+function CountryFlag({ code, name }: { code: CountryCode; name: string }) {
+  const Flag = flags[code];
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex h-3.5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[2px] outline outline-1 outline-black/10 dark:outline-white/15 [&_svg:not([class*='size-'])]:size-full"
+    >
+      {Flag ? <Flag title={name} /> : null}
+    </span>
+  );
+}
+
+/**
+ * One row per country. `label` stays the plain text the search filters on
+ * ("India +91"), `metadata` gives the search a second place to look, and
+ * `labelContent` is what the row actually draws - flag, name, dial code.
+ */
 const COUNTRIES = listCountries().map((country) => ({
   label: `${country.name} ${country.dialCode}`,
   value: country.code,
   dialCode: country.dialCode,
+  metadata: { name: country.name, dialCode: country.dialCode },
+  labelContent: (
+    <span className="flex min-w-0 items-center gap-2">
+      <CountryFlag code={country.code} name={country.name} />
+      <span className="truncate">{country.name}</span>
+      <span className="text-muted-foreground ml-auto shrink-0 tabular-nums">
+        {country.dialCode}
+      </span>
+    </span>
+  ),
 }));
 
 const callingCodeOf = (code: CountryCode): string =>
@@ -170,10 +208,7 @@ export function IntlPhoneInput({
     [onChange],
   );
 
-  const dialCode =
-    COUNTRIES.find((option) => option.value === country)
-      ?.label.split(' ')
-      .pop() ?? '';
+  const dialCode = callingCodeOf(country);
 
   // The library renders this component AS the input. A change of its identity
   // therefore unmounts and remounts the field - dropping focus and the caret on
@@ -256,14 +291,20 @@ export function IntlPhoneInput({
           className={cn(s.disabled && 'opacity-60', s.className)}
           addonStart={
             <Popover
+              // `modal` on purpose: on a phone the popover is the whole
+              // interaction, and a non-modal layer lets a stray tap on the page
+              // behind it close the list while the keyboard is open.
+              modal
               trigger={
                 <InputGroupButton
                   type="button"
                   disabled={s.disabled}
                   aria-label={`Country calling code: ${countryName(s.country)} (${s.dialCode})`}
                   data-qa={s.dataQa ? `${s.dataQa}-country` : 'intl-phone-country'}
+                  className="gap-1.5 px-2"
                 >
-                  {s.dialCode}
+                  <CountryFlag code={s.country} name={countryName(s.country)} />
+                  <span className="tabular-nums">{s.dialCode}</span>
                 </InputGroupButton>
               }
               contentClassName="w-[min(20rem,calc(100vw-2rem))] p-0"
@@ -275,6 +316,14 @@ export function IntlPhoneInput({
                   filterBy="all"
                   searchPlaceholder="Search country or code"
                   emptyOptionMessage="No country matches that"
+                  // 16px, not the component's 14px: iOS Safari zooms the whole
+                  // page in when a focused field is under 16px, and it never
+                  // zooms back out - the country list would be magnified and
+                  // half off-screen on both iPhones.
+                  commandInputClassName="h-10 text-base"
+                  // 44px rows: a flag list is tapped with a thumb, and the
+                  // default row height misses as often as it hits.
+                  commandItemClassName="min-h-11 py-2"
                 />
               }
             />
