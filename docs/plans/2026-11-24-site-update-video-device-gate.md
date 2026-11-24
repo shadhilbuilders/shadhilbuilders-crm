@@ -324,7 +324,15 @@ The three commits are `08a6068` (the transaction), `600cb11` (the header column)
 (the receipt reason). All are deployed; the api image reads `prod-0dfa938` and both templates are
 configured there, `shadhil_site_update_image` and `shadhil_site_update_video`.
 
-Three things remain open, and none of them is code:
+The five test photos on A-665 are gone. They were deleted at 11:17 on 2026-11-24 through
+`DELETE /api/bff/customer-progress/photos/:photoId` as admin1, each returned 200, each left an
+`AuditLog` row naming the key it removed, and ImageKit no longer answers for any of the five
+filenames while still answering for the clip and poster that row 5 needs. One outbox row was left
+retrying against bytes that no longer existed and is closed as FAILED with
+`media deleted with the fixture; nothing left to retry`. The unit now holds one object, the
+fixture clip.
+
+Two things remain open, and neither is code:
 
 - The templates are approved as MARKETING. A villa progress message is transactional, and MARKETING
   spends a per-recipient allowance rather than arriving on the strength of the contract.
@@ -332,8 +340,6 @@ Three things remain open, and none of them is code:
   and the consent ledger would become a courtesy instead of the delivery precondition.
 - A buyer with no number on the lead cannot be reached at all. That delivery reads
   `SKIPPED_NO_PHONE` and it is the honest outcome, not a bug.
-- The photos now sitting on A-665 were generated with ffmpeg. They should be deleted through the
-  DELETE routes before this gate is signed off, so nobody later mistakes them for site evidence.
 
 ## If a row fails
 
