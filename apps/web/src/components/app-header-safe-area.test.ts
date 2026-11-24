@@ -17,11 +17,14 @@
 //   2. the reserved inset must ALSO appear in the box height. box-sizing is
 //      border-box, so the inset is otherwise taken OUT of the content band.
 //   3. the extra `min(2rem, env(safe-area-inset-top))` term is the breathing room
-//      requested from a real device, the same amount on every top bar.
-//      min() clamps it to 0 where there is no
-//      inset, which is what keeps desktop, Android and Safari tabs unchanged.
-//      Both halves of that are asserted below, because dropping either the clamp
-//      or the term is a silent visual regression on one side or the other.
+//      requested from a real device, the same amount on every top bar EXCEPT the
+//      site capture header, which is 1.5rem by decision (2026-11-24): on an
+//      installed iPhone the inset alone is 47px, and 2rem on top of it pushed
+//      that row's title and two stacked badges further down than the screen can
+//      spare. min() clamps it to 0 where there is no inset, which is what keeps
+//      desktop, Android and Safari tabs unchanged. Both halves of that are
+//      asserted below, because dropping either the clamp or the term is a silent
+//      visual regression on one side or the other.
 //   4. the root layout opts in: without `viewportFit: 'cover'` and a
 //      black-translucent status bar, `env(safe-area-inset-top)` is always 0 and
 //      everything above is dead code on every device.
@@ -57,22 +60,29 @@ describe('iOS top-bar safe area', () => {
     expect(guestBar).toContain('h-[calc(4.75rem+min(2rem,env(safe-area-inset-top)))]');
   });
 
-  it('every other top bar in the app breathes by the same 2rem', () => {
-    // One number, four bars: dropping it back to 1.5rem on any of them makes
-    // that screen sit 8px tighter against the status bar than the rest.
-    for (const [name, path] of [
-      ['PortalHeader', 'src/components/portal/portal-header.tsx'],
-      ['SiteCaptureView', 'src/components/site/SiteCaptureView.tsx'],
-    ] as const) {
-      const src = read(path);
-      expect(src, `${name} does not reserve the inset`).toContain('env(safe-area-inset-top)');
-      expect(src, `${name} does not carry the shared 2rem of air`).toContain(
-        'min(2rem,env(safe-area-inset-top))',
-      );
-      expect(src, `${name} still carries the old 1.5rem`).not.toContain(
-        'min(1.5rem,env(safe-area-inset-top))',
-      );
-    }
+  it('the portal masthead breathes by the shared 2rem, and the capture header by 1.5rem', () => {
+    // One number for every bar but one. 2026-11-24: the site capture row was
+    // moved to 1.5rem on purpose - see the comment in SiteCaptureView. That
+    // screen carries a title, a subtitle and two stacked badges, and on an
+    // installed iPhone the inset is already 47px, so the extra 32px read as too
+    // much air above a row that has none to spare. Asserted in both directions
+    // so neither number can drift back unnoticed.
+    const portal = read('src/components/portal/portal-header.tsx');
+    expect(portal, 'PortalHeader does not reserve the inset').toContain('env(safe-area-inset-top)');
+    expect(portal, 'PortalHeader does not carry the shared 2rem of air').toContain(
+      'min(2rem,env(safe-area-inset-top))',
+    );
+
+    const capture = read('src/components/site/SiteCaptureView.tsx');
+    expect(capture, 'SiteCaptureView does not reserve the inset').toContain(
+      'env(safe-area-inset-top)',
+    );
+    expect(capture, 'SiteCaptureView lost its 1.5rem of air').toContain(
+      'min(1.5rem,env(safe-area-inset-top))',
+    );
+    expect(capture, 'SiteCaptureView drifted back to 2rem').not.toContain(
+      'min(2rem,env(safe-area-inset-top))',
+    );
   });
 
   it('the inset is in the HEIGHT of both bars, not only in their padding', () => {
