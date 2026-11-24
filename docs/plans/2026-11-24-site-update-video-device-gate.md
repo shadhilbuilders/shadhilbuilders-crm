@@ -337,7 +337,8 @@ Two things remain open, and neither is code:
 - The templates are approved as MARKETING. A villa progress message is transactional, and MARKETING
   spends a per-recipient allowance rather than arriving on the strength of the contract.
   Resubmitting as UTILITY would remove both the frequency cap and the dependency on an opt-in row,
-  and the consent ledger would become a courtesy instead of the delivery precondition.
+  and the consent ledger would become a courtesy instead of the delivery precondition. The payloads
+  are drafted in `2026-11-24-site-update-templates-utility.md`, not submitted.
 - A buyer with no number on the lead cannot be reached at all. That delivery reads
   `SKIPPED_NO_PHONE` and it is the honest outcome, not a bug.
 
