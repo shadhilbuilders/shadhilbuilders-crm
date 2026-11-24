@@ -11,6 +11,7 @@ import {
   bodyVars,
   buttonValue,
   hasUrlButton,
+  resolveTemplateName,
   SITE_UPDATE_TEMPLATE_IMAGE,
   SITE_UPDATE_TEMPLATE_VIDEO,
 } from './outbound.service';
@@ -20,8 +21,8 @@ describe('site-update URL button', () => {
     expect(hasUrlButton(SITE_UPDATE_TEMPLATE_VIDEO)).toBe(true);
     expect(hasUrlButton(SITE_UPDATE_TEMPLATE_IMAGE)).toBe(true);
     for (const other of [
-      'shadhil_chat_reply',
-      'shadhil_site_visit_followup',
+      'shadhil_enquiry_reply',
+      'shadhil_site_visit_checkin',
       'shadhil_visit_reminder',
       'shadhil_welcome_enquiry',
     ]) {
@@ -39,7 +40,7 @@ describe('site-update URL button', () => {
   });
 
   it('is empty for every template that has no button', () => {
-    expect(buttonValue('shadhil_chat_reply', { '1': 'x', photo: 'row-9' })).toBe('');
+    expect(buttonValue('shadhil_enquiry_reply', { '1': 'x', photo: 'row-9' })).toBe('');
   });
 });
 
@@ -56,5 +57,45 @@ describe('bodyVars', () => {
 
   it('leaves older body-only templates untouched', () => {
     expect(bodyVars({ '1': 'Lead', '2': 'Tomorrow' })).toEqual({ '1': 'Lead', '2': 'Tomorrow' });
+  });
+});
+
+// A row queued before the UTILITY swap still carries a retired name. Passing it
+// verbatim would send the MARKETING template the swap replaced, which is the one
+// thing this mapping exists to prevent.
+describe('resolveTemplateName', () => {
+  const names = {
+    chatReply: 'shadhil_enquiry_reply',
+    visitFollowup: 'shadhil_site_visit_checkin',
+    visitReminder: 'shadhil_visit_reminder',
+  };
+
+  it('sends a retired chat reply row through the template that replaced it', () => {
+    expect(resolveTemplateName('shadhil_chat_reply', names)).toBe('shadhil_enquiry_reply');
+    expect(resolveTemplateName('shadhil_site_visit_followup', names)).toBe(
+      'shadhil_site_visit_checkin',
+    );
+  });
+
+  it('does the same for a retired site update row, image and clip', () => {
+    expect(resolveTemplateName('shadhil_site_update_image', names)).toBe(
+      SITE_UPDATE_TEMPLATE_IMAGE,
+    );
+    expect(resolveTemplateName('shadhil_site_update_video', names)).toBe(
+      SITE_UPDATE_TEMPLATE_VIDEO,
+    );
+  });
+
+  it('leaves a current name alone', () => {
+    expect(resolveTemplateName('shadhil_enquiry_reply', names)).toBe('shadhil_enquiry_reply');
+    expect(resolveTemplateName(SITE_UPDATE_TEMPLATE_IMAGE, names)).toBe(SITE_UPDATE_TEMPLATE_IMAGE);
+  });
+
+  it('passes an unknown name through so Meta names it in the 400', () => {
+    expect(resolveTemplateName('some_other_template', names)).toBe('some_other_template');
+  });
+
+  it('falls back to the chat reply slot when the row names nothing', () => {
+    expect(resolveTemplateName(null, names)).toBe('shadhil_enquiry_reply');
   });
 });

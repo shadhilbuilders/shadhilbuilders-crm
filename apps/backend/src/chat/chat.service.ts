@@ -555,9 +555,10 @@ export class ChatService {
         // in the panel), but the customer should still receive the reply on
         // WhatsApp within the 24h window. This is FREEFORM text, not a
         // template: a true reply inside the customer-service window needs no
-        // approved template, and `shadhil_chat_reply` is MARKETING anyway
-        // (Meta's category call, 2026-11-11) so it would cost more and be
-        // dropped from a test sender.
+        // approved template. The template it would fall back to was MARKETING
+        // when this was written (Meta's category call, 2026-11-11); its UTILITY
+        // replacement, `shadhil_enquiry_reply`, arrived on 2026-11-24, but a
+        // reply inside the window still needs no template and costs nothing.
         // INTERNAL is hard-excluded above (staff-only note, never leaks to
         // the phone). Enqueueing is inside withRlsContext so the
         // OutboundMessage INSERT has app.user_id (outbound_insert_authenticated)

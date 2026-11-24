@@ -66,8 +66,14 @@ export class OutboundService {
     // `${X:-}` or a blank line in .env) is "present" to `??`, so the
     // fallback would never fire and Meta would get templateName '' —
     // a 132001 that names nothing useful.
-    chatReply: process.env.WA_TEMPLATE_CHAT_REPLY || 'shadhil_chat_reply',
-    visitFollowup: process.env.WA_TEMPLATE_VISIT_FOLLOWUP || 'shadhil_site_visit_followup',
+    // The fallbacks name the UTILITY templates (2026-11-24). The previous
+    // defaults, `shadhil_chat_reply` and `shadhil_site_visit_followup`, are
+    // approved as MARKETING and cannot be recategorised (Meta answers 3835031),
+    // so a missing env var used to put a marketing template back on the send
+    // path without a word in the log. See RETIRED_TEMPLATE_NAMES below for the
+    // rows that still carry the old names.
+    chatReply: process.env.WA_TEMPLATE_CHAT_REPLY || 'shadhil_enquiry_reply',
+    visitFollowup: process.env.WA_TEMPLATE_VISIT_FOLLOWUP || 'shadhil_site_visit_checkin',
     visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER || 'shadhil_visit_reminder',
   };
 
@@ -510,21 +516,9 @@ export class OutboundService {
     return lead.phoneE164;
   }
 
-  /** Map a row's `templateName` (or, if missing, infer from
-   *  `sendType`) to the actual Meta template name. */
+  /** Map a row's `templateName` to the template that will actually be sent. */
   private resolveTemplateName(row: OutboundMessage): string {
-    // The chat service sets the env-var-resolved template name
-    // already (via the OutboundService templateNames arg). The
-    // raw value in `row.templateName` is one of the 3 we know about.
-    if (row.templateName === this.templateNames.chatReply) return this.templateNames.chatReply;
-    if (row.templateName === this.templateNames.visitFollowup)
-      return this.templateNames.visitFollowup;
-    if (row.templateName === this.templateNames.visitReminder)
-      return this.templateNames.visitReminder;
-    // Fallback: if the row was enqueued with a template name we
-    // don't recognize, pass it through verbatim (Meta will reject
-    // the unknown name with a 400).
-    return row.templateName ?? this.templateNames.chatReply;
+    return resolveTemplateName(row.templateName, this.templateNames);
   }
 
   /**
@@ -581,7 +575,50 @@ export class OutboundService {
 export const SITE_UPDATE_TEMPLATE_VIDEO =
   process.env['WA_TEMPLATE_SITE_UPDATE_VIDEO'] || 'shadhil_site_update_video';
 export const SITE_UPDATE_TEMPLATE_IMAGE =
-  process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'] || 'shadhil_site_update_image';
+  process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'] || 'shadhil_villa_update_image';
+
+/**
+ * The four names the swap retired, mapped to the slot they now resolve to.
+ *
+ * A row queued before 2026-11-24 still carries one of these. Meta will not
+ * recategorise an approved template (3835031), so the old pair is still live as
+ * MARKETING and a verbatim pass-through would quietly keep sending it. Rows
+ * follow their slot instead.
+ */
+const RETIRED_TEMPLATE_NAMES: Record<
+  string,
+  'chatReply' | 'visitFollowup' | 'siteImage' | 'siteVideo'
+> = {
+  shadhil_chat_reply: 'chatReply',
+  shadhil_site_visit_followup: 'visitFollowup',
+  shadhil_site_update_image: 'siteImage',
+  shadhil_site_update_video: 'siteVideo',
+};
+
+/** The three slots a row may name other than the site-update pair. */
+export interface TemplateNames {
+  chatReply: string;
+  visitFollowup: string;
+  visitReminder: string;
+}
+
+/**
+ * A row's stored `templateName` (or, when it is null, the chat reply slot).
+ *
+ * Named names win, retired names follow their slot, and anything else passes
+ * through so Meta names the unknown template in its 400 rather than the send
+ * silently becoming something else.
+ */
+export function resolveTemplateName(rowName: string | null, names: TemplateNames): string {
+  if (rowName === names.chatReply) return names.chatReply;
+  if (rowName === names.visitFollowup) return names.visitFollowup;
+  if (rowName === names.visitReminder) return names.visitReminder;
+  const retired = rowName === null ? undefined : RETIRED_TEMPLATE_NAMES[rowName];
+  if (retired === 'siteImage') return SITE_UPDATE_TEMPLATE_IMAGE;
+  if (retired === 'siteVideo') return SITE_UPDATE_TEMPLATE_VIDEO;
+  if (retired !== undefined) return names[retired];
+  return rowName ?? names.chatReply;
+}
 
 /**
  * Which of our templates carry a URL button, and what its variable is.

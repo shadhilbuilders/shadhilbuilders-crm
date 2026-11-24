@@ -27,48 +27,41 @@
 // The cron (outbound.cron.ts) calls sendTemplateMessage for every
 // PENDING OutboundMessage. Meta requires each template to be
 // submitted and approved before any business can send it. The
-// three templates below cover T-E2b's outbound paths:
+// templates below cover T-E2b's outbound paths:
 //
-// 1. shadhil_chat_reply  (MARKETING, en)  ← env: WA_TEMPLATE_CHAT_REPLY
-//    Category:  Marketing, and that was META'S call, not ours: WhatsApp
-//                Manager recommended the move off Utility for this copy and
-//                the operator accepted it (2026-11-11). Do not "correct" it
-//                back without reading the consequence below.
+// 1. shadhil_enquiry_reply  (UTILITY, en)  ← env: WA_TEMPLATE_CHAT_REPLY
+//    Replaced `shadhil_chat_reply` on 2026-11-24, which is still live as
+//    MARKETING because Meta refuses to recategorise an approved template
+//    (3835031). Rows still carrying the old name resolve through
+//    RETIRED_TEMPLATE_NAMES in outbound.service.ts.
 //    Header:    none
-//    Body:      "Hi {{1}}, {{2}}. Reply here if you have any questions."
+//    Body:      "Hello {{1}}, this is a reply from Shadhil Builders about your
+//                enquiry. {{2}} Reply here if you have any questions."
 //    Buttons:   none
-//    Sample:
-//                Hi Aarav, thanks for the enquiry about the 3BHK
-//                in Shadhil Meadows - let me know if you have any
-//                questions.
+//    Sample:    Hello Aarav, this is a reply from Shadhil Builders about your
+//               enquiry. The 2BHK at Green Court is free from March. Reply here
+//               if you have any questions.
 //    Variables: {{1}} = lead first name (max 60 chars)
-//                {{2}} = message body (max 1024 chars; chat service
-//                         truncates to 1000)
-//    When sent: chat service → outbound.send() with
-//               templateName: 'shadhil_chat_reply', sendType: TEMPLATE
+//               {{2}} = the reply text (max 1024 chars; the chat service
+//                        truncates to 1000)
+//    When sent: only OUTSIDE the 24h window. Inside it the chat service sends a
+//               FREEFORM reply, which needs no template at all.
 //
-// 2. shadhil_site_visit_followup  (MARKETING, en)  ← env: WA_TEMPLATE_VISIT_FOLLOWUP
-//    Category:  Marketing, on Meta's recommendation (2026-11-11). A
-//                MARKETING template is ACCEPTED by the API and then SILENTLY
-//                DROPPED when the sender is still a Meta test number - see
-//                the state file's Sep 1 incident. It starts delivering once a
-//                real, business-verified sender is registered.
-//    Header:    none
-//    Body:      "Hi {{1}}, just following up on your site visit for {{2}}.
-//                Are you still interested? Reply YES to chat."
-//    Buttons:   none
-//    Sample:
-//                Hi Priya, just following up on your site visit for
-//                Shadhil Meadows. Are you still interested? Reply YES
-//                to chat.
+// 2. shadhil_site_visit_checkin  (UTILITY, en)  ← env: WA_TEMPLATE_VISIT_FOLLOWUP
+//    Replaced `shadhil_site_visit_followup` on the same day, same reason. The
+//    old copy asked "are you still interested", which is a sales nudge under
+//    any label; this one asks how the visit went and offers a call back.
+//    Header:    TEXT, "Site Visit Follow Up"
+//    Body:      "Hello {{1}}, this is a follow up to your site visit for
+//                {{2}}. Reply here with how the visit went, or reply CALL and
+//                the site team will ring you back."
 //    Variables: {{1}} = lead first name (max 60 chars)
-//                {{2}} = project name (max 60 chars)
-//    When sent: visit → site-visit service → outbound.send() with
-//               templateName: 'shadhil_site_visit_followup', sendType: TEMPLATE
-//               (scheduled 24-48h after the site visit)
+//               {{2}} = project name (max 60 chars)
+//    When sent: nothing yet. The outbox whitelists the name; no caller enqueues
+//               it, so approving it added no behaviour.
 //
 // 3. shadhil_visit_reminder  (UTILITY, en)  ← env: WA_TEMPLATE_VISIT_REMINDER
-//    Category:  Utility (proactive reminder for upcoming visit)
+//    Category:  Utility (proactive reminder for an upcoming visit)
 //    Header:    none
 //    Body:      "Your site visit for {{1}} is on {{2}}. Reply YES
 //                to confirm or RESCHEDULE."
@@ -84,29 +77,29 @@
 //               templateName: 'shadhil_visit_reminder', sendType: TEMPLATE
 //               (scheduled 1-2h before the visit)
 //
-// 4. shadhil_site_update_video  (MARKETING, en)  ← env: WA_TEMPLATE_SITE_UPDATE_VIDEO
-// 5. shadhil_site_update_image  (MARKETING, en)  ← env: WA_TEMPLATE_SITE_UPDATE_IMAGE
-//    Category:  MARKETING - approved as marketing 2026-11-23, not the UTILITY
-//                it was submitted as. Two consequences:
-//                1. Each delivered message is BILLED. The freeform path (sent
-//                   inside the 24h customer-service window) stays free, so only
-//                   outside-window sends cost anything.
-//                2. Marketing needs the buyer's MARKETING consent (the Consent
-//                   table models it). Sending to a lead without it is what
-//                   damages the number's quality rating - see the consent gate
-//                   in site-update-delivery.service.ts.
-//                The test-number caveat in item 2 applies here too: accepted,
-//                then silently dropped, until a real sender is registered.
+// 4. shadhil_villa_update_video  (UTILITY, en)  ← env: WA_TEMPLATE_SITE_UPDATE_VIDEO
+// 5. shadhil_villa_update_image  (UTILITY, en)  ← env: WA_TEMPLATE_SITE_UPDATE_IMAGE
+//    Replaced `shadhil_site_update_video` and `shadhil_site_update_image` on
+//    2026-11-24. Those two were approved as MARKETING on 2026-11-23 despite a
+//    UTILITY submission, which billed every outside-window send, spent a
+//    per-recipient marketing allowance, and made the buyer's MARKETING consent a
+//    precondition. The replacements were approved as UTILITY the day they were
+//    submitted and delivered their first message at 12:21:58Z that day.
+//    The consent gate in site-update-delivery.service.ts stays: it is the record
+//    of what the buyer agreed to, not a delivery precondition any more.
 //    Header:    VIDEO (4) / IMAGE (5) - the ONLY difference between the two,
 //                because Meta fixes a header type at approval and one name
 //                cannot serve both a clip and its poster.
-//    Body:      "Hello {{1}}, here is your latest site update for villa {{2}}.
-//                {{3}}"
+//    Body:      "Hello {{1}}, a site progress update has been recorded for villa
+//                {{2}}. {{3}} Open the record for this booking to see the stage
+//                and the photos filed with it."
 //    Footer:    Shadhil Builders
 //    Buttons:   one URL button, dynamic: /portal?photo={{1}}
 //    Sample:
-//                Hello Asha, here is your latest site update for villa
-//                A-101 (plot 37). Plinth poured, curing until Friday.
+//                Hello Asha, a site progress update has been recorded for villa
+//                A-101 (plot 37). Plinth poured, curing until Friday. Open the
+//                record for this booking to see the stage and the photos filed
+//                with it.
 //    Variables: {{1}} body = customer first name, or "there" when the stored
 //                         name is unusable (a title, a phone number, initials)
 //                {{2}} body = villa and plot, e.g. "A-101 (plot 37)"
@@ -117,11 +110,11 @@
 //               the 24h window only; inside it the freeform path is used.
 //
 // Env-var name mapping (defaults to the template name itself):
-//   WA_TEMPLATE_CHAT_REPLY            default 'shadhil_chat_reply'
-//   WA_TEMPLATE_VISIT_FOLLOWUP        default 'shadhil_site_visit_followup'
+//   WA_TEMPLATE_CHAT_REPLY            default 'shadhil_enquiry_reply'
+//   WA_TEMPLATE_VISIT_FOLLOWUP        default 'shadhil_site_visit_checkin'
 //   WA_TEMPLATE_VISIT_REMINDER        default 'shadhil_visit_reminder'
-//   WA_TEMPLATE_SITE_UPDATE_VIDEO     default 'shadhil_site_update_video'
-//   WA_TEMPLATE_SITE_UPDATE_IMAGE     default 'shadhil_site_update_image'
+//   WA_TEMPLATE_SITE_UPDATE_VIDEO     default 'shadhil_villa_update_video'
+//   WA_TEMPLATE_SITE_UPDATE_IMAGE     default 'shadhil_villa_update_image'
 //   WA_TEMPLATE_LANGUAGE              default 'en'
 //
 // Test-mode override: Meta allows you to send any approved template
