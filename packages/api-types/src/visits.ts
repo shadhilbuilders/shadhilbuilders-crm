@@ -105,10 +105,21 @@ export const CreateSiteVisitDtoSchema = z.object({
 export type CreateSiteVisitDto = z.infer<typeof CreateSiteVisitDtoSchema>;
 
 /**
- * PATCH /api/visits/:id - update visit outcome after the visit happens.
- * `outcome` is required. The state-machine service flips the parent lead
- * state accordingly (VISITED → NEGOTIATION, NO_SHOW → reverts to TELECALLER,
- * RESCHEDULED → spawns a new SiteVisit row).
+ * PATCH /api/visits/:id - record what happened at the visit.
+ * `outcome` is required. The service mirrors the outcome onto the parent lead
+ * when the caller's role may make that move, and reports it when it may not
+ * (`leadSyncNote`), because the lead machine stays the authority:
+ *
+ *   COMPLETED   -> VISITED             the handoff edge, and only the exec (or a
+ *                                     manager/admin) may drive it. A telecaller
+ *                                     recording COMPLETED saves the visit and
+ *                                     leaves the lead at VISIT_SCHEDULED.
+ *   NO_SHOW     -> NO_SHOW             the telecaller's edge, not the exec's.
+ *   RESCHEDULED -> VISIT_SCHEDULED     not `RESCHEDULED`: that state has no edge to
+ *                                     VISITED, so it would break the handoff.
+ *   CANCELLED   -> no change           a cancelled meeting is not a dead lead.
+ *
+ * Ownership is untouched by all four: the lead stays with whoever owns it.
  */
 export const UpdateVisitOutcomeDtoSchema = z.object({
   visitId: z.string().cuid2(),

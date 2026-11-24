@@ -828,7 +828,13 @@ export class VisitsService {
       //
       // The mapping, and why each is what it is:
       //
-      //   COMPLETED   -> VISITED           the handoff edge; exec becomes owner
+      //   COMPLETED   -> VISITED           the handoff edge; the exec drives it
+      //                                    by recording the outcome. Ownership
+      //                                    does NOT move: `LeadsService.transition`
+      //                                    writes `state` only, so the lead stays
+      //                                    with the telecaller and the exec keeps
+      //                                    reading it through `Lead.coOwnerId`.
+      //                                    Reassigning it is a separate action.
       //   NO_SHOW     -> NO_SHOW           the customer did not turn up
       //   RESCHEDULED -> VISIT_SCHEDULED   NOT `RESCHEDULED` - see below
       //   CANCELLED   -> (no change)       owner ruling, 2026-09-29: "cancelling
