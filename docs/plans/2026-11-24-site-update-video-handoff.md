@@ -147,9 +147,11 @@ consent came after delivery because the capture service imports the gate deliver
 ## Task 4: needs hardware, cannot be done in CI
 
 The checklist is `2026-11-24-site-update-video-device-gate.md`: five rows, the fetch-the-stored-clip
-recipe, the ffprobe commands, and a slot per row for the artefact. The device gate has never been
-run: no real phone, no Safari, no throttled 3G, no WhatsApp in-app browser. Only a fake camera has
-been exercised. This is also the only place the AAC-when-audio-on case can be proven - the dev
+recipe, the ffprobe commands, owner assignments, and a slot per row for the artefact. The device
+gate has never been run: no real phone, no Safari, no throttled 3G, no WhatsApp in-app browser.
+Only a fake camera has been exercised. The flag was turned ON in production on 2026-11-24
+(`SITE_VIDEO_CAPTURE=true`, org cap 8589934592, project cap 1073741824) so the gate can be run
+against the deployed build; row 5 is blocked until a real buyer account exists. This is also the only place the AAC-when-audio-on case can be proven - the dev
 Chromium reports `avc1` as supported but `avc1,mp4a.40.2` as NOT, and records a silent clip when
 asked for audio anyway (which is why `supportsAudio()` gates the toggle).
 

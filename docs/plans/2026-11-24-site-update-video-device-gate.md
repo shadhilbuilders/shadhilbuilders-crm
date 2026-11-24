@@ -11,19 +11,36 @@ things most likely to go wrong).
 
 ## Before the first row
 
-The build has to have the feature on. In Coolify, on the `service-crm` service:
+The feature is ON in production as of 2026-11-24. Coolify service `service-crm`
+(`0bjahklz8gtdtr4do4r7ae6m`) carries:
 
     SITE_VIDEO_CAPTURE=true
-    SITE_VIDEO_ORG_CAP_BYTES=<bytes one org may hold>
-    SITE_VIDEO_PROJECT_CAP_BYTES=<bytes one project may hold>
+    SITE_VIDEO_ORG_CAP_BYTES=8589934592        (8 GiB of video per organisation)
+    SITE_VIDEO_PROJECT_CAP_BYTES=1073741824    (1 GiB of video per project, about 73 clips at the 14 MiB ceiling)
 
-The API refuses to boot when the flag is on and either cap is missing
-(`main.ts` calls `readSiteVideoConfig()` before anything else). The web reads the same flag
-per request, so the site screen shows the Video target only while it is on.
+The caps count VIDEO bytes only. `StorageUsage` and `ProjectStorageUsage` had no rows and
+zero bytes when this was switched on, so both ledgers start from nothing; photos are not
+counted against them.
 
-Check on a laptop before touching a phone: open a project's site screen. The capture bar has
-a **Video** target. If it is missing, the flag did not reach the web container, and every
-video route is answering 404.
+Two things hold the config together, both worth knowing before blaming the phone:
+
+- The API refuses to boot when the flag is on and either cap is missing or unparseable
+  (`main.ts` calls `readSiteVideoConfig()` before anything else).
+- The web reads `process.env.SITE_VIDEO_CAPTURE === 'true'` per request on the site page,
+  which is `force-dynamic`, so the capture bar shows the Video target only while the flag is
+  in place.
+
+Verified at switch-on: both the `shadhil-api` and `shadhil-web` containers carry the three
+variables; the API restarted healthy and logged `Nest application successfully started`; and
+the running container's own `readSiteVideoConfig()` answered
+`{"enabled":true,"orgCapBytes":8589934592,"projectCapBytes":1073741824,...}`. The one thing
+that check cannot prove is the rendered screen, because it sits behind a staff login: open a
+project's site screen on a laptop and confirm the capture bar has a **Video** target before
+involving a phone. If it is missing, the flag did not reach the web container.
+
+To switch it back off: set `SITE_VIDEO_CAPTURE=false` on the same service and restart. Video
+routes go back to 404, the site screen goes back to the photo-only bar, and photo capture and
+delivery are untouched.
 
 ## The procedure for every row
 
@@ -122,19 +139,33 @@ The second passes, and is the shape a phone clip has to match:
 
 ## The five rows
 
-Fill this in as the rows are run. Owner, date, and the probe output for each.
+Owners are assigned from the production account list as it stood on 2026-11-24, by role:
+there are two ENGINEER accounts and only one of them is a real person with a phone on file,
+which is why both Android rows land on the same engineer. No account records a handset model,
+so each owner confirms their device matches the row before running it, and writes the model
+into the Result cell.
 
-| #   | Device                                | Pass criteria                                                                                               | Artefact         | Owner | Date | Result |
-| --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------- | ----- | ---- | ------ |
-| 1   | Android mid-range, Android 13, Chrome | record starts under 1.5s; 20s clip uploads on throttled 3G within 90s; playback starts under 3s; seek works | probe + video    |       |      |        |
-| 2   | Android low-end, Android 11, Chrome   | same, upload within 120s, survives backgrounding mid-upload                                                 | probe + video    |       |      |        |
-| 3   | iPhone, current iOS, Safari           | same; MP4 recording works from the in-app recorder; permission denial recovers without a reload             | probe + video    |       |      |        |
-| 4   | iPhone, previous iOS, Safari          | same                                                                                                        | probe + video    |       |      |        |
-| 5   | Buyer, WhatsApp in-app browser        | portal opens from the deep link, clip plays, no download prompt                                             | screen recording |       |      |        |
+| #   | Device                                | Pass criteria                                                                                               | Artefact         | Owner                                                               | Date | Result |
+| --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------- | ---- | ------ |
+| 1   | Android mid-range, Android 13, Chrome | record starts under 1.5s; 20s clip uploads on throttled 3G within 90s; playback starts under 3s; seek works | probe + video    | site eng (ENGINEER, shadhilbuilderleads@gmail.com)                  |      |        |
+| 2   | Android low-end, Android 11, Chrome   | same, upload within 120s, survives backgrounding mid-upload                                                 | probe + video    | site eng (second handset; if only one exists, run row 1 and say so) |      |        |
+| 3   | iPhone, current iOS, Safari           | same; MP4 recording works from the in-app recorder; permission denial recovers without a reload             | probe + video    | Vignesh M (OWNER, vignesh@shadhilbuilders.in)                       |      |        |
+| 4   | iPhone, previous iOS, Safari          | same                                                                                                        | probe + video    | ram (ADMIN, ram@shadhilbuilders.in)                                 |      |        |
+| 5   | Buyer, WhatsApp in-app browser        | portal opens from the deep link, clip plays, no download prompt                                             | screen recording | BLOCKED, see below                                                  |      |        |
 
-Row 5 uses a buyer login and the WhatsApp deep link, not staff credentials. Rows 3 and 4
-record only from the in-app recorder: a Photos clip is `.mov`, refused by design, and the
-error names HEVC and says to record in the app or export as MP4.
+Row 5 cannot be owned yet. Production has exactly one CUSTOMER account and it is the seed
+`customer@shadhilbuilders.in` attached to no real lead, so there is no buyer to send a WhatsApp
+link to. Creating a buyer account for a real lead comes first, and then the row is owned by
+whoever handles that buyer's updates.
+
+Rows 3 and 4 record only from the in-app recorder: a Photos clip is `.mov`, refused by design,
+and the error names HEVC and says to record in the app or export as MP4. Row 5 uses a buyer
+login and the WhatsApp deep link, not staff credentials.
+
+Two deliberate choices about the assignment: rows 3 and 4 go to two different people so the
+second iPhone row is not the same handset twice, and row 2 stays with the engineer rather than
+moving to an office account, because a low-end Android in an office proves nothing about the
+phone that films a site.
 
 ## If a row fails
 
