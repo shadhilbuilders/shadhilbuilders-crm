@@ -247,4 +247,15 @@ describe('SiteRecorder', () => {
     root = null;
     expect(mocks.release).toHaveBeenCalled();
   });
+
+  it('keeps the close row and the action row out of the notch and the home bar', async () => {
+    // The sheet is full height and its first row is the Close button, so without
+    // the top inset that button is under the status bar, and the sheet reads as
+    // having no exit. The bottom inset is the same story for Stop and Use clip:
+    // on an iPhone the home indicator sits exactly where they would land.
+    await mount();
+    const html = document.body.innerHTML;
+    expect(html).toContain('pt-[env(safe-area-inset-top)]');
+    expect(html).toContain('pb-[max(1rem,env(safe-area-inset-bottom))]');
+  });
 });

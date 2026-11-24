@@ -208,7 +208,10 @@ export function SiteRecorder(props: SiteRecorderProps) {
       trigger={null}
       side="bottom"
       header={{ title: `Record a clip: ${unitNumber}` }}
-      className="h-[100dvh] p-0"
+      // Full-screen sheet: its first row is the Close button, and without the
+      // top inset that row lands under the status bar on a notched iPhone, so
+      // the sheet looks like it has no way out (2026-11-24).
+      className="h-[100dvh] p-0 pt-[env(safe-area-inset-top)]"
     >
       <div className="bg-background flex h-full flex-col" data-qa="recorder-sheet">
         <div className="sr-only" role="status" aria-live="polite" data-qa="recorder-live">
@@ -326,7 +329,7 @@ export function SiteRecorder(props: SiteRecorderProps) {
           )}
         </div>
 
-        <div className="flex items-center justify-center gap-3 border-t p-4">
+        <div className="flex items-center justify-center gap-3 border-t px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {step.kind === 'recording' && (
             <Button
               type="button"

@@ -133,7 +133,15 @@ export function SitePhotoViewerPanel({
 
   return (
     <div className="relative flex h-dvh w-full flex-col" data-qa="site-photo-viewer">
-      <div className="relative z-10 flex items-center justify-between px-2 py-2">
+      <div
+        // THE TOP INSET IS THE CLOSE BUTTON. Without it the row is drawn at the
+        // very top of a full-screen dialog, which on a notched iPhone is the
+        // status bar: the X and both chevrons sit under the clock and the notch,
+        // and the only visible way out is the system Back gesture. Measured on
+        // an installed iPhone on 2026-11-24. Half a rem of air above the inset
+        // matches the capture header's own breathing room.
+        className="relative z-10 flex items-center justify-between px-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2"
+      >
         <span className="sr-only">Photo viewer</span>
         <div className="flex gap-1">
           {hasPrevious ? (

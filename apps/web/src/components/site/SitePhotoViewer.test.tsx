@@ -103,6 +103,20 @@ describe('SitePhotoViewer', () => {
     expect(alone).not.toContain('site-photo-next');
   });
 
+  it('keeps the close control below the status bar on a notched phone', () => {
+    // Reported on an installed iPhone on 2026-11-24: the photo view opened with
+    // no visible way out, because the whole control row was drawn at y=0, under
+    // the clock and the notch, and taps there belong to the system.
+    // `env(safe-area-inset-top)` is 0 in jsdom, so the contract is asserted on
+    // the class string, the same way the capture header is pinned.
+    const html = viewer();
+    const row = html.match(/<div class="relative z-10[^"]*">/)?.[0] ?? '';
+    expect(row, 'the control row is not rendered').not.toBe('');
+    expect(row).toContain('env(safe-area-inset-top)');
+    // It is the row that carries the controls, not an empty wrapper above them.
+    expect(html.indexOf('site-photo-close')).toBeGreaterThan(html.indexOf(row));
+  });
+
   it('keeps the image at object-contain with no percentage or progress claim', () => {
     const html = viewer();
     expect(html).toContain('object-contain');
