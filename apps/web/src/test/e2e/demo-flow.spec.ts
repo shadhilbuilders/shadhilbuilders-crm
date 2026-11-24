@@ -425,6 +425,9 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
   });
 
   test('BONUS - the completed visit left its check-in in the chat panel', async ({ page }) => {
+    // The check-in is written by the reminder cron, not by the request that recorded
+    // the outcome, so the row appears on the next tick: up to a minute, not at once.
+    test.setTimeout(150_000);
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'BONUS depends on a lead created in STEP 3');
     await login(page);
@@ -436,14 +439,14 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
       timeout: 15_000,
     });
 
-    // STEP 7 marked this lead's visit COMPLETED, which queues the UTILITY
-    // check-in, and the check-in writes its own entry into the thread. So the
-    // pane is no longer empty for a freshly-created lead: the honest assertion
-    // is that the check-in is what landed there, which is also the only proof in
-    // this suite that the completed-visit wiring reaches the customer thread.
+    // STEP 7 marked this lead's visit COMPLETED, which records when the UTILITY
+    // check-in may go out; the cron then writes it into the thread once its hour
+    // arrives. So the pane is no longer empty for a freshly-created lead, and
+    // waiting for that entry is the only end-to-end proof in this suite that the
+    // completed-visit wiring reaches the customer thread at all.
     const chat = page.locator('[data-qa="chat-messages"]');
     await expect(chat).toBeVisible({ timeout: 10_000 });
-    await expect(chat.getByText(/Site visit check-in sent/)).toBeVisible({ timeout: 15_000 });
+    await expect(chat.getByText(/Site visit check-in sent/)).toBeVisible({ timeout: 120_000 });
     await shot(page, 'bonus-chat-pane');
   });
 });

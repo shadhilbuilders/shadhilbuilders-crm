@@ -13,15 +13,13 @@
 //     state machine → rejected (server-wins per offline-store LWW).
 //   - COMPLETED still drives the parent lead to VISITED exactly once.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { LEAD_STATES } from '../leads/leads.state-machine';
 import { LeadsService } from '../leads/leads.service';
-
-import { OutboundService, VISIT_CHECKIN_TEMPLATE } from '../whatsapp/outbound.service';
 
 import { VisitsService } from './visits.service';
 
@@ -1226,24 +1224,20 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
   });
 });
 
-// The completed-visit check-in (2026-11-24). A visit the exec marks COMPLETED is
-// the one moment the buyer is guaranteed to be thinking about the site, so the
-// UTILITY check-in goes out then, once, through the outbox.
-describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - the completed-visit check-in', () => {
+// The completed-visit check-in (2026-11-24). Completing a visit no longer sends
+// anything here: it stamps when the check-in may go, and the reminder cron sends
+// it inside working hours. The quiet-hours arithmetic is covered by
+// checkin-schedule.test.ts; what matters here is that the stamp is set exactly
+// when the outcome is a completion.
+describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - the check-in stamp', () => {
   let service: VisitsService;
   let prismaService: PrismaService;
-  let enqueue: ReturnType<typeof vi.fn>;
 
   beforeAll(async () => {
     if (prisma === null) return;
     prismaService = { $client: prisma as unknown as PrismaClient } as PrismaService;
-    enqueue = vi.fn(async () => ({ id: 'outbound-stub' }));
-    service = new VisitsService(prismaService, new LeadsService(prismaService), undefined, {
-      enqueue,
-    } as unknown as OutboundService);
+    service = new VisitsService(prismaService, new LeadsService(prismaService));
 
-    // The same fixture people the other describes create: a lead cannot be
-    // seeded without its owner, and the visit needs its exec.
     await adminSeed(async (db) => {
       await db.project.upsert({
         where: { id: TEST_PROJECT_ID },
@@ -1291,53 +1285,41 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - the completed-visit chec
     await cleanupAll();
   }, 30_000);
 
-  beforeEach(() => {
-    enqueue.mockClear();
-  });
-
-  it('queues one check-in on the transaction that recorded the outcome', async () => {
-    const { leadId, visitId } = await seedLeadWithVisit();
+  it('stamps a due time on a completion and sends nothing itself', async () => {
+    const { visitId } = await seedLeadWithVisit();
     await service.updateOutcome(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
       visitId,
       outcome: 'COMPLETED',
       notes: 'plinth inspected',
     });
 
-    expect(enqueue).toHaveBeenCalledTimes(1);
-    const [payload, tx] = enqueue.mock.calls[0] as [Record<string, unknown>, unknown];
-    expect(payload).toMatchObject({
-      sendType: 'TEMPLATE',
-      templateName: VISIT_CHECKIN_TEMPLATE,
-      leadId,
-      // "VOC Lead 1" is an initials-style name, so the greeting falls back to the
-      // neutral one rather than shouting an acronym at a buyer.
-      templateVars: { '1': 'there', '2': `Test Project ${TEST_PROJECT_ID}` },
-    });
-    // The RLS transaction, not the bare client (42501 otherwise).
-    expect(tx).toBeDefined();
-
-    const thread = await adminSeed((db) =>
-      db.message.findMany({ where: { leadId }, select: { direction: true, body: true } }),
+    const row = await adminSeed((db) =>
+      db.siteVisit.findUnique({
+        where: { id: visitId },
+        select: { status: true, checkinDueAt: true, checkinQueuedAt: true },
+      }),
     );
-    expect(thread).toHaveLength(1);
-    expect(thread[0]?.direction).toBe('OUT');
-    expect(thread[0]?.body).toContain(VISIT_CHECKIN_TEMPLATE);
+    expect(row?.status).toBe('COMPLETED');
+    expect(row?.checkinDueAt).not.toBeNull();
+    // Not claimed: the cron owns that, and it has not run.
+    expect(row?.checkinQueuedAt).toBeNull();
+
+    // The transaction is the only thing that wrote: no thread entry, no outbox.
+    const messages = await adminSeed((db) =>
+      db.message.count({ where: { body: { contains: 'check-in' } } }),
+    );
+    expect(messages).toBe(0);
   });
 
-  it('sends nothing on a replay of the same outcome', async () => {
-    const { visitId } = await seedLeadWithVisit();
-    const actor = actorFor(ADMIN_ID, 'ADMIN');
-    await service.updateOutcome(actor, visitId, { visitId, outcome: 'COMPLETED' });
-    await service.updateOutcome(actor, visitId, { visitId, outcome: 'COMPLETED' });
-    expect(enqueue).toHaveBeenCalledTimes(1);
-  });
-
-  it('sends nothing for NO_SHOW, which is not a visit to ask about', async () => {
+  it('leaves the stamp empty for an outcome that is not a visit to ask about', async () => {
     const { visitId } = await seedLeadWithVisit();
     await service.updateOutcome(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
       visitId,
       outcome: 'NO_SHOW',
     });
-    expect(enqueue).not.toHaveBeenCalled();
+    const row = await adminSeed((db) =>
+      db.siteVisit.findUnique({ where: { id: visitId }, select: { checkinDueAt: true } }),
+    );
+    expect(row?.checkinDueAt).toBeNull();
   });
 });

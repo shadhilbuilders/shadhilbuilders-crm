@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { NotificationsService } from '../notifications/notifications.service';
+import { OutboundService, VISIT_CHECKIN_TEMPLATE } from '../whatsapp/outbound.service';
+import type { WhatsAppClient } from '../whatsapp/whatsapp.client';
 import { PrismaService } from '../prisma/prisma.module';
 import type { RedisService } from '../redis/redis.module';
 
@@ -158,7 +160,14 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
         },
       });
     });
-    service = new VisitRemindersService(ps, redis, new NotificationsService(ps));
+    // The sweep only ever WRITES an outbox row; delivery belongs to outbound.cron,
+    // so the client here is never called and needs no token.
+    service = new VisitRemindersService(
+      ps,
+      redis,
+      new NotificationsService(ps),
+      new OutboundService(ps, {} as unknown as WhatsAppClient),
+    );
     // The hook may queue behind another file driving a global cron (see
     // holdCronLockForFile), so it needs more room than the default.
   }, 120_000);
@@ -236,5 +245,94 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
       db.siteVisit.findUnique({ where: { id: closed }, select: { reminderSentAt: true } }),
     );
     expect(row?.reminderSentAt).toBeNull();
+  });
+
+  // Quiet hours (2026-11-24): the check-in owed by a completed visit is sent by
+  // this tick, not by the request that recorded the outcome.
+  const seedCompleted = (id: string, dueMinutesAgo: number, leadId = ids.lead) =>
+    admin((db) =>
+      db.siteVisit.create({
+        data: {
+          id,
+          leadId,
+          userId: ids.exec,
+          organizationId: ORG,
+          status: 'COMPLETED',
+          outcome: 'COMPLETED',
+          scheduledFor: new Date(Date.now() - 60 * 60_000),
+          checkinDueAt: new Date(Date.now() - dueMinutesAgo * 60_000),
+        },
+      }),
+    );
+
+  const outboxFor = (leadId: string) =>
+    admin((db) =>
+      db.outboundMessage.findMany({
+        where: { leadId, templateName: VISIT_CHECKIN_TEMPLATE },
+        select: { id: true, status: true, templateVars: true },
+      }),
+    );
+
+  it('queues the check-in a completed visit owes, once', async () => {
+    const visit = `${P}checkin-due-${RUN}`;
+    await seedCompleted(visit, 5);
+
+    await service.tick();
+    const queued = await outboxFor(ids.lead);
+    expect(queued).toHaveLength(1);
+    expect(queued[0]?.status).toBe('PENDING');
+    // {{1}} the greeting, {{2}} the site; both non-empty is the contract that matters.
+    const vars = queued[0]?.templateVars as Record<string, string> | null;
+    expect(Object.keys(vars ?? {}).sort()).toEqual(['1', '2']);
+    expect((vars?.['1'] ?? '').length).toBeGreaterThan(0);
+    expect((vars?.['2'] ?? '').length).toBeGreaterThan(0);
+
+    // The thread row the buyer's reply will land against.
+    const thread = await admin((db) =>
+      db.message.count({ where: { leadId: ids.lead, direction: 'OUT' } }),
+    );
+    expect(thread).toBe(1);
+
+    // Second tick: the claim holds, so nothing is queued twice.
+    await service.tick();
+    expect(await outboxFor(ids.lead)).toHaveLength(1);
+
+    const row = await admin((db) =>
+      db.siteVisit.findUnique({ where: { id: visit }, select: { checkinQueuedAt: true } }),
+    );
+    expect(row?.checkinQueuedAt).not.toBeNull();
+  });
+
+  it('drops a check-in that is already two days late, and stops scanning it', async () => {
+    const visit = `${P}checkin-stale-${RUN}`;
+    await seedCompleted(visit, 60 * 49, ids.lead2);
+
+    await service.tick();
+
+    expect(await outboxFor(ids.lead2)).toHaveLength(0);
+    const row = await admin((db) =>
+      db.siteVisit.findUnique({ where: { id: visit }, select: { checkinQueuedAt: true } }),
+    );
+    // Claimed anyway: an unclaimed row would be scanned on every tick forever.
+    expect(row?.checkinQueuedAt).not.toBeNull();
+  });
+
+  it('does not queue a check-in for a lead with no number', async () => {
+    const visit = `${P}checkin-nophone-${RUN}`;
+    await admin((db) =>
+      db.lead.update({
+        where: { id: ids.lead3 },
+        // Empty, not null: the column is NOT NULL in the schema and an empty string
+        // is exactly what the send path treats as "no number".
+        data: { phoneE164: '', phone: '' },
+      }),
+    );
+    await seedCompleted(visit, 5, ids.lead3);
+
+    await service.tick();
+
+    expect(await outboxFor(ids.lead3)).toHaveLength(0);
+    const thread = await admin((db) => db.message.count({ where: { leadId: ids.lead3 } }));
+    expect(thread).toBe(0);
   });
 });

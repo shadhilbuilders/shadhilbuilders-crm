@@ -1175,6 +1175,12 @@ model SiteVisit {
   notes          String?     @db.Text
   // T-VISIT-REMINDER: set once the pre-visit reminder has been sent.
   reminderSentAt DateTime?
+  // Quiet hours (2026-11-24): when the completed-visit check-in may go out. NULL
+  // means nothing is owed - every visit completed before this column existed.
+  checkinDueAt   DateTime?
+  // The claim. Non-null means the check-in already produced its outbox row, or
+  // was deliberately dropped as too late to be worth sending.
+  checkinQueuedAt DateTime?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 

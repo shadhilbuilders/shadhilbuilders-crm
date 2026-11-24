@@ -1,7 +1,7 @@
 # Quiet hours for the completed-visit check-in
 
 Date: 2026-11-24
-Status: planned, not started
+Status: built 2026-11-24
 Depends on: `b9df85a` (the check-in exists), `362f9fb` (E2E expects it)
 
 ## The defect
@@ -126,3 +126,20 @@ row that is never claimed would be scanned on every tick forever.
   batch still go the moment staff trigger them. If quiet hours matter for those
   too, they need the same treatment, and the natural move at that point is a
   shared helper rather than a third copy of the rule.
+
+## Built, and the two things the plan got wrong
+
+1. **The Message row cannot be written with a typed `create()`.** `Message` has an
+   INSERT policy for CRON_SERVICE but no SELECT arm, and Prisma appends a
+   read-back to every insert, so `message.create()` fails with 42501. The row is
+   written with `$executeRawUnsafe` and no RETURNING, which is also how the
+   inbound webhook writes its rows. The id is `visit_checkin_<visitId>` so a
+   retried transaction collides on the primary key instead of writing a second
+   row.
+2. **The E2E step now waits up to two minutes.** BONUS used to assert the thread
+   entry appeared immediately; the entry is now written by the cron, so the spec
+   waits for the tick instead of racing it.
+
+The plan claimed no new RLS policies were needed. That was true for `SiteVisit`
+and `OutboundMessage` and false for reading a `Message` back as CRON_SERVICE,
+which is why the insert had to avoid the read-back rather than widen the policy.
