@@ -1,9 +1,9 @@
 # Site update templates: the UTILITY submission
 
-Submitted 2026-11-24. Both templates are `PENDING` under review.
+Approved 2026-11-24 and live in production.
 
-    shadhil_villa_update_image   id 1004663232706917   PENDING   UTILITY   en
-    shadhil_villa_update_video   id 1032885586520701   PENDING   UTILITY   en
+    shadhil_villa_update_image   id 1004663232706917   APPROVED   UTILITY   en
+    shadhil_villa_update_video   id 1032885586520701   APPROVED   UTILITY   en
 
 ## Why resubmit
 
@@ -148,6 +148,38 @@ Review has taken minutes here before and can take a day.
    row must name the new template.
 3. Delete the two MARKETING templates from Meta once nothing references them. `grep` for the old
    names first, but the only reference should be the environment.
+
+Done on 2026-11-24 at 12:18: both environment variables now name the UTILITY pair, the service was
+restarted, and the container env was read back to confirm it took. Then one photo went through the
+real path and delivered at 12:21:58Z:
+
+    outbox  shadhil_villa_update_image   DELIVERED   attempts 1
+    wamid   wamid.HBgMOTE5NDQ1NDUwNDEwFQIAERgSQjRDQUQxQzlDOTAxODlDNTk5AA==
+
+The photo and its bytes were deleted afterwards, so the unit is back to the single fixture clip.
+
+## The other two templates, and why they needed new names
+
+`shadhil_chat_reply` (`Hi {{1}}, {{2}}. Reply here if you have any questions.`) and
+`shadhil_site_visit_followup` (`Just following up on your site visit for {{2}}. Are you still
+interested? Reply YES and our team will call you.`) were both MARKETING. Editing the category in
+place does not work: `POST /{template_id}` with `category: UTILITY` answers `3835031`, "You cannot
+update an approved template category." A category change means a new template.
+
+Submitted 2026-11-24, both `PENDING`:
+
+    shadhil_enquiry_reply        id 1481753927231084   PENDING   UTILITY   en
+    shadhil_site_visit_checkin   id 2538260253337929   PENDING   UTILITY   en
+
+The wording is the whole submission. A follow up that asks "are you still interested" is a sales
+nudge whatever label it carries, and Meta reads the body, not the category. The check-in asks for
+feedback on a visit that already happened and offers a call back; the reply names the enquiry it
+answers. Both keep the original variable order, `{{1}}` the first name and `{{2}}` the free-text
+slot, so a caller can swap in either without touching a line of code.
+
+Neither template is sent by anything today: `outbound.service.ts` only whitelists the two names so
+an outbox row may cite them. Approving them adds no behaviour. If they are approved, the switch is
+`WA_TEMPLATE_CHAT_REPLY=shadhil_enquiry_reply` and `WA_TEMPLATE_VISIT_FOLLOWUP=shadhil_site_visit_checkin`.
 
 ## If review refuses
 
