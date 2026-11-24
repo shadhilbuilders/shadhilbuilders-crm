@@ -284,6 +284,24 @@ describe('LeadVisitPanel - visit outcome role gate (T-VISIT-OUTCOME-GATE)', () =
     const html = container?.innerHTML ?? '';
     expect(html).toContain('Mark completed');
   });
+
+  it('a MANAGER sees Mark completed (a manager may conduct the visit)', async () => {
+    // T-MANAGER-SEAT (2026-11-24): a manager named as the visit's exec records the
+    // outcome themselves. The panel must not hide the control from the very role
+    // the server accepts as the assignee.
+    sessionMock.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', name: 'A', email: 'a@x', role: 'MANAGER' },
+      isPending: false,
+    });
+    sessionMock.canLogVisitOutcome.mockImplementation(
+      (_role: string | undefined, outcome: string) =>
+        outcome === 'COMPLETED' || outcome === 'NO_SHOW' || outcome === 'CANCELLED',
+    );
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('Mark completed');
+  });
 });
 
 /**

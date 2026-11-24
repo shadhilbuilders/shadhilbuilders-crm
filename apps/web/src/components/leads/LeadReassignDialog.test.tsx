@@ -30,7 +30,7 @@ describe('LeadReassignFormBody', () => {
       <LeadReassignFormBody currentOwnerId="owner-1" projectId={null} onSubmit={noopSubmit} />,
     );
     expect(html).toContain('Assign to');
-    expect(html).toContain('Only telecallers / sales executives');
+    expect(html).toContain('Telecallers, sales executives or managers');
     expect(html).toContain('Reason');
     expect(html).toContain('data-qa="lead-reassign-reason"');
   });

@@ -184,7 +184,7 @@ export function ScheduleVisitDialog({
     () =>
       execRequired
         ? scheduleVisitSchema.refine((v) => (v.salesExecId ?? '').length > 0, {
-            message: 'Select the sales exec who will attend',
+            message: 'Select who will attend the visit',
             path: ['salesExecId'],
           })
         : scheduleVisitSchema,
@@ -334,12 +334,15 @@ export function ScheduleVisitDialog({
             // Required for a telecaller (see T-DASH-QUEUE note at top): the
             // server rejects a TELECALLER assignee, so a blank field would 400.
             // For MANAGER/ADMIN blank legitimately means "me", so optional.
-            label: execRequired ? 'Sales exec attending' : 'Sales exec (optional)',
+            // A manager can conduct a visit too (the server accepts SALES_EXEC or
+            // higher), so the label names the act rather than one role.
+            label: execRequired ? 'Who attends the visit' : 'Who attends (optional)',
             required: execRequired,
             options: salesExecOptions,
             placeholder: 'Search a sales exec...',
             comboboxProps: {
-              emptyOptionMessage: 'No sales exec available - add one to a team on this project',
+              emptyOptionMessage:
+                'No sales exec or manager available - add one to a team on this project',
               'data-qa': 'schedule-visit-sales-exec',
               selectOptionAsValue: true,
             },

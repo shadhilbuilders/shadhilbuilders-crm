@@ -171,8 +171,7 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
         {showSchedule && canScheduleLeadVisit(user?.role) ? (
           <>
             <p className="text-muted-foreground text-sm">
-              The lead is ready for a site visit - pick a date/time and (optionally) the sales exec
-              who'll conduct it.
+              The lead is ready for a site visit - pick a date/time and who will conduct it.
             </p>
             <Button
               type="button"

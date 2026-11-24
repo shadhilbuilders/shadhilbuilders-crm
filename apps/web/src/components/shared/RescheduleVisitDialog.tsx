@@ -209,12 +209,13 @@ export function RescheduleVisitDialog({
           {
             type: 'combobox' as const,
             name: 'salesExecId',
-            label: 'Sales exec attending (optional)',
+            label: 'Who attends (optional)',
             required: false,
             options: salesExecOptions,
-            placeholder: 'Keep the current exec...',
+            placeholder: 'Keep the current person...',
             comboboxProps: {
-              emptyOptionMessage: 'No sales exec available - add one to a team on this project',
+              emptyOptionMessage:
+                'No sales exec or manager available - add one to a team on this project',
               'data-qa': 'reschedule-visit-sales-exec',
               selectOptionAsValue: true,
             },

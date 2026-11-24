@@ -119,7 +119,7 @@ export function CoOwnerFormBody({
       placeholder: 'Search staff by name or email...',
       options: defaultOptions,
       description:
-        'A second staff member who can work the lead. Only telecallers / sales executives on this project. Start typing to search them.',
+        'A second staff member who can work the lead. Telecallers, sales executives or managers on this project. Start typing to search them.',
       comboboxProps: {
         fetchOptions: fetchBound,
         fetchDebounce: 300,

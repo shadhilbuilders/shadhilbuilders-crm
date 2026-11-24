@@ -10,8 +10,9 @@
 //     to a REMOTE autosuggest fetch (GET /api/users?search=&limit=10,
 //     debounced) once the user types. The users endpoint is server-scoped by
 //     the actor: MANAGER → own team only; ADMIN/OWNER → all. We additionally
-//     filter client-side to the only assignable roles (TELECALLER/SALES_EXEC)
-//     and exclude the current owner.
+//     filter client-side to the assignable roles (TELECALLER/SALES_EXEC/
+//     MANAGER, via `isLinkableStaffRole` + `canRoleOwnState`) and exclude the
+//     current owner.
 //   - a `type: 'textarea'` reason field. `reason` is REQUIRED by
 //     ReassignLeadDto (drives the audit trail + manager visibility).
 //
@@ -152,7 +153,7 @@ export function LeadReassignFormBody({
       placeholder: 'Search staff by name or email...',
       options: defaultOptions,
       description:
-        'Only telecallers / sales executives on this project are assignable. Start typing to search them.',
+        'Telecallers, sales executives or managers on this project are assignable. Start typing to search them.',
       comboboxProps: {
         fetchOptions: fetchAssigneesBound,
         fetchDebounce: 300,
