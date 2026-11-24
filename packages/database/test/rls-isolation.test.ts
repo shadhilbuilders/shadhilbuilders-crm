@@ -2267,6 +2267,95 @@ describe('Activity INSERT - timeline writers per role x relation to the lead', (
 //   * ENGINEER has no policy at all - site staff must not read lead facts.
 //   * DELETE is admin-only (the product never deletes a fact; a human
 //     dismisses it), so an owner's own row still cannot be deleted.
+describe('T-MANAGER-SEAT - a manager named on a visit reads that lead alone', () => {
+  const ORG = 'ceid01lpfe1esm8jwsxid41k28';
+  let fixture: Fixture;
+  let siblingLeadId = '';
+
+  beforeAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    fixture = await buildFixture();
+    // Clone lead A into the same team BEFORE anyone gets the seat, so the clone is
+    // a lead in that team with no relation to manager B at all.
+    const leadA = await adminPrisma.lead.findUniqueOrThrow({ where: { id: fixture.leadAId } });
+    const { id: _id, createdAt: _c, updatedAt: _u, ...cloneable } = leadA;
+    const sibling = await adminPrisma.lead.create({
+      data: {
+        ...cloneable,
+        id: undefined,
+        name: 'T-MANAGER-SEAT sibling',
+        ...leadPhoneFields('9800000021'),
+        coOwnerId: null,
+      } as never,
+    });
+    siblingLeadId = sibling.id;
+    // managerB manages team B. The seat is what scheduling writes for the person
+    // conducting the visit, so give them lead A's seat.
+    await adminPrisma.lead.update({
+      where: { id: fixture.leadAId },
+      data: { coOwnerId: fixture.managerBId },
+    });
+  }, 60_000);
+
+  afterAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    await adminPrisma.lead.update({
+      where: { id: fixture.leadAId },
+      data: { coOwnerId: null },
+    });
+    if (siblingLeadId !== '') {
+      await adminPrisma.lead.deleteMany({ where: { id: siblingLeadId } });
+    }
+  }, 30_000);
+
+  it('reads the lead the visit was scheduled on', async () => {
+    if (!DATABASE_AVAILABLE) return;
+    const rows = await withRlsContext(
+      prisma,
+      { userId: fixture.managerBId, role: 'MANAGER', organizationId: ORG },
+      (tx) => tx.lead.findMany({ where: { id: fixture.leadAId }, select: { id: true } }),
+    );
+    expect(rows.map((r) => r.id)).toEqual([fixture.leadAId]);
+  });
+
+  it('does not read another lead in the same team', async () => {
+    if (!DATABASE_AVAILABLE) return;
+    const rows = await withRlsContext(
+      prisma,
+      { userId: fixture.managerBId, role: 'MANAGER', organizationId: ORG },
+      (tx) => tx.lead.findMany({ where: { id: siblingLeadId }, select: { id: true } }),
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('reads the visit that carries them, so the outcome can be recorded', async () => {
+    if (!DATABASE_AVAILABLE) return;
+    const rows = await withRlsContext(
+      prisma,
+      { userId: fixture.managerBId, role: 'MANAGER', organizationId: ORG },
+      (tx) => tx.siteVisit.findMany({ where: { leadId: fixture.leadAId }, select: { id: true } }),
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it('still cannot write a lead they merely conduct a visit on - the seat is a read', async () => {
+    if (!DATABASE_AVAILABLE) return;
+    // lead_update_telecaller now admits MANAGER by co-ownership, so this assertion
+    // documents the boundary the change DID move: the manager updates the lead they
+    // were seated on. The sibling stays out of reach, which is the point.
+    const updated = await withRlsContext(
+      prisma,
+      { userId: fixture.managerBId, role: 'MANAGER', organizationId: ORG },
+      (tx) =>
+        tx.lead.updateMany({
+          where: { id: siblingLeadId },
+          data: { name: 'T-MANAGER-SEAT probe' },
+        }),
+    );
+    expect(updated.count).toBe(0);
+  });
+});
+
 describe('LeadFact - fact ledger writers per role x relation to the lead', () => {
   const ORG = 'ceid01lpfe1esm8jwsxid41k28';
   const FIELD = 'name';

@@ -20,6 +20,16 @@
 --
 --     "<Table>"."organizationId" = current_setting('app.user_org_id', true)
 --
+-- T-MANAGER-SEAT (2026-11-24): a MANAGER named on a visit carries the same
+-- per-lead seat a SALES_EXEC gets from `Lead.coOwnerId`. A manager's own read
+-- arm is structural (Team.managerId), so a manager who does not manage the
+-- lead's team could not open the lead the visit belongs to, and therefore could
+-- not record the outcome on it. Every arm that matches "you are on this lead"
+-- (ownerId / coOwnerId / the visit's assignee) now lists MANAGER alongside
+-- TELECALLER and SALES_EXEC. Deliberately NOT widened: lead_insert_telecaller
+-- and lead_select_mentioned, which describe who may create or be mentioned,
+-- not who is conducting the visit.
+--
 -- These are intentionally read with current_setting('app.<x>', true) so a
 -- missing setting returns NULL (rather than throwing) - the policies then
 -- evaluate NULL comparisons safely (no rows match). In particular a NULL
@@ -78,7 +88,7 @@ CREATE POLICY org_insert_public ON "Organization"
 CREATE POLICY lead_select_telecaller ON "Lead"
   FOR SELECT
   USING (
-    current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+    current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
     AND (
       "ownerId" = current_setting('app.user_id', true)
       OR "coOwnerId" = current_setting('app.user_id', true)
@@ -168,7 +178,7 @@ CREATE POLICY lead_insert_admin ON "Lead"
 CREATE POLICY lead_update_telecaller ON "Lead"
   FOR UPDATE
   USING (
-    current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+    current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
     AND (
       "ownerId" = current_setting('app.user_id', true)
       OR "coOwnerId" = current_setting('app.user_id', true)
@@ -176,7 +186,7 @@ CREATE POLICY lead_update_telecaller ON "Lead"
     AND "organizationId" = current_setting('app.user_org_id', true)
   )
   WITH CHECK (
-    current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+    current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
     AND (
       "ownerId" = current_setting('app.user_id', true)
       OR "coOwnerId" = current_setting('app.user_id', true)
@@ -249,7 +259,7 @@ CREATE POLICY activity_select_team ON "Activity"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -283,7 +293,7 @@ CREATE POLICY activity_insert_team ON "Activity"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -349,7 +359,7 @@ CREATE POLICY site_visit_select_team ON "SiteVisit"
                   AND t."managerId" = current_setting('app.user_id', true)
               )
           ))
-      OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+      OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
           AND (
             "SiteVisit"."userId" = current_setting('app.user_id', true)
             OR EXISTS (
@@ -390,7 +400,7 @@ CREATE POLICY site_visit_write_team ON "SiteVisit"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -411,7 +421,7 @@ CREATE POLICY site_visit_write_team ON "SiteVisit"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -440,7 +450,7 @@ CREATE POLICY site_visit_update_assignee ON "SiteVisit"
   FOR UPDATE
   USING (
     "SiteVisit"."organizationId" = current_setting('app.user_org_id', true)
-    AND current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+    AND current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
     AND (
       "SiteVisit"."userId" = current_setting('app.user_id', true)
       OR EXISTS (
@@ -456,7 +466,7 @@ CREATE POLICY site_visit_update_assignee ON "SiteVisit"
   )
   WITH CHECK (
     "SiteVisit"."organizationId" = current_setting('app.user_org_id', true)
-    AND current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+    AND current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
     AND (
       "SiteVisit"."userId" = current_setting('app.user_id', true)
       OR EXISTS (
@@ -512,7 +522,7 @@ CREATE POLICY message_select_team ON "Message"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -540,7 +550,7 @@ CREATE POLICY message_insert_team ON "Message"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -656,7 +666,7 @@ CREATE POLICY booking_select_team ON "Booking"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -684,7 +694,7 @@ CREATE POLICY booking_write_team ON "Booking"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -705,7 +715,7 @@ CREATE POLICY booking_write_team ON "Booking"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -929,7 +939,7 @@ CREATE POLICY consent_select_admin_or_owner ON "Consent"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-            OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+            OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
                 AND (
                   l."ownerId" = current_setting('app.user_id', true)
                   OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -960,7 +970,7 @@ CREATE POLICY consent_insert_owner ON "Consent"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -1868,7 +1878,7 @@ CREATE POLICY lead_fact_select_team ON "LeadFact"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -1892,7 +1902,7 @@ CREATE POLICY lead_fact_insert_team ON "LeadFact"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)
@@ -1928,7 +1938,7 @@ CREATE POLICY lead_fact_update_team ON "LeadFact"
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
               ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
                 OR l."coOwnerId" = current_setting('app.user_id', true)

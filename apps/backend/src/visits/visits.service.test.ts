@@ -1028,6 +1028,43 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
     });
   }
 
+  it('gives a manager named on the visit the seat that lets them record it', async () => {
+    // The case that used to dead-end: a manager who does not manage the lead's
+    // team, named as the person conducting the visit. Their read arm is
+    // Team.managerId, so without the co-owner seat they cannot open the lead at
+    // all, and recording the outcome answers "Lead not found".
+    const leadId = await seedLeadInState('VISIT_REQUESTED');
+    const row = await service.create(
+      actorFor(TC_ID, 'TELECALLER') as never,
+      {
+        leadId,
+        salesExecId: MGR_ID,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      } as never,
+    );
+    expect(row.userId).toBe(MGR_ID);
+
+    // The seat is written, not assumed.
+    const seat = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { coOwnerId: true } }),
+    );
+    expect(seat?.coOwnerId).toBe(MGR_ID);
+
+    // And it buys exactly what it is for: the manager can record the outcome and
+    // the lead follows them to VISITED.
+    const result = await service.updateOutcome(actorFor(MGR_ID, 'MANAGER') as never, row.id, {
+      visitId: row.id,
+      outcome: 'COMPLETED',
+    } as never);
+    expect((result as { leadSyncNote?: string }).leadSyncNote).toBeUndefined();
+    const after = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true, ownerId: true } }),
+    );
+    expect(after?.state).toBe('VISITED');
+    // Ownership still does not move: that is reassign's job, not the outcome's.
+    expect(after?.ownerId).toBe(TC_ID);
+  });
+
   it('refuses a telecaller booking who does not name the exec', async () => {
     // The `?? actor.sub` fallback made the telecaller the visit's assignee, and a
     // telecaller may not drive VISIT_SCHEDULED -> VISITED, so the lead froze after

@@ -307,8 +307,11 @@ export class VisitsService {
    * otherwise update a lead they cannot read.
    *
    * Narrow on purpose:
-   *   - SALES_EXEC only. A MANAGER/ADMIN assignee can already read the lead via
-   *     their own policy, so no grant is needed.
+   *   - SALES_EXEC and MANAGER only. ADMIN/OWNER need no grant (their arm is
+   *     structural and org-wide). A MANAGER who already manages the lead's team
+   *     needs none either, and taking the slot from a conducting exec to hand it
+   *     to a manager who was already reading the lead would revoke that exec's
+   *     access for nothing - so the team relation is checked first.
    *   - Skipped when the assignee is already the owner (a telecaller
    *     self-scheduling normally is).
    *   - Never clobbers an existing co-owner: `Lead.coOwnerId` is a single id,
@@ -325,6 +328,25 @@ export class VisitsService {
    * owner-or-co-owner, so this grant is what lets the exec's own later writes
    * (VISIT_SCHEDULED → VISITED) land at all.
    */
+  /**
+   * True when `userId` is `Team.managerId` for the team the lead belongs to.
+   *
+   * A manager in that position reads the lead and its visits through the
+   * structural arm, so the co-owner slot is not what grants them access and must
+   * not be taken from whoever is conducting the visit.
+   */
+  private async managesLeadTeam(
+    tx: PrismaClient,
+    leadId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const team = await tx.team.findFirst({
+      where: { managerId: userId, leads: { some: { id: leadId } } },
+      select: { id: true },
+    });
+    return team !== null;
+  }
+
   private async grantExecLeadVisibility(
     tx: PrismaClient,
     leadId: string,
@@ -332,9 +354,13 @@ export class VisitsService {
     lead: { ownerId: string; coOwnerId: string | null },
     opts?: { transferFrom?: string },
   ): Promise<void> {
-    if (assignee.role !== 'SALES_EXEC') return;
+    if (assignee.role !== 'SALES_EXEC' && assignee.role !== 'MANAGER') return;
     if (lead.ownerId === assignee.id) return;
     if (lead.coOwnerId === assignee.id) return;
+    if (assignee.role === 'MANAGER' && (await this.managesLeadTeam(tx, leadId, assignee.id))) {
+      // Already reads this lead through Team.managerId; the seat is not needed.
+      return;
+    }
     const isHandover =
       lead.coOwnerId !== null &&
       opts?.transferFrom !== undefined &&
