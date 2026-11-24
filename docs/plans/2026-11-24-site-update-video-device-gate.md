@@ -155,13 +155,13 @@ which is why both Android rows land on the same engineer. No account records a h
 so each owner confirms their device matches the row before running it, and writes the model
 into the Result cell.
 
-| #   | Device                                | Pass criteria                                                                                               | Artefact         | Owner                                                                    | Date       | Result                                                                                                                           |
-| --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Android mid-range, Android 13, Chrome | record starts under 1.5s; 20s clip uploads on throttled 3G within 90s; playback starts under 3s; seek works | probe + video    | site eng (ENGINEER, shadhilbuilderleads@gmail.com)                       |            | blocked: poster upload fails on the second object, see defect 1                                                                  |
-| 2   | Android low-end, Android 11, Chrome   | same, upload within 120s, survives backgrounding mid-upload                                                 | probe + video    | site eng (second handset; if only one exists, run row 1 and say so)      |            | blocked: same                                                                                                                    |
-| 3   | iPhone, current iOS, Safari           | same; MP4 recording works from the in-app recorder; permission denial recovers without a reload             | probe + video    | Vignesh M (OWNER, vignesh@shadhilbuilders.in)                            |            | blocked: same                                                                                                                    |
-| 4   | iPhone, previous iOS, Safari          | same                                                                                                        | probe + video    | ram (ADMIN, ram@shadhilbuilders.in)                                      |            | blocked: same                                                                                                                    |
-| 5   | Buyer, WhatsApp in-app browser        | portal opens from the deep link, clip plays, no download prompt                                             | screen recording | Gate Buyer (test org CUSTOMER on an APPROVED booking, Test Greens A-665) | 2026-11-24 | server half done: portal 200, clip 200, seek 206, poster 200, the login bounce keeps the deep link. The phone half is still open |
+| #   | Device                                | Pass criteria                                                                                               | Artefact         | Owner                                                                    | Date       | Result                                                                                                                    |
+| --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Android mid-range, Android 13, Chrome | record starts under 1.5s; 20s clip uploads on throttled 3G within 90s; playback starts under 3s; seek works | probe + video    | site eng (ENGINEER, shadhilbuilderleads@gmail.com)                       |            | blocked: poster upload fails on the second object, see defect 1                                                           |
+| 2   | Android low-end, Android 11, Chrome   | same, upload within 120s, survives backgrounding mid-upload                                                 | probe + video    | site eng (second handset; if only one exists, run row 1 and say so)      |            | blocked: same                                                                                                             |
+| 3   | iPhone, current iOS, Safari           | same; MP4 recording works from the in-app recorder; permission denial recovers without a reload             | probe + video    | Vignesh M (OWNER, vignesh@shadhilbuilders.in)                            |            | blocked: same                                                                                                             |
+| 4   | iPhone, previous iOS, Safari          | same                                                                                                        | probe + video    | ram (ADMIN, ram@shadhilbuilders.in)                                      |            | blocked: same                                                                                                             |
+| 5   | Buyer, WhatsApp in-app browser        | portal opens from the deep link, clip plays, no download prompt                                             | screen recording | Gate Buyer (test org CUSTOMER on an APPROVED booking, Test Greens A-665) | 2026-11-24 | desktop Chromium half done and measured (deep link, play, seek, no download path); the webview on a handset is still open |
 
 Row 5 has an account. Two exist, and only one of them can show a unit today:
 
@@ -206,6 +206,30 @@ exercised without a handset. It is not a phone capture and must not be counted a
     posterKey   /k7mjd78nxvpq9vs8fqkzmfyb/4475ee.../poster.jpg         47,518 bytes
     ffmpeg shape: h264 Main, has_b_frames=0, 15.000s, moov before mdat
     caption says it is a fixture, stage STRUCTURE, batch gate-fixture-20261124
+
+Row 5's browser half was then measured in Chromium against the deployed build, signed in as the
+buyer, on the same fixture row:
+
+    deep link         opens the portal and the viewer, film strip reads 2 of 2
+    play              first frame at 214 ms, readyState 4, duration 15.0 s
+    seek to 8 s       24 ms to the `seeked` event, currentTime lands on 8
+    media request     the browser records status 206 for the clip
+    poster            200, image/jpeg, 47,518 bytes
+    download path     none: the route sets no Content-Disposition anywhere
+                      (media.controller.ts), the element carries no `download`
+                      attribute, no anchor points at the file, and no text on
+                      screen says download
+
+A frame from that playback is at `~/.hermes/cache/scratch/row5-portal-clip.png`: the fixture's
+test pattern, burnt-in timecode 00:00:06.767, controls reading 0:06 / 0:15. This is desktop
+Chromium, not WhatsApp's webview, so it proves the portal, the bytes and the absence of a
+download path, and it does not prove the webview on a handset.
+
+One thing the screenshot shows that the criteria should name: a floating "Install Shadhil CRM for
+offline use" banner sits over the viewer with a download-style icon and an Install button. It is
+an install prompt, not a download, and it is dismissible, but a buyer could read the icon as one.
+The in-app webview never fires `beforeinstallprompt`, so the gate itself should not see it; worth
+confirming on the handset rather than assuming.
 
 Three defects came out of that run. Each was measured against production, and none of them is
 visible from a unit test.
