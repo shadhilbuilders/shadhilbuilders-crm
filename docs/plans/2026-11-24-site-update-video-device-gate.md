@@ -275,8 +275,9 @@ included, in `next`, so the deep link survives the login screen.
 ## The first real WhatsApp send, and the two defects that stopped it (2026-11-24)
 
 Before this, three batches read `SKIPPED_NO_CONSENT` and no `OutboundMessage` existed for any of
-them. That is the consent ledger working as written: the site update templates are approved as
-MARKETING, and a missing MARKETING row is read as never asked, not as a yes. The first honest send
+them. That is the consent ledger working as written: the site update templates were approved as
+MARKETING on that day (they are UTILITY since the swap later in this document), and a missing
+MARKETING row is read as never asked, not as a yes. The first honest send
 therefore needed a number and an opt-in, and both went in on the owner's own handset, `919445450410`,
 with a consent row whose `source` says where the instruction came from.
 
@@ -321,8 +322,8 @@ The stale rows written while the outbox could not insert anything are closed as 
 10:16 keeps its old `132012` text and its retries, because it is the evidence for defect 2.
 
 The three commits are `08a6068` (the transaction), `600cb11` (the header column) and `0dfa938`
-(the receipt reason). All are deployed; the api image reads `prod-0dfa938` and both templates are
-configured there, `shadhil_site_update_image` and `shadhil_site_update_video`.
+(the receipt reason). All are deployed; the api and web images read `prod-362f9fb` and both
+templates are configured there, `shadhil_villa_update_image` and `shadhil_villa_update_video`.
 
 The five test photos on A-665 are gone. They were deleted at 11:17 on 2026-11-24 through
 `DELETE /api/bff/customer-progress/photos/:photoId` as admin1, each returned 200, each left an
@@ -332,15 +333,25 @@ retrying against bytes that no longer existed and is closed as FAILED with
 `media deleted with the fixture; nothing left to retry`. The unit now holds one object, the
 fixture clip.
 
-Two things remain open, and neither is code:
+One thing was open here and is now closed, and one is not code:
 
-- The templates are approved as MARKETING. A villa progress message is transactional, and MARKETING
-  spends a per-recipient allowance rather than arriving on the strength of the contract.
-  Resubmitting as UTILITY would remove both the frequency cap and the dependency on an opt-in row,
-  and the consent ledger would become a courtesy instead of the delivery precondition. The payloads
-  are drafted in `2026-11-24-site-update-templates-utility.md`, not submitted.
+- The templates were approved as MARKETING on 2026-11-23, which meant every outside-window send
+  spent a per-recipient marketing allowance and depended on an opt-in row. Meta will not
+  recategorise an approved template (3835031), so the pair was resubmitted under new names on
+  2026-11-24 and both were approved as UTILITY the same day: `shadhil_villa_update_image`
+  (1004663232706917) and `shadhil_villa_update_video` (1032885586520701). Production was flipped to
+  those names, the defaults in `outbound.service.ts` now name them, and rows still carrying the old
+  names resolve through `RETIRED_TEMPLATE_NAMES`. The consent ledger in
+  `site-update-consent.ts` stays as the record of what the buyer agreed to; it is no longer the
+  delivery precondition. See `2026-11-24-site-update-templates-utility.md`.
 - A buyer with no number on the lead cannot be reached at all. That delivery reads
   `SKIPPED_NO_PHONE` and it is the honest outcome, not a bug.
+
+A completed visit now also queues a check-in on `shadhil_site_visit_checkin`, which was approved as
+UTILITY on the same day. It fires from `VisitsService.updateOutcome` on the caller's transaction,
+once per visit, and only on the transition to COMPLETED. A real one was delivered on 2026-11-24 at
+14:54:25Z to the owner's own number, and a `Message` row in that lead's thread is the evidence the
+UI shows it.
 
 ## If a row fails
 
