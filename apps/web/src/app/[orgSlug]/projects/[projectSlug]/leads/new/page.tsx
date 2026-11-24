@@ -29,62 +29,21 @@ import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { useSessionUser } from '@/lib/session';
 import { LEAD_SOURCES, labelFor } from '@/lib/labels';
-import { DEFAULT_PHONE_COUNTRY, PhoneCountrySchema, PhoneInputSchema } from '@/lib/phone';
+import { DEFAULT_PHONE_COUNTRY } from '@/lib/phone';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
-import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 
+import {
+  NO_OWNER_OVERRIDE,
+  NO_TEAM_OVERRIDE,
+  buildLeadPayload,
+  createLeadSchema,
+  type CreateLeadSchema,
+} from './new-lead-form';
+
 type CreatedLead = { id: string };
-
-// Sentinel for "let the backend decide" (mirrors TeamMemberRemovalDialog's
-// NO_REPLACEMENT pattern) - an empty string is not a valid teamId, and
-// z.string() alone can't express "optional but no undefined default" for
-// a Form field bound via react-hook-form (RHF fields need a defined
-// initial value). onSubmit strips this sentinel back out to "omit teamId".
-const NO_TEAM_OVERRIDE = '';
-// Sentinel for "let the backend assign the owner automatically". Mirrors
-// NO_TEAM_OVERRIDE - an empty string is not a valid user id, and the Form
-// needs a defined initial value.
-const NO_OWNER_OVERRIDE = '';
-
-const createLeadSchema = z.object({
-  name: z.string().min(1, 'Name is required').trim().max(120),
-  // VALIDATE-ONLY, NORMALIZE-ON-SUBMIT (2026-11-19). This used to be
-  // `PhoneSchema`, whose TRANSFORM rewrites the value to `91XXXXXXXXXX`.
-  // That is fine for a submit payload but wrong for a live-validated field:
-  // the resolver's transformed output is what RHF would feed back on
-  // revalidation, so the input could rewrite itself from 10 digits to 12
-  // while the user was still typing - the Defect 1 corruption path
-  // documented in lib/phone.ts. `PhoneInputSchema` applies the identical
-  // rule with no transform, and onSubmit calls the same
-  // `normalizePhoneDigits` PhoneSchema used, so the stored value is
-  // byte-for-byte unchanged.
-  phone: PhoneInputSchema,
-  // The country the digits were typed in. It travels with the number: the
-  // server parses `phone` in `phoneCountry` (a bare national number is refused
-  // rather than guessed), so the two are always written together.
-  phoneCountry: PhoneCountrySchema.optional(),
-  // Email is optional. The form defaults it to '' (empty string) - but
-  // .optional() only allows undefined/missing, not ''. So accept '' as
-  // "not provided" via a union with z.literal('') (mirrors the convert
-  // modal). onSubmit omits empty values from the payload.
-  email: z.union([z.literal(''), z.email().trim().toLowerCase().max(254)]).optional(),
-  source: z.enum(LEAD_SOURCES),
-  notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
-  // T-TEAM-AUTHORITATIVE (2026-09-13) follow-up: only rendered/relevant for
-  // a MANAGER who leads more than one team - see the `managedTeams` picker
-  // below. NO_TEAM_OVERRIDE means "let the backend pick" (its existing
-  // oldest-managed-team default, unchanged for everyone else).
-  teamId: z.string(),
-  // Assigned owner - only shown for MANAGER/ADMIN/OWNER (staff self-assign).
-  // The empty string sentinel mirrors NO_TEAM_OVERRIDE: omit from payload when
-  // unset so the backend auto-assigns/rules.
-  assignedOwnerId: z.string(),
-});
-
-type CreateLeadSchema = z.infer<typeof createLeadSchema>;
 
 const LEAD_SOURCE_OPTIONS = LEAD_SOURCES.map((value) => ({
   value,
@@ -130,10 +89,6 @@ export default function NewLeadPage() {
   });
 
   function onSubmit(values: CreateLeadSchema) {
-    // `values.phone` is already canonical E.164 digits, no "+": that is what
-    // IntlPhoneInput reports, and the server re-parses it with `phoneCountry`
-    // rather than a second local normalizer.
-    const phone = values.phone;
     // T-LEAD-PROJECT-REQUIRED (2026-09-16): every lead needs a project. This form
     // only ever renders on a project-scoped route, so a missing projectId means
     // the routing is broken - say so instead of posting a lead that would be
@@ -143,25 +98,7 @@ export default function NewLeadPage() {
       return;
     }
 
-    const payload = {
-      name: values.name.trim().replace(/\s+/g, ' '),
-      phone,
-      phoneCountry: values.phoneCountry ?? DEFAULT_PHONE_COUNTRY,
-      // T-LEAD-PROJECT-REQUIRED (2026-09-16): projectId is REQUIRED by the API and
-      // NOT NULL in the DB, so this is no longer conditional. The route is
-      // project-scoped, so a null here is a routing error, and the guard below
-      // fails loudly rather than posting a lead no project surface can show.
-      projectId,
-      ...(values.email && values.email.trim().length > 0
-        ? { email: values.email.trim().toLowerCase() }
-        : {}),
-      source: values.source.trim(),
-      ...(values.notes && values.notes.trim().length > 0 ? { notes: values.notes.trim() } : {}),
-      ...(values.teamId !== NO_TEAM_OVERRIDE ? { teamId: values.teamId } : {}),
-      ...(values.assignedOwnerId !== NO_OWNER_OVERRIDE
-        ? { assignedOwnerId: values.assignedOwnerId }
-        : {}),
-    };
+    const payload = buildLeadPayload(values, projectId);
 
     createLead.mutate(payload, {
       onSuccess: (data) => {
