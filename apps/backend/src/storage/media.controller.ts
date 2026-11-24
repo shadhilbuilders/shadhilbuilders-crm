@@ -175,6 +175,34 @@ export class MediaController {
     const object = await this.storage.readStream(key, range);
     if (object === null) throw new NotFoundException('Media not found');
 
+    // UPSTREAM THAT IGNORES Range (2026-11-24). ImageKit answers a signed
+    // original URL with 200 and the whole object no matter what range is asked
+    // for, and the service reports that honestly rather than mislabelling it as
+    // a 206. The consequence is not cosmetic: Safari will not seek a response
+    // that came back 200, so the player's scrubber is dead until the download
+    // finishes. So when a range was asked for and upstream answered 200, the
+    // window is cut here. The clip still crosses the CDN in full, which is the
+    // price; the ceiling is 14 MiB, and a correct 206 is what makes seeking work
+    // at all.
+    if (range !== undefined && object.status === 200 && object.body !== null) {
+      const size = await this.sizeOf(key, object.headers);
+      if (size !== null) {
+        const end = range.end === undefined ? size - 1 : Math.min(range.end, size - 1);
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${range.start}-${end}/${size}`);
+        res.setHeader('Content-Length', String(end - range.start + 1));
+        res.setHeader('Content-Type', 'video/mp4');
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        try {
+          await pipeline(readWindow(object.body, range.start, end), res);
+        } catch {
+          res.destroy();
+        }
+        return;
+      }
+    }
+
     res.status(object.status);
     for (const [name, value] of Object.entries(object.headers)) res.setHeader(name, value);
     // Stored clips are verified MP4 at record time; the provider's type is advisory.
@@ -192,9 +220,46 @@ export class MediaController {
       res.destroy();
     }
   }
+
+  /**
+   * The object's size: the provider's own `content-length` when it sent one,
+   * otherwise a stat. Needed only on the range-cut path, where the window's end
+   * and the `Content-Range` denominator both depend on it.
+   */
+  private async sizeOf(key: string, headers: Record<string, string>): Promise<number | null> {
+    const raw = headers['content-length'];
+    const parsed = raw === undefined ? Number.NaN : Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    const info = await this.storage.stat(key);
+    return info === null ? null : info.size;
+  }
 }
 
-/** Infer a coarse Content-Type from the key's filename for the GET serve. */
+/**
+ * The `[start, end]` window of an already-open object, skipping forward from
+ * byte 0. Used only when upstream ignored a Range, so the early bytes are
+ * discarded rather than asked for again; the source connection is destroyed as
+ * soon as the window is complete.
+ */
+function readWindow(body: ReadableStream<Uint8Array>, start: number, end: number): Readable {
+  const source = Readable.fromWeb(body as never) as Readable;
+  return Readable.from(
+    (async function* window() {
+      let seen = 0;
+      for await (const chunk of source) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
+        const from = Math.max(0, start - seen);
+        const to = Math.min(buf.length, end - seen + 1);
+        if (to > from) yield buf.subarray(from, to);
+        seen += buf.length;
+        if (seen > end) break;
+      }
+      source.destroy();
+    })(),
+  );
+}
+
+/** Infer a coarse Content-Type from the key's filename, for the GET serve. */
 function guessMime(key: string): string {
   const ext = key.split('.').pop()?.toLowerCase() ?? '';
   switch (ext) {

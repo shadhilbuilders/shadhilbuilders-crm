@@ -134,6 +134,35 @@ describe('video streaming', () => {
     }
   });
 
+  it('cuts the window itself when upstream ignores the Range (ImageKit does)', async () => {
+    // Measured in production 2026-11-24: a ranged request to a signed ImageKit
+    // URL comes back 200 with the whole object, and Safari refuses to seek a
+    // response that is not a 206. So the controller slices the stream it was
+    // given and reports a truthful Content-Range.
+    h.storage.readStream.mockResolvedValueOnce({
+      status: 200 as const,
+      headers: { 'content-length': '100', 'accept-ranges': 'bytes' },
+      body: web(BYTES),
+    });
+    const r = await h.read(KEY, 'bytes=10-19');
+    expect(r.res.statusCode).toBe(206);
+    expect(r.headers['content-range']).toBe('bytes 10-19/100');
+    expect(r.headers['content-length']).toBe('10');
+    expect(r.body()).toEqual(BYTES.subarray(10, 20));
+  });
+
+  it('cuts an open-ended range to the object size, not to the chunk boundary', async () => {
+    h.storage.readStream.mockResolvedValueOnce({
+      status: 200 as const,
+      headers: { 'content-length': '100', 'accept-ranges': 'bytes' },
+      body: web(BYTES),
+    });
+    const r = await h.read(KEY, 'bytes=95-');
+    expect(r.res.statusCode).toBe(206);
+    expect(r.headers['content-range']).toBe('bytes 95-99/100');
+    expect(r.body()).toEqual(BYTES.subarray(95));
+  });
+
   it('never streams a key the caller may not read', async () => {
     h.access.assertReadable.mockRejectedValueOnce(new NotFoundException('Media not found'));
     await expect(h.read(KEY)).rejects.toBeInstanceOf(NotFoundException);
