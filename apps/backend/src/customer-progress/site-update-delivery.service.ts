@@ -426,7 +426,13 @@ export class SiteUpdateDeliveryService {
       select: { id: true },
     });
 
-    const mediaKey = plan.media === 'video' ? row.key : row.posterKey;
+    // WHICH BYTES: a photo's own key, a clip's key, or a clip's poster.
+    // `posterKey` is only ever the JPEG beside a VIDEO row, so reading it for a
+    // photo yields null, the image header is dropped, and Meta answers 132012
+    // "header: Format mismatch, expected IMAGE, received UNKNOWN" - measured in
+    // production on 2026-11-24 at 10:16:58.
+    const mediaKey =
+      row.kind === 'PHOTO' ? row.key : plan.media === 'video' ? row.key : row.posterKey;
     // THE TX, NOT THE BARE CLIENT (2026-11-24). `OutboundMessage` is FORCE RLS
     // with an insert arm that needs `app.user_id`, which Prisma sets only on the
     // caller's transaction. Without the override the insert ran on the injected

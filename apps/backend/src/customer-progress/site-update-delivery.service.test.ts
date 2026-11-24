@@ -443,6 +443,21 @@ describe('SiteUpdateDeliveryService', () => {
     }
   });
 
+  it("sends a photo's own bytes, not the poster column only video rows fill", async () => {
+    // MEASURED (2026-11-24 10:16:58): a photo went out under the video mapping,
+    // mediaKey came back null, the image header was dropped, and Meta answered
+    // 132012 "header: Format mismatch, expected IMAGE, received UNKNOWN". The
+    // poster column is empty on every PHOTO row, so that is the whole send.
+    const h = harness({
+      row: { key: 'org/u/photo.jpg', posterKey: null, kind: 'PHOTO', mimeType: 'image/jpeg' },
+    });
+    await h.service.recordAndSend({ ...input, kind: 'PHOTO', tx: h.tx });
+    expect(h.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ mediaKey: 'org/u/photo.jpg', mediaType: 'image/jpeg' }),
+      h.tx,
+    );
+  });
+
   it("queues on the caller's transaction, so the outbound insert passes its policy", async () => {
     // MEASURED IN PRODUCTION (2026-11-24): without the tx the insert ran on the
     // bare client, got `42501 new row violates row-level security policy for
