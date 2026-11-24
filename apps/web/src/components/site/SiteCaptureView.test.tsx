@@ -171,7 +171,10 @@ describe('SiteCaptureView chrome', () => {
     const header = html.match(/<header[^>]*>/)?.[0] ?? '';
     expect(header).toContain('sticky top-0');
     expect(header).toContain('env(safe-area-inset-top)');
-    expect(header).toContain('min(2rem,env(safe-area-inset-top))');
+    // 2026-11-24: 1.5rem, not 2rem. On an installed iPhone the inset alone is
+    // 47px, and the extra 32px of air pushed the title and badges too far down.
+    expect(header).toContain('min(1.5rem,env(safe-area-inset-top))');
+    expect(header).not.toContain('min(2rem,env(safe-area-inset-top))');
     expect(header).not.toContain('backdrop-blur');
     expect(header).not.toMatch(/bg-background\/\d/);
 

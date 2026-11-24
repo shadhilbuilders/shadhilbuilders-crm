@@ -162,12 +162,13 @@ export function SiteCaptureView({
                 header) is opaque for exactly this reason.
               - a bare `pt-[env(safe-area-inset-top)]` left the row flush
                 against the status bar and the bottom border with no air.
-                The clamped `+min(2rem,...)` is the same breathing room
-                AppHeader carries, one step larger: this row carries a title,
-                a subtitle and two stacked badges, so it needs the air more.
-                It resolves to 0 where there is no inset, so desktop and
-                Android are untouched. */}
-        <header className="bg-background border-border sticky top-0 z-20 border-b pt-[calc(max(0px,env(safe-area-inset-top))+min(2rem,env(safe-area-inset-top)))]">
+                The clamped `+min(1.5rem,...)` is the breathing room this row
+                carries above the inset. It was 2rem until 2026-11-24, when it
+                read as too much on an installed iPhone: the inset is already
+                47px there, and the extra 32px pushed the title and badges
+                further down than the row needs. It resolves to 0 where there
+                is no inset, so desktop and Android are untouched. */}
+        <header className="bg-background border-border sticky top-0 z-20 border-b pt-[calc(max(0px,env(safe-area-inset-top))+min(1.5rem,env(safe-area-inset-top)))]">
           <div className="flex min-h-14 items-center gap-2 px-2">
             <IconButton
               as={Link}
