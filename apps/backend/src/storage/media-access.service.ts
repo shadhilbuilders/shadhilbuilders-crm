@@ -14,9 +14,10 @@
 // indistinguishable from a key that does not exist, and both answer 404 (never
 // 403: that would confirm the key is real to someone with no right to know).
 //
-// Owning tables (the only two columns that hold a provider-neutral storage key):
+// Owning tables (the only columns that hold a provider-neutral storage key):
 //   - ProgressPhoto.key      (site progress photos, slice 1/2)
 //   - Message.mediaKey       (chat attachments)
+//   - User.avatarKey         (profile photos, 2026-11-24)
 // OutboundMessage.mediaKey is a MIRROR of Message.mediaKey (the chat service
 // writes the same value to both), not a third owner, so it is not consulted.
 //
@@ -31,7 +32,7 @@ import { PrismaService } from '../prisma/prisma.module';
 import { keyBelongsToOrg } from './media-key-scope';
 
 /** What a key belongs to, for logging. Not used in the response. */
-export type MediaOwner = 'ProgressPhoto' | 'Message' | null;
+export type MediaOwner = 'ProgressPhoto' | 'Message' | 'User' | null;
 
 @Injectable()
 export class MediaAccessService {
@@ -72,6 +73,22 @@ export class MediaAccessService {
         select: { id: true },
       });
       if (message !== null) return 'Message';
+
+      // User photo (2026-11-24). The organizationId filter is the ONLY tenant
+      // wall on this lookup: `User` carries no RLS policy at all (policies.sql
+      // grants the app role straight through), so the RLS context above cannot
+      // narrow it. Without the filter, one org's avatar key would resolve
+      // another org's row and the bytes would come back.
+      //
+      // Deliberately not filtered by role or team: a face photo is org-wide
+      // info for everyone signed in, the same exposure chat images already
+      // accept (media-display.ts). The key is unguessable, and this arm is only
+      // reached through the authenticated route.
+      const avatarOwner = await tx.user.findFirst({
+        where: { avatarKey: key, organizationId: actor.organizationId },
+        select: { id: true },
+      });
+      if (avatarOwner !== null) return 'User';
 
       return null;
     });

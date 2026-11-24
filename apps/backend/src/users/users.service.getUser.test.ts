@@ -293,6 +293,10 @@ describe('getUser - ADMIN/OWNER scope', () => {
       // none, so null) and phoneSource says so.
       phone: null,
       phoneSource: 'USER',
+      // 2026-11-24: the photo. The fixture row has no key, and the service
+      // resolves the display URL from it, so both are null.
+      avatarKey: null,
+      imageUrl: null,
       teamId: 'team-1',
       teamName: "Ravi's Team",
       // Every membership, newest first (2026-11-07) - feeds the picker's

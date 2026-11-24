@@ -19,13 +19,14 @@
 //   4. A JWT whose subject no longer exists fails loudly (404), not silently.
 //   5. role/teamId are untouched by a self-edit.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import type { JwtPayload } from '@shadhil/auth';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
+import type { StorageProvider } from '../storage/storage.provider';
 import { UsersService } from './users.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
@@ -56,6 +57,47 @@ function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'rol
 
 function makeService(): UsersService {
   return new UsersService({ $client: prisma } as unknown as PrismaService);
+}
+
+/**
+ * A photo-aware service plus the storage double behind it.
+ *
+ * `stat` answers with a real `image/webp` unless a test overrides it, because
+ * the service refuses any key whose stored bytes are not an image.
+ */
+function makeServiceWithStorage(
+  opts: {
+    mimeType?: string;
+    missing?: boolean;
+    deleteThrows?: boolean;
+  } = {},
+): { service: UsersService; deleted: string[]; cdnUrl: (key: string) => string } {
+  const deleted: string[] = [];
+  const storage = {
+    save: async () => {
+      throw new Error('save is not used by updateSelf');
+    },
+    read: async () => null,
+    publicUrl: (key: string) => `https://cdn.test${key}`,
+    delete: async (key: string) => {
+      deleted.push(key);
+      if (opts.deleteThrows === true) throw new Error('storage outage');
+    },
+    stat: async () =>
+      opts.missing === true
+        ? null
+        : { size: 1024, mimeType: opts.mimeType ?? 'image/webp', isPrivate: false },
+    readStream: async () => null,
+    deleteUploadFolder: async () => undefined,
+  };
+  return {
+    service: new UsersService(
+      { $client: prisma } as unknown as PrismaService,
+      storage as unknown as StorageProvider,
+    ),
+    deleted,
+    cdnUrl: (key: string) => `https://cdn.test${key}`,
+  };
 }
 
 async function bare<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
@@ -202,7 +244,7 @@ describe.skipIf(!HAS_DB)('UsersService.updateSelf - live DB', () => {
 
   it('writes an audit row in the same transaction with a real before/after pair', async () => {
     const service = makeService();
-    const before = await readSelf({ name: true, phone: true, email: true });
+    const before = await readSelf({ name: true, phone: true, email: true, avatarKey: true });
 
     const next = `Self Edit Audited ${RUN_TAG}`;
     await service.updateSelf(selfActor, { name: next });
@@ -228,12 +270,21 @@ describe.skipIf(!HAS_DB)('UsersService.updateSelf - live DB', () => {
     // 2026-11-21: email joins the pair. A placeholder -> real address change is
     // now possible from Settings, and it moves the login, so the history has to
     // show what it moved from and to.
+    // 2026-11-24: avatarKey joins the pair too. The photo is a self-service
+    // field now, and "who changed my face" belongs in the same history as the
+    // name and the login address.
     expect(audit.before).toEqual({
       name: before?.['name'],
       phone: before?.['phone'] ?? null,
       email: before?.['email'],
+      avatarKey: before?.['avatarKey'] ?? null,
     });
-    expect(audit.after).toEqual({ name: next, phone: null, email: before?.['email'] });
+    expect(audit.after).toEqual({
+      name: next,
+      phone: null,
+      email: before?.['email'],
+      avatarKey: null,
+    });
   });
 
   it('cannot reach another user: an id in the body is ignored (the route has no id param)', async () => {
@@ -297,5 +348,102 @@ describe.skipIf(!HAS_DB)('UsersService.updateSelf - live DB', () => {
     expect(result.email).toBe(`${SELF_ID}@test.local`);
     expect(result.role).toBe('TELECALLER');
     expect(result.id).toBe(SELF_ID);
+  });
+});
+
+describe.skipIf(!HAS_DB)('UsersService.updateSelf - the profile photo (2026-11-24)', () => {
+  const keyFor = (name: string): string => `${ORG}/avatar/${name}-${RUN_TAG}.webp`;
+
+  // Every case starts from "no photo", so a previous case's write cannot make a
+  // refusal assertion pass for the wrong reason.
+  beforeEach(async () => {
+    await adminSeed((db) => db.user.update({ where: { id: SELF_ID }, data: { avatarKey: null } }));
+  });
+
+  it('saves a photo on its own and returns a renderable URL', async () => {
+    const key = keyFor('photo-save');
+    const { service, cdnUrl } = makeServiceWithStorage();
+
+    const result = await service.updateSelf(selfActor, { avatarKey: key });
+
+    expect(result.avatarKey).toBe(key);
+    // The URL is resolved server-side: the provider's public base is not the
+    // browser's business, and local disk falls back to the BFF path.
+    expect(result.imageUrl).toBe(cdnUrl(key));
+    const row = await readSelf({ avatarKey: true });
+    expect(row?.['avatarKey']).toBe(key);
+  });
+
+  it('refuses a key from another organisation and leaves the photo alone', async () => {
+    const foreign = `cyid01lpfe1esm8jwsxid41k29/avatar/elsewhere-${RUN_TAG}.webp`;
+    const { service, deleted } = makeServiceWithStorage();
+
+    const err = await service
+      .updateSelf(selfActor, { avatarKey: foreign })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(deleted).toEqual([]);
+    const row = await readSelf({ avatarKey: true });
+    expect(row?.['avatarKey']).toBeNull();
+  });
+
+  it('refuses bytes that are not an image', async () => {
+    const { service } = makeServiceWithStorage({ mimeType: 'video/mp4' });
+
+    const err = await service
+      .updateSelf(selfActor, { avatarKey: keyFor('a-video') })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).message).toContain('video');
+    const row = await readSelf({ avatarKey: true });
+    expect(row?.['avatarKey']).toBeNull();
+  });
+
+  it('refuses a key whose object is gone from storage', async () => {
+    const { service } = makeServiceWithStorage({ missing: true });
+
+    const err = await service
+      .updateSelf(selfActor, { avatarKey: keyFor('vanished') })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).message).toContain('no longer in storage');
+  });
+
+  it('clears the photo on null and deletes the blob it replaced', async () => {
+    const key = keyFor('to-clear');
+    await adminSeed((db) => db.user.update({ where: { id: SELF_ID }, data: { avatarKey: key } }));
+
+    const { service, deleted } = makeServiceWithStorage();
+    const result = await service.updateSelf(selfActor, { avatarKey: null });
+
+    expect(result.avatarKey).toBeNull();
+    expect(result.imageUrl).toBeNull();
+    expect(deleted).toEqual([key]);
+    const row = await readSelf({ avatarKey: true });
+    expect(row?.['avatarKey']).toBeNull();
+  });
+
+  it('a storage outage during cleanup does not fail a saved photo', async () => {
+    // The old key exists on the row; the delete double throws, which is the
+    // provider contract's "MUST NOT throw" case the caller has to absorb.
+    const previous = keyFor('previous');
+    await adminSeed((db) =>
+      db.user.update({ where: { id: SELF_ID }, data: { avatarKey: previous } }),
+    );
+
+    const next = keyFor('next');
+    const { service } = makeServiceWithStorage({ deleteThrows: true });
+
+    const result = await service.updateSelf(selfActor, { avatarKey: next });
+
+    expect(result.avatarKey).toBe(next);
+    const row = await readSelf({ avatarKey: true });
+    expect(row?.['avatarKey']).toBe(next);
   });
 });

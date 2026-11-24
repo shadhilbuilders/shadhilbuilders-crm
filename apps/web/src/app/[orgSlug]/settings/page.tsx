@@ -63,6 +63,7 @@ import {
 import { api } from '@/apis/client';
 import { authClient } from '@/lib/auth-client';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
+import { AvatarUpload } from '@/components/shared/AvatarUpload';
 import { useUpdateProfile, useUser } from '@/hooks/queries/users';
 import { usePushSubscription } from '@/hooks/use-push-subscription';
 import { needsIosHomeScreenInstall } from '@/lib/push-install-guidance';
@@ -390,6 +391,18 @@ function ProfileSection({
         </CardDescription>
       </CardHeader>
       <CardContent className="mt-4 space-y-4">
+        {/* Photo (2026-11-24). Sits above the fields because it is the one
+            thing on this card that is not text: a person updates their face far
+            more often than they change their name. The row is shared by every
+            role - a buyer's account has a face too. */}
+        <AvatarUpload
+          name={initialName}
+          imageUrl={selfDetail?.imageUrl ?? null}
+          onSaved={onSaved}
+        />
+
+        <Separator />
+
         <Form
           form={form}
           onSubmit={onSubmit}

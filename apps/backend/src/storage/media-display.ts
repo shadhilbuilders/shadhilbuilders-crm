@@ -48,6 +48,30 @@ export function isPubliclyServableImage(mediaType: string | null | undefined): b
 }
 
 /**
+ * Display URL for a USER AVATAR (2026-11-24).
+ *
+ * Same precedence as an attachment image (public CDN when the provider has a
+ * public base, authenticated BFF path otherwise), but WITHOUT the mime-type
+ * argument: an avatar is an image by construction, because users.service
+ * refuses any key whose stored bytes are not `image/*` before it writes the
+ * column. Passing a made-up mime to `resolveMediaDisplayUrl` just to satisfy its
+ * signature would be a lie in a variable, so the two branches live here instead.
+ *
+ * @param avatarKey The stored key, or null/empty when the user has no photo.
+ * @param directUrl Provider public URL for that key, or null (local disk).
+ */
+export function avatarDisplayUrl(
+  avatarKey: string | null | undefined,
+  directUrl: string | null | undefined,
+): MediaDisplayUrl | null {
+  if (avatarKey === null || avatarKey === undefined || avatarKey.length === 0) return null;
+  if (directUrl !== null && directUrl !== undefined && directUrl.length > 0) {
+    return { url: directUrl, kind: 'direct' };
+  }
+  return { url: bffMediaPath(avatarKey), kind: 'proxied' };
+}
+
+/**
  * Decide the display URL for an attachment.
  *
  * Precedence:

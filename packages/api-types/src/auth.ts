@@ -245,6 +245,14 @@ export const UserDetailSchema = z.object({
   name: z.string(),
   role: RoleSchema,
   /**
+   * Storage key of this user's photo (2026-11-24), or null when they have none.
+   * The KEY, not a URL: render `imageUrl` below. A key rendered as an <img src>
+   * shows nothing, and a URL stored as a key breaks on a provider migration.
+   */
+  avatarKey: z.string().nullable().optional(),
+  /** Ready-to-render URL for `avatarKey`, resolved server-side. Null when unset. */
+  imageUrl: z.string().nullable().optional(),
+  /**
    * Staff contact number, normalized digits-only (2026-11-18). Null when unset.
    *
    * For a CUSTOMER target this is DERIVED from their lead and is null when no
@@ -362,14 +370,27 @@ export const UpdateProfileDtoSchema = z
      * Settings form does not have to ask again for those.
      */
     currentPassword: z.string().min(1).max(128).optional(),
+    /**
+     * Storage key of a photo just uploaded through POST /api/media, or null to
+     * remove the current one (2026-11-24). A bare key is never trusted: the
+     * service re-checks that the key sits in the caller's org namespace AND that
+     * the stored bytes are an image before it writes the column.
+     */
+    avatarKey: z.string().min(1).max(512).nullable().optional(),
   })
   .superRefine((values, ctx) => {
+    // `avatarKey` counts as a change on its own: a photo-only save must not be
+    // rejected as "nothing to update", which is exactly what it was before this
+    // field existed.
     const touchesSomething =
-      values.name !== undefined || values.phone !== undefined || values.email !== undefined;
+      values.name !== undefined ||
+      values.phone !== undefined ||
+      values.email !== undefined ||
+      values.avatarKey !== undefined;
     if (!touchesSomething) {
       ctx.addIssue({
         code: 'custom',
-        message: 'Nothing to update - provide a name, a phone number or an email address',
+        message: 'Nothing to update - provide a name, a phone number, an email address or a photo',
       });
       return;
     }

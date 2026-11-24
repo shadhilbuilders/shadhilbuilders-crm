@@ -12,7 +12,37 @@
 //   4. Settings + Sign out are untouched by this change.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// 2026-11-24: the footer reads the photo from the user-detail query. Both hooks
+// are mocked so this suite keeps pinning the MENU, not the network: a real
+// useSession would need an auth client and a QueryClientProvider that the shell
+// supplies and this harness deliberately does not.
+const mocks = vi.hoisted(() => ({
+  useSessionUser: vi.fn(),
+  useUser: vi.fn(),
+}));
+
+vi.mock('@/lib/session', () => ({ useSessionUser: mocks.useSessionUser }));
+vi.mock('@/hooks/queries/users', () => ({ useUser: mocks.useUser }));
+
+// Radix's Avatar.Image renders its <img> only after the image LOADS, and jsdom
+// never loads one - so a real Avatar would hide the thing under test here. This
+// double echoes the props the footer passes it (src + fallback), which is
+// exactly the contract this suite can honestly pin.
+vi.mock('@paalstack/react-ui', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@paalstack/react-ui');
+  const react = await import('react');
+  return {
+    ...actual,
+    Avatar: (props: { src?: string; fallback?: unknown }) =>
+      react.createElement(
+        'span',
+        { 'data-qa': 'avatar-double', 'data-src': props.src ?? '' },
+        props.fallback as never,
+      ),
+  };
+});
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -85,6 +115,15 @@ async function unmount(): Promise<void> {
   container?.remove();
   container = null;
 }
+
+beforeEach(() => {
+  mocks.useSessionUser.mockReturnValue({
+    user: { id: 'u-1', name: 'Deepak Owner', email: 'owner@x.in', role: 'OWNER' },
+    isPending: false,
+    refetchSession: async () => undefined,
+  });
+  mocks.useUser.mockReturnValue({ data: { imageUrl: null } });
+});
 
 afterEach(async () => {
   await unmount();
@@ -221,5 +260,23 @@ describe('NavUser account menu', () => {
     await mountOpen({});
     const trigger = document.querySelector('[data-qa="sidebar-user-trigger"]');
     expect(trigger?.getAttribute('aria-label')).toBe('Account menu for Deepak Owner');
+  });
+
+  it('feeds the uploaded photo to the footer avatar', async () => {
+    mocks.useUser.mockReturnValue({ data: { imageUrl: 'https://cdn.test/org/abc/face.webp' } });
+    await mountOpen({});
+
+    const avatar = qa('sidebar-user-trigger')?.querySelector('[data-qa="avatar-double"]');
+    expect(avatar?.getAttribute('data-src')).toBe('https://cdn.test/org/abc/face.webp');
+  });
+
+  it('falls back to initials when the account has no photo', async () => {
+    await mountOpen({});
+
+    const trigger = qa('sidebar-user-trigger');
+    // No src is handed to the avatar...
+    expect(trigger?.querySelector('[data-qa="avatar-double"]')?.getAttribute('data-src')).toBe('');
+    // ...and the initials ARE what shows.
+    expect(trigger?.textContent).toContain('DO');
   });
 });

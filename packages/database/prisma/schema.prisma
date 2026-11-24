@@ -326,6 +326,13 @@ model User {
   emailVerified      Boolean   @default(false)
   name               String
   image              String?
+  // User photo (2026-11-24): the provider-neutral STORAGE KEY of this person's
+  // avatar, not a URL. Same split as Message.mediaKey vs Message.mediaUrl: the
+  // key survives a storage-provider migration (ImageKit -> R2) and resolves to a
+  // display URL at read time (storage/media-display.ts). `image` above stays
+  // untouched - it is better-auth's own field and other tooling reads it as a
+  // URL, so a key must never be written there.
+  avatarKey          String?
   phone              String?
   role               Role      @default(TELECALLER)
   // T-ORG: every user belongs to exactly one organization (the tenant).

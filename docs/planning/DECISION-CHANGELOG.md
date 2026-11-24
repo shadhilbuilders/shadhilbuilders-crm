@@ -1405,3 +1405,52 @@ record disagree, re-read the plan before touching the guide.
 
 **Still open:** the SSE service has no lint/test config (`test` is an
 `echo` stub), and there is no SSE load test. Both are Week 12+ work.
+
+## Round 57 - 2026-11-24, ~20:45 UTC - Profile photos
+
+Users can now set a face photo from Settings, and the sidebar shows it. Four
+calls made during the engineering review, each for a reason worth keeping:
+
+1. **The column is `User.avatarKey`, not `User.image`.** `image` is
+   better-auth's own profile-image field and other tooling reads it as a URL.
+   A storage key written there would render as a broken picture anywhere
+   better-auth has an opinion. This is the same split the repo already made for
+   chat: `Message.mediaKey` holds the key, `Message.mediaUrl` held the URL.
+2. **A key is only served when a row you can see owns it.** `/api/media/:key`
+   admitted exactly two owners (ProgressPhoto, Message), so a photo stored on a
+   user 404'd for everybody. The owner list now has a third arm, and that arm
+   filters `organizationId` explicitly because `User` carries NO RLS policy
+   (policies.sql only grants the app role straight through). Drop that filter
+   and one org's avatar key resolves another org's row.
+3. **The server resolves the display URL, the browser never builds one.**
+   `avatarDisplayUrl` picks the provider's public CDN when it has one and the
+   authenticated BFF path when it does not (local disk). The web reads the
+   result from the existing `GET /users/:id`, which every role may call for its
+   own row, so no new endpoint and no URL-building rule in the client.
+4. **The browser shrinks the photo, the server only verifies it.** Neither app
+   carries `sharp`, so the client centre-crops to 512px and re-encodes as JPEG
+   (about 40 to 90 KB). The server then `stat`s the object and refuses anything
+   whose stored bytes are not `image/*`, because the upload route falls back to
+   the client's declared type for formats it cannot identify.
+
+**Verification (not assumptions):**
+
+- `prisma migrate deploy` applied `20261124200000_user_avatar_key` to
+  `shadhil_crm`; `pnpm db:test:reset` rebuilt `shadhil_crm_test` from the
+  migrations, which is the step a schema change needs before DB-backed suites
+  can see the column.
+- Backend: 13 tests in `users.service.update-self.test.ts` (6 new: saves a photo
+  alone, refuses a foreign-org key, refuses a video, refuses an object that is
+  gone, clears and deletes the old blob, survives a delete outage), plus the
+  avatar arm in `media-access.service.test.ts` and `avatarDisplayUrl` in
+  `media-display.test.ts`.
+- Web: 45 tests across `image-resize`, `AvatarUpload`, `nav-user` and the
+  settings page.
+- The audit row now carries `avatarKey` in its before/after pair, so a photo
+  change is in the same history as a rename.
+
+**Lesson for the next agent:** a media key is not self-serving. The read route
+answers "does a row I can see own this key", and that list is closed on purpose,
+so any new column that holds a storage key needs an arm there AND a reason why
+the tenant filter is enough. Also: `User` has no RLS at all, which makes every
+future query on it a hand-written tenant check.

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   tx: {
     progressPhoto: { findFirst: vi.fn() },
     message: { findFirst: vi.fn() },
+    user: { findFirst: vi.fn() },
   },
   /** Records the RLS context the lookup ran under. */
   lastCtx: null as null | { userId: string; role: string; organizationId: string },
@@ -63,6 +64,7 @@ beforeEach(() => {
   mocks.lastCtx = null;
   mocks.tx.progressPhoto.findFirst.mockResolvedValue(null);
   mocks.tx.message.findFirst.mockResolvedValue(null);
+  mocks.tx.user.findFirst.mockResolvedValue(null);
 });
 
 describe('resolveOwner', () => {
@@ -109,6 +111,27 @@ describe('resolveOwner', () => {
     await expect(svc().resolveOwner(actor(), PHOTO_KEY)).resolves.toBeNull();
   });
 
+  // 2026-11-24: the user's photo. Before this arm existed, an avatar key was
+  // owned by no visible row, so every avatar 404'd even though the key was in
+  // the caller's own org.
+  it('attributes an avatar key to the user whose photo it is', async () => {
+    mocks.tx.user.findFirst.mockResolvedValue({ id: 'u-1' });
+    await expect(svc().resolveOwner(actor(), PHOTO_KEY)).resolves.toBe('User');
+  });
+
+  it('protects= an avatar lookup can never cross an org boundary', async () => {
+    mocks.tx.user.findFirst.mockResolvedValue({ id: 'u-1' });
+    await svc().resolveOwner(actor('ADMIN', ORG), PHOTO_KEY);
+
+    // `User` carries no RLS policy at all (policies.sql grants the app role
+    // straight through), so this filter is the ONLY tenant wall on the arm.
+    // Drop it and one org's avatar key resolves another org's row.
+    const arg = mocks.tx.user.findFirst.mock.calls[0]?.[0] as {
+      where: { avatarKey: string; organizationId: string };
+    };
+    expect(arg.where).toEqual({ avatarKey: PHOTO_KEY, organizationId: ORG });
+  });
+
   // The whole point: the lookup must inherit the CALLER's context, so RLS (not
   // this code) decides what is visible.
   it('runs the lookup under the caller RLS context, never a service identity', async () => {
@@ -134,6 +157,11 @@ describe('assertReadable', () => {
     await expect(svc().assertReadable(actor('CUSTOMER'), PHOTO_KEY)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('protects= an avatar key in the caller org serves its bytes', async () => {
+    mocks.tx.user.findFirst.mockResolvedValue({ id: 'u-1' });
+    await expect(svc().assertReadable(actor('ENGINEER'), PHOTO_KEY)).resolves.toBeUndefined();
   });
 
   it('fails_when= a cross-org key is served (404 before any query)', async () => {

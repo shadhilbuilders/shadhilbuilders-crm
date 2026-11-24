@@ -179,6 +179,13 @@ export type BackendUserDetail = {
    *  assign-manager picker exclude teams they are already on. */
   teamIds?: string[];
   projects: UserDetailProject[];
+  /**
+   * Photo (2026-11-24). `avatarKey` is the storage key and must never be used as
+   * a URL; `imageUrl` is what to render. Optional so a response cached from an
+   * older API still parses - the UI falls back to initials.
+   */
+  avatarKey?: string | null;
+  imageUrl?: string | null;
 };
 
 /**
@@ -266,6 +273,10 @@ export type BackendUpdatedProfile = {
   role: Role;
   /** Staff contact number, normalized digits-only. Null when unset (2026-11-18). */
   phone: string | null;
+  /** Storage key of the photo, or null after a removal (2026-11-24). */
+  avatarKey: string | null;
+  /** Server-resolved render URL for `avatarKey`. Null when there is no photo. */
+  imageUrl: string | null;
 };
 
 /**
@@ -293,6 +304,7 @@ export function useUpdateProfile() {
       phoneCountry,
       email,
       currentPassword,
+      avatarKey,
     }: {
       name?: string;
       phone?: string | null;
@@ -301,6 +313,12 @@ export function useUpdateProfile() {
       /** Only ever a placeholder -> real change; the API refuses anything else. */
       email?: string;
       currentPassword?: string;
+      /**
+       * Storage key from a completed POST /api/media upload, or null to remove
+       * the photo (2026-11-24). The server re-checks the org namespace and the
+       * stored bytes, so a wrong key comes back as a 400 with a message.
+       */
+      avatarKey?: string | null;
     }) =>
       api<BackendUpdatedProfile>('/users/me', {
         method: 'PATCH',
@@ -309,6 +327,7 @@ export function useUpdateProfile() {
           ...(phone !== undefined ? { phone } : {}),
           ...(phoneCountry !== undefined ? { phoneCountry } : {}),
           ...(email !== undefined ? { email, currentPassword } : {}),
+          ...(avatarKey !== undefined ? { avatarKey } : {}),
         },
       }),
     onSuccess: () => {

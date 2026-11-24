@@ -791,18 +791,41 @@ export function fileToBase64(file: File): Promise<string> {
 }
 
 /** POST /api/media to upload a chat attachment; returns the storage key. */
+/**
+ * Raw upload to POST /api/media (2026-11-24).
+ *
+ * Extracted from `uploadChatMedia` when the profile photo became a second
+ * caller: the route is generic (it namespaces by the caller's org and sniffs
+ * the bytes), so the ONLY chat-specific part is the message-shaped field names
+ * that `uploadChatMedia` adds on top. Two callers, one request builder.
+ */
+export async function uploadToMedia(
+  file: File,
+): Promise<{ key: string; mimeType: string; filename: string; size?: number }> {
+  const base64 = await fileToBase64(file);
+  const res = await api<{ key: string; mimeType?: string; filename?: string; size?: number }>(
+    '/media',
+    {
+      method: 'POST',
+      json: { filename: file.name, mimeType: file.type || 'application/octet-stream', base64 },
+    },
+  );
+  return {
+    key: res.key,
+    mimeType: res.mimeType ?? (file.type.length > 0 ? file.type : 'application/octet-stream'),
+    filename: res.filename ?? file.name,
+    ...(res.size !== undefined ? { size: res.size } : {}),
+  };
+}
+
 export async function uploadChatMedia(
   file: File,
 ): Promise<{ mediaKey: string; mediaMimeType: string; mediaFilename: string }> {
-  const base64 = await fileToBase64(file);
-  const res = await api<{ key: string }>('/media', {
-    method: 'POST',
-    json: { filename: file.name, mimeType: file.type || 'application/octet-stream', base64 },
-  });
+  const uploaded = await uploadToMedia(file);
   return {
-    mediaKey: res.key,
-    mediaMimeType: file.type || 'application/octet-stream',
-    mediaFilename: file.name,
+    mediaKey: uploaded.key,
+    mediaMimeType: uploaded.mimeType,
+    mediaFilename: uploaded.filename,
   };
 }
 

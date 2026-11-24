@@ -2,7 +2,12 @@
 // provider seam that makes an ImageKit -> R2 swap a one-adapter change.
 import { describe, expect, it } from 'vitest';
 
-import { bffMediaPath, isPubliclyServableImage, resolveMediaDisplayUrl } from './media-display';
+import {
+  avatarDisplayUrl,
+  bffMediaPath,
+  isPubliclyServableImage,
+  resolveMediaDisplayUrl,
+} from './media-display';
 
 describe('resolveMediaDisplayUrl - Option A policy', () => {
   const IK = 'https://ik.imagekit.io/paalstack';
@@ -106,5 +111,29 @@ describe('isPubliclyServableImage', () => {
     expect(isPubliclyServableImage(null)).toBe(false);
     expect(isPubliclyServableImage(undefined)).toBe(false);
     expect(isPubliclyServableImage('')).toBe(false);
+  });
+});
+
+describe('avatarDisplayUrl - the user photo (2026-11-24)', () => {
+  const key = '/org1/abc/face.webp';
+
+  it('serves a photo straight from the provider CDN when it has a public base', () => {
+    expect(avatarDisplayUrl(key, 'https://ik.imagekit.io/paalstack/org1/abc/face.webp')).toEqual({
+      url: 'https://ik.imagekit.io/paalstack/org1/abc/face.webp',
+      kind: 'direct',
+    });
+  });
+
+  it('falls back to the authenticated BFF path when the provider has none (local disk)', () => {
+    // Without this branch every avatar is a broken image in development, which
+    // is exactly the setup the media owner arm exists to serve.
+    expect(avatarDisplayUrl(key, null)).toEqual({ url: bffMediaPath(key), kind: 'proxied' });
+    expect(avatarDisplayUrl(key, null)?.url).toBe(`/api/bff/media/${encodeURIComponent(key)}`);
+  });
+
+  it('returns null when the user has no photo', () => {
+    expect(avatarDisplayUrl(null, 'https://cdn.test/x.webp')).toBeNull();
+    expect(avatarDisplayUrl(undefined, null)).toBeNull();
+    expect(avatarDisplayUrl('', 'https://cdn.test/x.webp')).toBeNull();
   });
 });

@@ -25,7 +25,9 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   Prisma,
@@ -43,6 +45,10 @@ import {
 import type { JwtPayload } from '@shadhil/auth';
 
 import { canonicalPhoneOrThrow } from '../common/phone';
+import { avatarDisplayUrl } from '../storage/media-display';
+import { keyBelongsToOrg } from '../storage/media-key-scope';
+import { STORAGE_PROVIDER } from '../storage/storage.tokens';
+import type { StorageProvider } from '../storage/storage.provider';
 import type {
   AssignManagerDto,
   CreateUserDto,
@@ -220,14 +226,39 @@ export interface UpdatedProfile {
   role: Role;
   /** Staff contact number, normalized digits-only. Null when unset (2026-11-18). */
   phone: string | null;
+  /** Storage key of the photo, or null after a removal (2026-11-24). */
+  avatarKey: string | null;
+  /**
+   * Ready-to-render URL for `avatarKey`, resolved here rather than in the
+   * browser: the provider's public base (or the authenticated BFF path when it
+   * has none) is a server concern, and duplicating it in the web is how the two
+   * drift apart. Null when the user has no photo.
+   */
+  imageUrl: string | null;
 }
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes, so bare constructor params arrive undefined at
   // runtime. PrismaService is exported from prisma.module.ts.
-  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prismaService: PrismaService,
+    /**
+     * StorageModule is @Global and exports this token, so the app always
+     * supplies it. Optional ONLY so the two dozen unit tests that construct
+     * `new UsersService(prisma)` without a storage double keep compiling.
+     *
+     * A missing provider fails CLOSED instead of silently skipping the check:
+     * `assertAvatarKey` refuses any photo key when it is absent, so a
+     * misconfigured module cannot become an unvalidated write path.
+     */
+    @Optional()
+    @Inject(STORAGE_PROVIDER)
+    private readonly storage?: StorageProvider,
+  ) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -967,7 +998,7 @@ export class UsersService {
     //    before/after pair (and so a no-op change can be reported as such).
     const before = await this.client.user.findUnique({
       where: { id: actor.sub },
-      select: { id: true, name: true, email: true, role: true, phone: true },
+      select: { id: true, name: true, email: true, role: true, phone: true, avatarKey: true },
     });
     if (before === null) {
       // The JWT is valid but the row is gone (hard-deleted account). Fail
@@ -1025,11 +1056,22 @@ export class UsersService {
       );
     }
 
+    // 1e. A photo key is not trusted because it parsed as a string (2026-11-24).
+    //     Two checks run before it can reach the row: the key must sit in the
+    //     caller's own org namespace (otherwise a tenant could point at another
+    //     tenant's object), and the STORED bytes must be an image. The upload
+    //     route records the type from the bytes, but it falls back to the
+    //     client's declaration for formats it cannot identify, so a stat is the
+    //     only honest check. Clearing the photo (null) skips both.
+    if (typeof dto.avatarKey === 'string') {
+      await this.assertAvatarKey(actor, dto.avatarKey);
+    }
+
     // 2. Write + audit atomically: the audit row must not survive a failed
     //    write, and the write must not land unaudited (AGENTS.md A2/G-1).
     //    One RLS transaction (AuditLog is FORCE RLS; User is not, but sharing
     //    the tx keeps the pair atomic).
-    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+    const saved = await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const client = tx as unknown as PrismaClient;
 
       // Only the provided fields. `phone: null` is the erase path; undefined
@@ -1040,6 +1082,7 @@ export class UsersService {
         phone?: string | null;
         email?: string;
         emailVerified?: boolean;
+        avatarKey?: string | null;
       } = {};
       if (dto.name !== undefined) data.name = dto.name;
       if (dto.phone !== undefined) {
@@ -1051,12 +1094,14 @@ export class UsersService {
         // The moment a mailer exists, the reset path must be gated on this.
         data.emailVerified = false;
       }
+      // `null` clears the photo; undefined means the caller did not touch it.
+      if (dto.avatarKey !== undefined) data.avatarKey = dto.avatarKey;
 
       const updated = await client.user
         .update({
           where: { id: actor.sub },
           data,
-          select: { id: true, name: true, email: true, role: true, phone: true },
+          select: { id: true, name: true, email: true, role: true, phone: true, avatarKey: true },
         })
         .catch(rethrowAsUserUniquenessConflict);
 
@@ -1067,8 +1112,18 @@ export class UsersService {
           organizationId: actor.organizationId,
           entityType: 'User',
           entityId: actor.sub,
-          before: { name: before.name, phone: before.phone, email: before.email },
-          after: { name: updated.name, phone: updated.phone, email: updated.email },
+          before: {
+            name: before.name,
+            phone: before.phone,
+            email: before.email,
+            avatarKey: before.avatarKey,
+          },
+          after: {
+            name: updated.name,
+            phone: updated.phone,
+            email: updated.email,
+            avatarKey: updated.avatarKey,
+          },
           reason: `profile updated by ${actor.email} (${actor.role})`,
         },
       });
@@ -1079,8 +1134,77 @@ export class UsersService {
         email: updated.email,
         role: updated.role,
         phone: updated.phone,
+        avatarKey: updated.avatarKey,
+        imageUrl: this.avatarUrl(updated.avatarKey),
       };
     });
+
+    // 3. Drop the replaced blob AFTER the row has committed, and never fail the
+    //    save on it: a stale object is a storage bill, a failed save is a user
+    //    who believes their photo did not save. Deleting before the write would
+    //    lose the old photo whenever the row write failed.
+    if (before.avatarKey !== null && before.avatarKey !== saved.avatarKey) {
+      await this.deleteAvatarBlob(before.avatarKey);
+    }
+
+    return saved;
+  }
+
+  /**
+   * Refuse a photo key the caller must not own (2026-11-24).
+   *
+   * The key's org segment is checked first because it is free, then the stored
+   * bytes are inspected: a key is a claim, the object is the evidence. Both
+   * failures are 400 rather than 404, because this is the caller's own profile
+   * write and they can act on a clear message.
+   */
+  private async assertAvatarKey(actor: JwtPayload, key: string): Promise<void> {
+    if (this.storage === undefined) {
+      // Fail closed: without a provider nothing can verify the object, and an
+      // unverified key is exactly what this guard exists to stop.
+      throw new BadRequestException('Photo uploads are not configured on this server');
+    }
+    if (!keyBelongsToOrg(key, actor.organizationId)) {
+      throw new BadRequestException('That photo does not belong to your organisation');
+    }
+    const info = await this.storage.stat(key);
+    if (info === null) {
+      throw new BadRequestException('That photo is no longer in storage - upload it again');
+    }
+    if (!info.mimeType.startsWith('image/')) {
+      throw new BadRequestException(
+        info.mimeType.startsWith('video/')
+          ? 'That file is a video - choose a photo instead'
+          : 'That file is not an image',
+      );
+    }
+  }
+
+  /**
+   * Display URL for a stored avatar key, or null when there is none.
+   *
+   * The provider seam decides: ImageKit answers a public CDN URL (world
+   * readable, the same policy chat images already follow), local disk has none
+   * and falls back to the authenticated BFF path, which the media owner arm now
+   * admits for `User.avatarKey`.
+   */
+  private avatarUrl(key: string | null): string | null {
+    const direct = key === null ? null : (this.storage?.publicUrl?.(key) ?? null);
+    return avatarDisplayUrl(key, direct)?.url ?? null;
+  }
+
+  /**
+   * Best-effort blob cleanup. StorageProvider.delete may throw on a network
+   * fault, and a replaced photo is not worth failing a saved profile over: log
+   * it and leave the object for a sweep.
+   */
+  private async deleteAvatarBlob(key: string): Promise<void> {
+    if (this.storage === undefined) return;
+    try {
+      await this.storage.delete(key);
+    } catch (error) {
+      this.logger.warn(`[users] could not delete replaced avatar ${key}: ${String(error)}`);
+    }
   }
 
   /**
@@ -1164,6 +1288,10 @@ export class UsersService {
           // 2026-11-18: staff phone + the customer's lead pointer. A CUSTOMER
           // has no phone of their own; theirs is derived from the lead below.
           phone: true,
+          // 2026-11-24: the photo key. Resolved to a URL below, because the
+          // provider's public base is a server concern and the web must never
+          // build a media path of its own.
+          avatarKey: true,
           customerLeadId: true,
         },
       });
@@ -1296,6 +1424,10 @@ export class UsersService {
         role: target.role,
         phone: target.role === 'CUSTOMER' ? derivedCustomerPhone : (target.phone ?? null),
         phoneSource: target.role === 'CUSTOMER' ? 'LEAD' : 'USER',
+        // `?? null`, not the raw column: a fixture or a pre-migration row can
+        // read as undefined, and the DTO promises a nullable string.
+        avatarKey: target.avatarKey ?? null,
+        imageUrl: this.avatarUrl(target.avatarKey ?? null),
         teamId,
         teamName: team?.name ?? null,
         teamIds: allMemberships.map((m) => m.teamId),
