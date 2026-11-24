@@ -110,6 +110,26 @@ type ProcessingResult = {
   errors: string[];
 };
 
+/** Meta's failure explanation as one line, or null when it gave none. */
+export function describeMetaErrors(
+  errors:
+    | { code?: number; title?: string; message?: string; error_data?: { details?: string } }[]
+    | undefined,
+): string | null {
+  if (errors === undefined || errors.length === 0) return null;
+  return errors
+    .slice(0, 3)
+    .map((e) => {
+      const head = [e.code === undefined ? null : `#${e.code}`, e.title, e.message]
+        .filter((part) => part !== undefined && part !== null && part !== '')
+        .join(' ');
+      const detail = e.error_data?.details;
+      return detail === undefined ? head : `${head}: ${detail}`;
+    })
+    .join(' | ')
+    .slice(0, 500);
+}
+
 @ApiTags('webhooks')
 @Controller('webhooks')
 @UseGuards(WhatsappSignatureGuard)
@@ -336,7 +356,19 @@ export class WebhooksController {
 
   /** Meta accepted, delivered, read or refused a message we sent. */
   private async handleStatusUpdate(
-    status: { id?: string; status?: string; recipient_id?: string; timestamp?: string | number },
+    status: {
+      id?: string;
+      status?: string;
+      recipient_id?: string;
+      timestamp?: string | number;
+      /** Present on `failed` receipts; the only explanation Meta gives. */
+      errors?: {
+        code?: number;
+        title?: string;
+        message?: string;
+        error_data?: { details?: string };
+      }[];
+    },
     metadata: { phone_number_id?: string } | undefined,
   ): Promise<boolean> {
     if (!status.id || !status.status) return false;
@@ -363,10 +395,22 @@ export class WebhooksController {
         // that table too. One context, both tables, one place that defines it.
         cronContextFor(organizationId),
         async (tx) => {
+          // The REASON, not just the word (2026-11-24). A failed receipt used to
+          // leave the row saying FAILED with no explanation anywhere, which is
+          // unfalsifiable: the outbox had logged "accepted", Meta had answered
+          // 200, and nothing recorded what went wrong after that. Meta puts its
+          // only explanation in `errors`, so it is kept.
+          const failureText = ourStatus === 'FAILED' ? describeMetaErrors(status.errors) : null;
+          if (failureText !== null) {
+            this.logger.warn(`[whatsapp] delivery failed for wamid=${wamid}: ${failureText}`);
+          }
           const outboxUpdated = await tx.$executeRawUnsafe(
-            `UPDATE "OutboundMessage" SET status = $1::"OutboundStatus" WHERE "wamid" = $2`,
+            `UPDATE "OutboundMessage"
+                SET status = $1::"OutboundStatus"${failureText === null ? '' : ', "lastError" = $3'}
+              WHERE "wamid" = $2`,
             ourStatus,
             wamid,
+            ...(failureText === null ? [] : [failureText]),
           );
           if (outboxUpdated === 0) return 0;
           await this.reportToDelivery(tx, wamid, ourStatus, receiptAt);

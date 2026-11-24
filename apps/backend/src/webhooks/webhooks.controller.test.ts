@@ -16,7 +16,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
-import { WebhooksController } from './webhooks.controller';
+import { describeMetaErrors, WebhooksController } from './webhooks.controller';
 
 // DB-backed test (real Postgres via pgbouncer). Skip cleanly when
 // DATABASE_URL isn't loaded (e.g. bare `pnpm vitest run` without env),
@@ -954,5 +954,39 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - notifies the lead owner', (
     );
 
     expect(notifier.notifyInbound).not.toHaveBeenCalled();
+  });
+});
+
+// ── the failure reason Meta gives, kept instead of dropped (2026-11-24) ─────
+describe('describeMetaErrors', () => {
+  it('keeps the code, title and detail Meta sends on a failed receipt', () => {
+    expect(
+      describeMetaErrors([
+        {
+          code: 131049,
+          title: 'Message not delivered',
+          message: 'This message was not delivered to maintain healthy ecosystem engagement.',
+        },
+      ]),
+    ).toBe(
+      '#131049 Message not delivered This message was not delivered to maintain healthy ecosystem engagement.',
+    );
+  });
+
+  it('appends error_data.details, which is where a format complaint lands', () => {
+    expect(
+      describeMetaErrors([
+        {
+          code: 132012,
+          title: 'Parameter format',
+          error_data: { details: 'header: Format mismatch, expected IMAGE, received UNKNOWN' },
+        },
+      ]),
+    ).toBe('#132012 Parameter format: header: Format mismatch, expected IMAGE, received UNKNOWN');
+  });
+
+  it('answers null rather than an empty string when Meta explains nothing', () => {
+    expect(describeMetaErrors(undefined)).toBeNull();
+    expect(describeMetaErrors([])).toBeNull();
   });
 });
