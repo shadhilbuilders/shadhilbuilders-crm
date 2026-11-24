@@ -76,6 +76,19 @@ describe('resolveOwner', () => {
     await expect(svc().resolveOwner(actor(), PHOTO_KEY)).resolves.toBe('Message');
   });
 
+  it('serves a video poster, which the row stores in posterKey not key', async () => {
+    // Measured on 2026-11-24 against a recorded clip: the clip's own key came
+    // back 200 and its poster 404, because only `key` was matched. Every video
+    // tile and every WhatsApp site-update image points at the poster.
+    mocks.tx.progressPhoto.findFirst.mockResolvedValue({ id: 'photo-1' });
+    await expect(svc().resolveOwner(actor(), PHOTO_KEY)).resolves.toBe('ProgressPhoto');
+
+    const arg = mocks.tx.progressPhoto.findFirst.mock.calls[0]?.[0] as {
+      where: { OR: Array<Record<string, unknown>> };
+    };
+    expect(arg.where.OR).toEqual([{ key: PHOTO_KEY }, { posterKey: PHOTO_KEY }]);
+  });
+
   it('resolves a legacy row that stored only the BFF path', async () => {
     mocks.tx.message.findFirst.mockResolvedValue({ id: 'msg-legacy' });
     await svc().resolveOwner(actor(), PHOTO_KEY);

@@ -57,7 +57,12 @@ export class MediaAccessService {
     const legacy = this.legacyPathFor(key);
     return withRlsContext(this.prismaService.$client, rlsContextFrom(actor), async (tx) => {
       const photo = await tx.progressPhoto.findFirst({
-        where: { key },
+        // A video row owns TWO keys: the clip in `key` and the JPEG frame in
+        // `posterKey`. Only `key` was matched until 2026-11-24, so every video's
+        // poster answered 404 through /api/media even though the timeline tile
+        // and the WhatsApp site-update image both point at it (measured on a
+        // recorded fixture: clip 200, poster 404).
+        where: { OR: [{ key }, { posterKey: key }] },
         select: { id: true },
       });
       if (photo !== null) return 'ProgressPhoto';
