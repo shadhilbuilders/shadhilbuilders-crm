@@ -83,6 +83,15 @@ A 200 with the whole body is expected from that curl: the route streams ranges o
 request carries a `Range` header, which is what the player sends when it seeks. If you curl it
 with `-H 'Range: bytes=0-1023'` you should get a 206 and 1024 bytes.
 
+**Correction, 2026-11-24: you will not get a 206 from the provider.** A ranged request through
+the production stack came back 200 with the whole 1,700,682-byte clip, because
+`imagekit.storage.ts` sends the range upstream, ImageKit ignores it, and the service reports that
+200 truthfully rather than relabelling it. Fixed the same day in the working tree:
+`MediaController.streamVideo` now cuts the window itself when a range was asked for and the
+provider answered 200, and answers 206 with a real `Content-Range`. See ADR 0003. That code is
+not deployed yet, so a curl today still shows 200; after the deploy the same curl should show 206
+and 1024 bytes. Until then treat "seek works" as unproven rather than failed on a phone.
+
 ## The probe, and what passing looks like
 
 Video stream:
@@ -145,13 +154,13 @@ which is why both Android rows land on the same engineer. No account records a h
 so each owner confirms their device matches the row before running it, and writes the model
 into the Result cell.
 
-| #   | Device                                | Pass criteria                                                                                               | Artefact         | Owner                                                                    | Date | Result |
-| --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------ | ---- | ------ |
-| 1   | Android mid-range, Android 13, Chrome | record starts under 1.5s; 20s clip uploads on throttled 3G within 90s; playback starts under 3s; seek works | probe + video    | site eng (ENGINEER, shadhilbuilderleads@gmail.com)                       |      |        |
-| 2   | Android low-end, Android 11, Chrome   | same, upload within 120s, survives backgrounding mid-upload                                                 | probe + video    | site eng (second handset; if only one exists, run row 1 and say so)      |      |        |
-| 3   | iPhone, current iOS, Safari           | same; MP4 recording works from the in-app recorder; permission denial recovers without a reload             | probe + video    | Vignesh M (OWNER, vignesh@shadhilbuilders.in)                            |      |        |
-| 4   | iPhone, previous iOS, Safari          | same                                                                                                        | probe + video    | ram (ADMIN, ram@shadhilbuilders.in)                                      |      |        |
-| 5   | Buyer, WhatsApp in-app browser        | portal opens from the deep link, clip plays, no download prompt                                             | screen recording | Gate Buyer (test org CUSTOMER on an APPROVED booking, Test Greens A-665) |      |        |
+| #   | Device                                | Pass criteria                                                                                               | Artefact         | Owner                                                                    | Date       | Result                                                                                                                                                                    |
+| --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Android mid-range, Android 13, Chrome | record starts under 1.5s; 20s clip uploads on throttled 3G within 90s; playback starts under 3s; seek works | probe + video    | site eng (ENGINEER, shadhilbuilderleads@gmail.com)                       |            | blocked: poster upload fails on the second object, see defect 1                                                                                                           |
+| 2   | Android low-end, Android 11, Chrome   | same, upload within 120s, survives backgrounding mid-upload                                                 | probe + video    | site eng (second handset; if only one exists, run row 1 and say so)      |            | blocked: same                                                                                                                                                             |
+| 3   | iPhone, current iOS, Safari           | same; MP4 recording works from the in-app recorder; permission denial recovers without a reload             | probe + video    | Vignesh M (OWNER, vignesh@shadhilbuilders.in)                            |            | blocked: same                                                                                                                                                             |
+| 4   | iPhone, previous iOS, Safari          | same                                                                                                        | probe + video    | ram (ADMIN, ram@shadhilbuilders.in)                                      |            | blocked: same                                                                                                                                                             |
+| 5   | Buyer, WhatsApp in-app browser        | portal opens from the deep link, clip plays, no download prompt                                             | screen recording | Gate Buyer (test org CUSTOMER on an APPROVED booking, Test Greens A-665) | 2026-11-24 | partial: portal 200 and the login bounce proven with the buyer's own session against a fixture clip; the clip half waits on defect 1 and on the poster fix being deployed |
 
 Row 5 has an account. Two exist, and only one of them can show a unit today:
 
@@ -185,6 +194,55 @@ Two deliberate choices about the assignment: rows 3 and 4 go to two different pe
 second iPhone row is not the same handset twice, and row 2 stays with the engineer rather than
 moving to an office account, because a low-end Android in an office proves nothing about the
 phone that films a site.
+
+## What a fixture clip proved before a phone touched this (2026-11-24)
+
+A generated clip was recorded through the real API path so row 5's portal half could be
+exercised without a handset. It is not a phone capture and must not be counted as one.
+
+    ProgressPhoto cmwua8fq1008601s8ogx3assv   kind=VIDEO   unit A-665 (plot 37)
+    key         /k7mjd78nxvpq9vs8fqkzmfyb/4475ee.../clip.mp4       1,700,682 bytes
+    posterKey   /k7mjd78nxvpq9vs8fqkzmfyb/4475ee.../poster.jpg         47,518 bytes
+    ffmpeg shape: h264 Main, has_b_frames=0, 15.000s, moov before mdat
+    caption says it is a fixture, stage STRUCTURE, batch gate-fixture-20261124
+
+Three defects came out of that run. Each was measured against production, and none of them is
+visible from a unit test.
+
+**1. One ImageKit token cannot upload two objects, and the recorder sent both under one grant.**
+The clip uploaded 200. The poster came back 400, "The token ... has been used before".
+`take-uploader.ts` keeps one grant per take and `upload.ts` sent clip and poster with the same
+`session.grant`, so the poster failed on every attempt, and a Retry reused the same spent token.
+A second grant does not rescue it either: `record` requires both keys inside the upload's folder,
+and the folder is derived from the upload id, so a fresh grant means a fresh folder. The fixture's
+poster had to be placed with the ImageKit private key from inside the api container to get past it.
+
+Fixed in the working tree on 2026-11-24: `createUploadAuth` now returns `tickets.clip` and
+`tickets.poster`, two authentication parameters with one expiry, and the uploader sends the
+matching ticket per slot. The assumption was proved against the live account before any deploy,
+from inside the api container with the real keys: two tickets, both uploads 200 into one folder
+(`/probe-207eabd1/clip.mp4`, `/probe-207eabd1/poster.jpg`), both objects then deleted. Not
+deployed yet.
+
+**2. A video's poster answered 404 while its clip answered 200.** `media-access.service.ts`
+resolved a key against `ProgressPhoto.key` only, and a video stores its JPEG in `posterKey`.
+Every timeline tile and every WhatsApp site-update image points at the poster, so the feature
+would have shipped with broken tiles. Fixed in the working tree on 2026-11-24 (match either
+column, plus a test), not deployed yet.
+
+**3. Byte ranges are dropped upstream.** See the correction above. Fixed in the working tree the
+same day (the API cuts the window itself, ADR 0003, two new tests), not deployed.
+
+What passed, measured over the public origin with the buyer's own session:
+
+    POST /api/auth/sign-in/email           200, no rotation gate
+    GET  /api/bff/customer-portal/me      200, one unit, A-665 plot 37
+    GET  /api/bff/media/<clip key>        200, video/mp4, 1,700,682 bytes
+    GET  /portal?unit=<id>&photo=<id>     200 with the session
+                                          307 to /login?next=<same path> without it
+
+The bounce is the one the plan promised: a signed-out buyer keeps the entire path, photo id
+included, in `next`, so the deep link survives the login screen.
 
 ## If a row fails
 
