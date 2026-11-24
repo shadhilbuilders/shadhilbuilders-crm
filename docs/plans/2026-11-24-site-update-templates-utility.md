@@ -166,10 +166,10 @@ interested? Reply YES and our team will call you.`) were both MARKETING. Editing
 place does not work: `POST /{template_id}` with `category: UTILITY` answers `3835031`, "You cannot
 update an approved template category." A category change means a new template.
 
-Submitted 2026-11-24, both `PENDING`:
+Submitted and approved the same day, both `APPROVED` as UTILITY:
 
-    shadhil_enquiry_reply        id 1481753927231084   PENDING   UTILITY   en
-    shadhil_site_visit_checkin   id 2538260253337929   PENDING   UTILITY   en
+    shadhil_enquiry_reply        id 1481753927231084   APPROVED   UTILITY   en
+    shadhil_site_visit_checkin   id 2538260253337929   APPROVED   UTILITY   en
 
 The wording is the whole submission. A follow up that asks "are you still interested" is a sales
 nudge whatever label it carries, and Meta reads the body, not the category. The check-in asks for
@@ -178,8 +178,20 @@ answers. Both keep the original variable order, `{{1}}` the first name and `{{2}
 slot, so a caller can swap in either without touching a line of code.
 
 Neither template is sent by anything today: `outbound.service.ts` only whitelists the two names so
-an outbox row may cite them. Approving them adds no behaviour. If they are approved, the switch is
-`WA_TEMPLATE_CHAT_REPLY=shadhil_enquiry_reply` and `WA_TEMPLATE_VISIT_FOLLOWUP=shadhil_site_visit_checkin`.
+an outbox row may cite them. The approval adds no behaviour.
+
+Both environment variables were switched at 12:36 and the service restarted. Read back from the
+container:
+
+    WA_TEMPLATE_SITE_UPDATE_IMAGE=shadhil_villa_update_image
+    WA_TEMPLATE_SITE_UPDATE_VIDEO=shadhil_villa_update_video
+    WA_TEMPLATE_CHAT_REPLY=shadhil_enquiry_reply
+    WA_TEMPLATE_VISIT_FOLLOWUP=shadhil_site_visit_checkin
+
+One loose end before the two MARKETING templates are deleted: the fallback in `outbound.service.ts`
+still names them (`process.env.WA_TEMPLATE_CHAT_REPLY || 'shadhil_chat_reply'`), so losing the
+Coolify variable would quietly put a marketing template back on the send path. Change those two
+defaults first, then delete the old pair from Meta.
 
 ## If review refuses
 
