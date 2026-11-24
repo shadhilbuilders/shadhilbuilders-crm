@@ -55,6 +55,10 @@ export const TeamMemberRowSchema = z.object({
   // stops routing here. null = no cap. Distinct from `weight`, which only
   // decides the share among members who are still eligible.
   maxOpenLeads: z.number().int().min(0).nullable(),
+  /** Photo (2026-11-24): the storage key, and the URL the server resolved for
+   *  it. Both null when the member has no photo. */
+  avatarKey: z.string().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
 });
 export type TeamMemberRow = z.infer<typeof TeamMemberRowSchema>;
 

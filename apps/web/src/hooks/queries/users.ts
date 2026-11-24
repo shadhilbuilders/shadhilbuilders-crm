@@ -19,6 +19,13 @@ export type BackendCreatedUser = {
   email: string;
   name: string;
   role: Role;
+  /**
+   * Photo (2026-11-24). `avatarKey` is the storage key and is never a URL;
+   * `imageUrl` is what to render. Both absent on create/update responses, and
+   * null when the person has no photo.
+   */
+  avatarKey?: string | null;
+  imageUrl?: string | null;
   teamId: string | null;
   /**
    * Present on list rows ONLY when the caller passed `includePhone`

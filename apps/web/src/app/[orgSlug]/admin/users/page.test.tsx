@@ -81,6 +81,23 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mocks.push }),
 }));
 
+// Radix's Avatar.Image only mounts its <img> after a real image load, which jsdom
+// never performs, so the row photo would be invisible to this suite. The double
+// echoes the props the table passes it: the wiring is what's under test here.
+vi.mock('@paalstack/react-ui', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@paalstack/react-ui');
+  const react = await import('react');
+  return {
+    ...actual,
+    Avatar: (props: { src?: string; fallback?: unknown }) =>
+      react.createElement(
+        'span',
+        { 'data-qa': 'avatar-double', 'data-src': props.src ?? '' },
+        props.fallback as never,
+      ),
+  };
+});
+
 vi.mock('@/lib/tenant-context', () => ({
   useOrgSlug: () => 'shadhil-builders',
 }));
@@ -509,5 +526,54 @@ describe('UsersPage - phone layout', () => {
     expect(html).toContain('Ravi Manager');
     expect(html).toContain('9876543210');
     expect(html).toContain('data-qa="data-table-row-actions-button"');
+  });
+
+  it('renders each row photo from the URL the server resolved (2026-11-24)', async () => {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', name: 'Admin', email: 'a@x', role: 'ADMIN', teamId: null },
+      isPending: false,
+      error: null,
+    });
+    mocks.useUsers.mockReturnValue({
+      data: {
+        rows: [
+          {
+            id: 'u-priya',
+            name: 'Priya Sharma',
+            email: 'priya@example.com',
+            role: 'SALES_EXEC',
+            teamId: 't-1',
+            // Resolved server-side: the list never sees the storage key.
+            imageUrl: 'https://cdn.test/org/abc/priya.webp',
+            projects: [],
+          },
+          {
+            id: 'u-rajesh',
+            name: 'Rajesh Kumar',
+            email: 'rajesh@example.com',
+            role: 'TELECALLER',
+            teamId: 't-1',
+            imageUrl: null,
+            projects: [],
+          },
+        ],
+        total: 2,
+      },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+
+    await mount();
+
+    const avatars = Array.from(
+      container?.querySelectorAll('[data-qa="avatar-double"]') ?? [],
+    ) as HTMLElement[];
+    expect(avatars.map((a) => a.getAttribute('data-src'))).toEqual([
+      'https://cdn.test/org/abc/priya.webp',
+      '',
+    ]);
+    // The fallback still renders for the row with no photo.
+    expect(avatars[1]?.textContent).toContain('RK');
   });
 });

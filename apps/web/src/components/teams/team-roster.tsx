@@ -26,10 +26,11 @@
 // single source of truth for the parts that must be identical everywhere.
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Badge, Button, toast } from '@paalstack/react-ui';
+import { Avatar, Badge, Button, toast } from '@paalstack/react-ui';
 
 import type { TeamMemberRow } from '@/hooks/queries/teams';
 import { reportingTargetForRole } from '@shadhil/api-types';
+import { initials } from '@/lib/initials';
 import { labelFor } from '@/lib/labels';
 import { useUpdateTeamMemberCap, useUpdateTeamMemberWeight } from '@/hooks/queries/teams';
 import { TeamMemberRemovalDialog } from './TeamMemberRemovalDialog';
@@ -177,23 +178,36 @@ export function TeamRosterMemberRow({
       className="border-border flex items-center justify-between gap-2 rounded-lg border p-3"
       data-qa={`${dataQaPrefix}-row-${member.userId}`}
     >
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{member.name}</span>
-          {isManagerRow ? (
-            <Badge variant="secondary" data-qa={`${dataQaPrefix}-manager-badge-${member.userId}`}>
-              Manager
-            </Badge>
-          ) : null}
-          <Badge variant="outline">{labelFor('role', member.role)}</Badge>
+      <div className="flex min-w-0 items-start gap-2">
+        {/* Photo (2026-11-24). The roster is a list of people, so a face belongs
+            beside the name; a photo-less member keeps the initials bubble at the
+            same size. */}
+        <Avatar
+          className="mt-0.5 h-8 w-8 shrink-0"
+          src={member.imageUrl ?? undefined}
+          alt=""
+          fallback={initials(member.name)}
+          imageProps={{ className: 'rounded-full' }}
+          fallbackProps={{ className: 'rounded-full text-xs' }}
+        />
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{member.name}</span>
+            {isManagerRow ? (
+              <Badge variant="secondary" data-qa={`${dataQaPrefix}-manager-badge-${member.userId}`}>
+                Manager
+              </Badge>
+            ) : null}
+            <Badge variant="outline">{labelFor('role', member.role)}</Badge>
+          </div>
+          <p className="text-muted-foreground text-xs">{member.email}</p>
+          <p
+            className="text-muted-foreground text-xs"
+            data-qa={`${dataQaPrefix}-reports-to-${member.userId}`}
+          >
+            Reports to {reportsToLabel ?? 'nobody assigned yet'}
+          </p>
         </div>
-        <p className="text-muted-foreground text-xs">{member.email}</p>
-        <p
-          className="text-muted-foreground text-xs"
-          data-qa={`${dataQaPrefix}-reports-to-${member.userId}`}
-        >
-          Reports to {reportsToLabel ?? 'nobody assigned yet'}
-        </p>
       </div>
       <div className="flex flex-col items-end gap-1">
         {canEditWeight ? (

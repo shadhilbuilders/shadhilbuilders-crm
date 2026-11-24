@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   avatarDisplayUrl,
+  avatarUrlFor,
   bffMediaPath,
   isPubliclyServableImage,
   resolveMediaDisplayUrl,
@@ -135,5 +136,23 @@ describe('avatarDisplayUrl - the user photo (2026-11-24)', () => {
     expect(avatarDisplayUrl(null, 'https://cdn.test/x.webp')).toBeNull();
     expect(avatarDisplayUrl(undefined, null)).toBeNull();
     expect(avatarDisplayUrl('', 'https://cdn.test/x.webp')).toBeNull();
+  });
+});
+
+describe('avatarUrlFor - the one resolver both lists use (2026-11-24)', () => {
+  const key = '/org1/abc/face.webp';
+
+  it('uses the provider public URL when there is one', () => {
+    expect(avatarUrlFor(key, (k) => `https://cdn.test${k}`)).toBe(`https://cdn.test${key}`);
+  });
+
+  it('falls back to the media path when the provider has no public base', () => {
+    expect(avatarUrlFor(key, undefined)).toBe(bffMediaPath(key));
+    expect(avatarUrlFor(key, () => null)).toBe(bffMediaPath(key));
+  });
+
+  it('returns null for a person with no photo', () => {
+    expect(avatarUrlFor(null, (k) => `https://cdn.test${k}`)).toBeNull();
+    expect(avatarUrlFor(undefined, undefined)).toBeNull();
   });
 });

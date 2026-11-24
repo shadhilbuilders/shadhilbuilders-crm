@@ -39,6 +39,7 @@ import { useCreateVisit, useLeads } from '@/hooks/queries/crm';
 import { useProjectId } from '@/lib/tenant-context';
 import { useProjectSalesExecs, useTeamMembers } from '@/hooks/queries/users';
 import { isAdminLike, useSessionUser } from '@/lib/session';
+import { canConductVisit, coOwnerClash } from '@/lib/visit-conductor';
 import { labelFor } from '@/lib/labels';
 import { SCHEDULABLE_LEAD_STATES } from '@shadhil/api-types';
 
@@ -239,6 +240,51 @@ export function ScheduleVisitDialog({
     });
   }, [open, initialLeadId, defaultDate, defaultTime, form]);
 
+  // ── Co-owner pre-emption (2026-11-24) ─────────────────────────────────────
+  // A lead that already carries a co-owner refuses a DIFFERENT conductor with a
+  // 409, because that seat is what carries the current exec's read access. The
+  // dialog now says so before the submit, and defaults the picker to whoever
+  // holds the seat, so the valid choice is the one already made.
+  //
+  // Warn, never block: the server lets a MANAGER who already leads the lead's team
+  // through, and this component cannot see team leadership (see lib/visit-conductor).
+  const watchedLeadId = form.watch('leadId');
+  const watchedExecId = form.watch('salesExecId') ?? '';
+  const selectedLead = useMemo(() => {
+    const rows = leadsQuery.data;
+    if (!Array.isArray(rows) || watchedLeadId.length === 0) return null;
+    return (
+      (
+        rows as Array<{
+          id: string;
+          ownerId?: string | null;
+          coOwnerId?: string | null;
+          coOwnerName?: string | null;
+        }>
+      ).find((r) => r.id === watchedLeadId) ?? null
+    );
+  }, [leadsQuery.data, watchedLeadId]);
+
+  const conductorId = useMemo(() => {
+    if (watchedExecId.length > 0) return watchedExecId;
+    // A blank field means "me" for anyone who may conduct; for a telecaller it is
+    // a 400, which the required-field rule above already prevents.
+    return user !== null && canConductVisit(user.role) ? user.id : null;
+  }, [watchedExecId, user]);
+
+  const clash = selectedLead === null ? null : coOwnerClash(selectedLead, conductorId);
+
+  // Default the picker to the person who already holds the seat, when they are one
+  // of the options. This is the pre-emption that matters: most of these bookings
+  // name the same exec again.
+  useEffect(() => {
+    if (!showExecPicker || selectedLead === null) return;
+    const seat = selectedLead.coOwnerId ?? null;
+    if (seat === null || (form.getValues('salesExecId') ?? '').length > 0) return;
+    if (!salesExecOptions.some((o) => o.value === seat)) return;
+    form.setValue('salesExecId', seat, { shouldValidate: false });
+  }, [form, salesExecOptions, selectedLead, showExecPicker]);
+
   const leadOptions = useMemo(() => {
     const rows = leadsQuery.data;
     if (rows === undefined || !Array.isArray(rows)) return [];
@@ -382,6 +428,15 @@ export function ScheduleVisitDialog({
       open={open}
       onOpenChange={onOpenChange}
     >
+      {clash !== null ? (
+        <p
+          className="text-warning-soft-fg bg-warning-soft mb-3 rounded-md px-3 py-2 text-xs"
+          data-qa="schedule-visit-coowner-note"
+        >
+          This lead's co-owner is {clash.coOwnerName ?? 'another person'}. Naming someone else will
+          be refused unless the lead is reassigned or its co-owner cleared first.
+        </p>
+      ) : null}
       <Form
         id="schedule-visit-form"
         form={form}

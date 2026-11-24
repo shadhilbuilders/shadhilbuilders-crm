@@ -1454,3 +1454,38 @@ answers "does a row I can see own this key", and that list is closed on purpose,
 so any new column that holds a storage key needs an arm there AND a reason why
 the tenant filter is enough. Also: `User` has no RLS at all, which makes every
 future query on it a hand-written tenant check.
+
+## Round 58 - 2026-11-25, ~05:00 IST - Faces in every staff list, and the co-owner warning
+
+The photo shipped last round on the settings page and the sidebar footer. Two lists
+that show people still showed initials: the admin Users table and a team's roster.
+Both now carry `avatarKey` plus the server-resolved `imageUrl`, and both render it.
+
+One resolver, not three. `avatarUrlFor(key, provider.publicUrl)` in
+`storage/media-display.ts` is the only place that decides CDN-or-proxy for a photo;
+`UsersService` (detail and list) and `TeamsService` (roster) all call it, so a list and
+a detail page cannot disagree about a URL. `TeamsService` takes the storage provider
+as an OPTIONAL dependency for the same reason `UsersService` does: two dozen unit
+tests build these services with a prisma double only, and a missing provider must fall
+back to the media path rather than crash the boot.
+
+Scheduling a visit on a lead that already carries a co-owner refused a different
+conductor with a 409 that arrived after the form was filled in. `lib/visit-conductor.ts`
+now predicts it: the dialog says whose seat it is, and defaults the picker to that
+person so the valid choice is the one already made. It WARNS and never blocks, because
+the server lets a MANAGER who already leads the lead's team through, and the dialog
+cannot see team leadership. A false block would forbid a legitimate hand-over.
+
+**Verified live, quiet hours (2026-11-25 04:19 IST).** The deferral had only unit
+tests and a 14:54Z send from INSIDE the window. A fresh prod lead was walked to a
+COMPLETED visit at 04:19 IST, outside 08:00-20:00: `checkinDueAt` came back
+2026-11-25T02:30Z (= 08:00 IST), `checkinQueuedAt` NULL, and the lead had zero
+`OutboundMessage` rows. The 08:00 send for that test visit was then marked dropped
+(`checkinQueuedAt` set) so a dummy number receives nothing. Full transcript in
+`~/.hermes/cache/scratch/quiet-hours-live-PROOF.md`.
+
+**Lesson for the next agent:** two of these three changes exist because a rule lived
+in one service and not in the twin that needed it. When a list and a detail page both
+show the same field, resolve it in one function and make both call it; when a client
+mirrors a server guard, mirror only the part it can actually know, and warn for the
+rest.

@@ -635,6 +635,44 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     };
   }
 
+  // ── Photo column on the Users table (2026-11-24)
+  describe('avatar', () => {
+    it('resolves each row photo to a URL and keeps a null when there is none', async () => {
+      const { service, mocks } = makeListService();
+      mocks.userFindMany.mockResolvedValue([
+        {
+          id: 'se-1',
+          email: 'se@x',
+          name: 'Priya',
+          role: 'SALES_EXEC',
+          avatarKey: '/org-1/avatar/face.webp',
+          teamMemberships: [],
+        },
+        {
+          id: 'tc-1',
+          email: 'tc@x',
+          name: 'Rajesh',
+          role: 'TELECALLER',
+          avatarKey: null,
+          teamMemberships: [],
+        },
+      ]);
+      mocks.userCount.mockResolvedValue(2);
+
+      const result = await service.list(adminActor);
+
+      expect(result.rows[0]?.avatarKey).toBe('/org-1/avatar/face.webp');
+      // No storage double here, so the provider has no public base and the rule
+      // falls back to the authenticated media path - the same branch local disk
+      // takes. A key rendered raw would be a broken image.
+      expect(result.rows[0]?.imageUrl).toBe(
+        `/api/bff/media/${encodeURIComponent('/org-1/avatar/face.webp')}`,
+      );
+      expect(result.rows[1]?.avatarKey).toBeNull();
+      expect(result.rows[1]?.imageUrl).toBeNull();
+    });
+  });
+
   // ── "Reports to" column on the Users table (2026-10-08, list form 2026-11-07)
   // Same rule as getUser(): team-manager roles -> one line per team; MANAGER/
   // ADMIN -> the org OWNER; OWNER/CUSTOMER -> nobody. Rule lives in
@@ -1273,6 +1311,9 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
           email: 'a@x',
           name: 'A',
           role: 'TELECALLER',
+          // 2026-11-24: the photo columns are always present on a list row.
+          avatarKey: null,
+          imageUrl: null,
           teamId: 'team-x',
           projects: ['Shadhil Metro Heights'],
           // team-x has no resolvable manager in this fixture - and no

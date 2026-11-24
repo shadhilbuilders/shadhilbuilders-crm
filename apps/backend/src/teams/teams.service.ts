@@ -13,6 +13,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { withRlsContext, rlsContextFrom } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
@@ -28,6 +29,9 @@ import type {
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { avatarUrlFor } from '../storage/media-display';
+import { STORAGE_PROVIDER } from '../storage/storage.tokens';
+import type { StorageProvider } from '../storage/storage.provider';
 import { findOrgOwner, isAdminClass } from '../users/roles';
 
 import { TeamAccessService } from './team-access.service';
@@ -37,7 +41,17 @@ export class TeamsService {
   // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes, so bare constructor params arrive undefined at
   // runtime. PrismaService is exported from prisma.module.ts.
-  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prismaService: PrismaService,
+    /**
+     * Optional for the same reason as UsersService: two dozen unit tests build
+     * this service with a prisma double only. StorageModule is @Global, so the app
+     * always supplies it; a missing provider just falls back to the media path.
+     */
+    @Optional()
+    @Inject(STORAGE_PROVIDER)
+    private readonly storage?: StorageProvider,
+  ) {}
 
   // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed.
   private readonly teamAccess = new TeamAccessService();
@@ -163,11 +177,23 @@ export class TeamsService {
           weight: true,
           // T-MAXOPENLEADS (2026-09-28): and their open-lead ceiling.
           maxOpenLeads: true,
-          user: { select: { id: true, name: true, email: true, role: true } },
+          // 2026-11-24: the photo, so the roster shows a face next to the name.
+          user: {
+            select: { id: true, name: true, email: true, role: true, avatarKey: true },
+          },
         },
       });
+      const publicUrl =
+        this.storage?.publicUrl === undefined
+          ? undefined
+          : this.storage.publicUrl.bind(this.storage);
       const members = teamMembers
-        .map((tm) => ({ ...tm.user, weight: tm.weight, maxOpenLeads: tm.maxOpenLeads }))
+        .map((tm) => ({
+          ...tm.user,
+          weight: tm.weight,
+          maxOpenLeads: tm.maxOpenLeads,
+          imageUrl: avatarUrlFor(tm.user.avatarKey, publicUrl),
+        }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
       // T-REPORTS-TO-OWNER: this team's manager reports to the org OWNER
@@ -194,6 +220,8 @@ export class TeamsService {
           name: m.name,
           email: m.email,
           role: m.role,
+          avatarKey: m.avatarKey ?? null,
+          imageUrl: m.imageUrl,
           weight: m.weight,
           maxOpenLeads: m.maxOpenLeads,
         })),

@@ -72,6 +72,23 @@ export function avatarDisplayUrl(
 }
 
 /**
+ * Display URL for a stored avatar key, given a provider's `publicUrl` (2026-11-24).
+ *
+ * The one call shape both UsersService and TeamsService use: pass the key and the
+ * provider's public-URL function (or undefined when a test double has none) and get
+ * back either the CDN URL or the authenticated media path. Two call sites building
+ * this by hand is how a list and a detail page end up disagreeing.
+ */
+export function avatarUrlFor(
+  key: string | null | undefined,
+  publicUrl: ((key: string) => string | null) | undefined,
+): string | null {
+  const direct =
+    key === null || key === undefined || publicUrl === undefined ? null : publicUrl(key);
+  return avatarDisplayUrl(key ?? null, direct)?.url ?? null;
+}
+
+/**
  * Decide the display URL for an attachment.
  *
  * Precedence:

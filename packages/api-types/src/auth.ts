@@ -194,6 +194,10 @@ export const UserListResultSchema = z.object({
       email: z.string(),
       name: z.string(),
       role: RoleSchema,
+      /** Photo (2026-11-24): the storage key, and the URL the server resolved
+       *  for it. Both null when the person has no photo. */
+      avatarKey: z.string().nullable().optional(),
+      imageUrl: z.string().nullable().optional(),
       teamId: z.string().nullable(),
       /**
        * Present only when the caller passed `includePhone` (2026-11-18).

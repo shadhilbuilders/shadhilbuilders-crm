@@ -38,6 +38,10 @@ export type TeamMemberRow = {
   // T-MAXOPENLEADS (2026-09-28): hard ceiling on open leads before auto-assign
   // stops routing here. null/undefined = no cap.
   maxOpenLeads?: number | null;
+  /** Photo (2026-11-24), resolved by the server. Null when they have none. */
+  imageUrl?: string | null;
+  /** The storage key behind `imageUrl`. Never render this. */
+  avatarKey?: string | null;
 };
 
 export type TeamDetail = {

@@ -318,6 +318,11 @@ describe('TeamsService.getTeam', () => {
           name: 'Tele Caller One',
           email: 'tc1@x',
           role: 'TELECALLER',
+          // 2026-11-24: the roster carries the photo too. The fixture double has
+          // no storage provider, so the key resolves to the media path (or null
+          // when there is no photo) rather than a CDN URL.
+          avatarKey: null,
+          imageUrl: null,
         },
       ],
     });

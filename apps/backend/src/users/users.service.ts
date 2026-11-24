@@ -45,7 +45,7 @@ import {
 import type { JwtPayload } from '@shadhil/auth';
 
 import { canonicalPhoneOrThrow } from '../common/phone';
-import { avatarDisplayUrl } from '../storage/media-display';
+import { avatarUrlFor } from '../storage/media-display';
 import { keyBelongsToOrg } from '../storage/media-key-scope';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import type { StorageProvider } from '../storage/storage.provider';
@@ -1189,8 +1189,9 @@ export class UsersService {
    * admits for `User.avatarKey`.
    */
   private avatarUrl(key: string | null): string | null {
-    const direct = key === null ? null : (this.storage?.publicUrl?.(key) ?? null);
-    return avatarDisplayUrl(key, direct)?.url ?? null;
+    const publicUrl =
+      this.storage?.publicUrl === undefined ? undefined : this.storage.publicUrl.bind(this.storage);
+    return avatarUrlFor(key, publicUrl);
   }
 
   /**
@@ -2031,6 +2032,12 @@ export class UsersService {
             email: true,
             name: true,
             role: true,
+            // 2026-11-24: the photo key. Always selected (unlike phone, which is
+            // opt-in): a face is how staff recognise a colleague in a list, and a
+            // key is not PII in the sense a mobile number is. Resolved to a URL in
+            // the mapping below with no I/O - the provider's public base is a
+            // string build, so a page of rows costs nothing.
+            avatarKey: true,
             // 2026-11-18: opt-in (see UserFilterDto.includePhone). Excluded by
             // default because this same payload backs six picker surfaces that
             // have no reason to see staff mobiles.
@@ -2225,6 +2232,10 @@ export class UsersService {
           email: r.email,
           name: r.name,
           role: r.role,
+          avatarKey: r.avatarKey ?? null,
+          // Resolved here, not in the browser: the same rule GET /users/:id uses,
+          // so the list and the detail page cannot disagree about the URL.
+          imageUrl: this.avatarUrl(r.avatarKey ?? null),
           teamId: resolvedTeamIds[i] ?? null,
           // Only present when includePhone was requested; omitting the keys
           // entirely keeps every other picker's payload byte-identical.

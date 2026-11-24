@@ -21,6 +21,7 @@
 // Change role opens a confirm dialog (explicit approval before the critical
 // role change). Edit/Delete hit PATCH/DELETE /api/users/:id.
 import {
+  Avatar,
   Button,
   Combobox,
   DataTable,
@@ -59,6 +60,7 @@ import {
   type ReportsToLine,
 } from '@/hooks/queries/users';
 import { useTeams } from '@/hooks/queries/teams';
+import { initials } from '@/lib/initials';
 import type { Role } from '@/apis/client';
 import { STAFF_ROLES } from '@/apis/client';
 import { orgHref } from '@/lib/nav';
@@ -94,6 +96,8 @@ type UserRow = {
   email: string;
   role: Role;
   teamId: string | null;
+  /** Photo (2026-11-24), resolved by the server. Null when they have none. */
+  imageUrl?: string | null;
   projects: string[];
   /** Normalized digits-only (2026-11-18). For a CUSTOMER this is derived from
    *  their lead; `phoneSource` distinguishes the two. */
@@ -587,17 +591,29 @@ function UserTable({
           // min-w-45 keeps the name from wrapping mid-surname on desktop, but a
           // 180px floor is a third of a 390px screen and is most of why the
           // table overflowed there.
-          <div className={compact ? 'min-w-0' : 'min-w-45'}>
-            <Link
-              href={orgHref(orgSlug, `/admin/users/${row.original.id}`)}
-              className="text-link text-sm font-medium hover:underline hover:underline-offset-2"
-              data-qa={`user-row-link-${row.original.id}`}
-            >
-              {row.original.name}
-            </Link>
-            {row.original.id === selfId ? (
-              <span className="text-muted-foreground block text-xs">(you)</span>
-            ) : null}
+          <div className={`flex items-center gap-2 ${compact ? 'min-w-0' : 'min-w-45'}`}>
+            {/* A face is how a 40-row staff list gets scanned (2026-11-24). The
+                initials fallback keeps a photo-less row the same height. */}
+            <Avatar
+              className="h-8 w-8 shrink-0"
+              src={row.original.imageUrl ?? undefined}
+              alt=""
+              fallback={initials(row.original.name)}
+              imageProps={{ className: 'rounded-full' }}
+              fallbackProps={{ className: 'rounded-full text-xs' }}
+            />
+            <div className="min-w-0">
+              <Link
+                href={orgHref(orgSlug, `/admin/users/${row.original.id}`)}
+                className="text-link text-sm font-medium hover:underline hover:underline-offset-2"
+                data-qa={`user-row-link-${row.original.id}`}
+              >
+                {row.original.name}
+              </Link>
+              {row.original.id === selfId ? (
+                <span className="text-muted-foreground block text-xs">(you)</span>
+              ) : null}
+            </div>
           </div>
         ),
         enableSorting: true,
