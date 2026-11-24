@@ -424,9 +424,18 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     expect(pillCount).toBeGreaterThanOrEqual(1);
   });
 
-  test('BONUS - the completed visit left its check-in in the chat panel', async ({ page }) => {
-    // The check-in is written by the reminder cron, not by the request that recorded
-    // the outcome, so the row appears on the next tick: up to a minute, not at once.
+  test('BONUS - the chat panel renders for the lead the visit was completed on', async ({
+    page,
+  }) => {
+    // This step used to wait for the check-in row. It cannot: the row is written by
+    // the reminder cron inside an 08:00-20:00 IST window, and a COMPLETED recorded
+    // outside it defers to 08:00 the next morning (visits/checkin-schedule.ts). CI
+    // runs whenever a push happens, so a fixed expectation here is a coin flip.
+    //
+    // So the step asserts the pane, always, and asserts the row only when the window
+    // is open and the row can legitimately exist. The deferral itself is proved by
+    // apps/backend/src/visits/checkin-schedule.test.ts and the sweep cases in
+    // visit-reminders.test.ts, which drive the clock directly.
     test.setTimeout(150_000);
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'BONUS depends on a lead created in STEP 3');
@@ -439,14 +448,27 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
       timeout: 15_000,
     });
 
-    // STEP 7 marked this lead's visit COMPLETED, which records when the UTILITY
-    // check-in may go out; the cron then writes it into the thread once its hour
-    // arrives. So the pane is no longer empty for a freshly-created lead, and
-    // waiting for that entry is the only end-to-end proof in this suite that the
-    // completed-visit wiring reaches the customer thread at all.
     const chat = page.locator('[data-qa="chat-messages"]');
     await expect(chat).toBeVisible({ timeout: 10_000 });
-    await expect(chat.getByText(/Site visit check-in sent/)).toBeVisible({ timeout: 120_000 });
+
+    const istHour = Number(
+      new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Kolkata',
+      }).format(new Date()),
+    );
+    const insideWindow = istHour >= 8 && istHour < 20;
+    console.log(`[BONUS] ${istHour}:xx IST, check-in window ${insideWindow ? 'open' : 'closed'}.`);
+
+    if (insideWindow) {
+      // The tick runs every minute; give it one full period plus the queue delay.
+      await expect(chat.getByText(/Site visit check-in sent/)).toBeVisible({ timeout: 120_000 });
+    } else {
+      // Nothing to wait for tonight. Assert the pane's own honest state instead of
+      // pretending the message is late.
+      await expect(chat).not.toContainText(/Site visit check-in sent/);
+    }
     await shot(page, 'bonus-chat-pane');
   });
 });
