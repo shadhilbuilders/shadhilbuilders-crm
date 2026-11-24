@@ -146,7 +146,8 @@ consent came after delivery because the capture service imports the gate deliver
 
 ## Task 4: needs hardware, cannot be done in CI
 
-The device gate (five rows, in the plan under "Device gate before the flag flips") has never been
+The checklist is `2026-11-24-site-update-video-device-gate.md`: five rows, the fetch-the-stored-clip
+recipe, the ffprobe commands, and a slot per row for the artefact. The device gate has never been
 run: no real phone, no Safari, no throttled 3G, no WhatsApp in-app browser. Only a fake camera has
 been exercised. This is also the only place the AAC-when-audio-on case can be proven - the dev
 Chromium reports `avc1` as supported but `avc1,mp4a.40.2` as NOT, and records a silent clip when
