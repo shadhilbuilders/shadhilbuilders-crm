@@ -67,6 +67,7 @@ import {
 } from '@/lib/site-photos';
 import {
   groupByPhase,
+  nextSiteFilter,
   phaseAccent,
   phaseAccentClass,
   SITE_EMPTY_COPY,
@@ -307,8 +308,13 @@ export function SiteHome({
               type="single"
               value={filter}
               onValueChange={(next) => {
-                const value = Array.isArray(next) ? next[0] : next;
-                if (value !== undefined) onFilterChange(value as SiteFilter);
+                // Exactly one chip is always on (2026-11-24). The widget reports
+                // a press on the ACTIVE chip as "", and an empty filter matches
+                // nothing - see nextSiteFilter. The value is controlled by
+                // `filter`, so a refused press snaps straight back.
+                const pressed = Array.isArray(next) ? next[0] : next;
+                const wanted = nextSiteFilter(filter, pressed);
+                if (wanted !== filter) onFilterChange(wanted);
               }}
               items={FILTER_OPTIONS.map((option) => ({
                 value: option.value,

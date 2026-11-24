@@ -6,6 +6,7 @@ import {
   defaultSiteFilter,
   groupByPhase,
   isCapped,
+  nextSiteFilter,
   phaseAccent,
   siteCounts,
   siteEmptyCopyFor,
@@ -213,5 +214,27 @@ describe('siteEmptyCopyFor / SITE_SCOPE_COPY (2026-11-10)', () => {
     expect(SITE_SCOPE_COPY.MANAGED).toContain('read-only');
     expect(SITE_SCOPE_COPY.ALL).toContain('read-only');
     expect(SITE_SCOPE_COPY.ASSIGNED).not.toContain('read-only');
+  });
+});
+
+describe('nextSiteFilter - one chip is always on (2026-11-24)', () => {
+  it('switches to a different chip', () => {
+    expect(nextSiteFilter('all', 'needs')).toBe('needs');
+    expect(nextSiteFilter('needs', 'none')).toBe('none');
+  });
+
+  it('ignores a press on the chip that is already on', () => {
+    // The widget reports this one, and there is no "no filter" state to fall into.
+    expect(nextSiteFilter('updated', 'updated')).toBe('updated');
+  });
+
+  it('ignores the empty value the widget sends when a single toggle is deselected', () => {
+    expect(nextSiteFilter('needs', '')).toBe('needs');
+    expect(nextSiteFilter('needs', undefined)).toBe('needs');
+    expect(nextSiteFilter('needs', null)).toBe('needs');
+  });
+
+  it('ignores a value that is not a filter at all', () => {
+    expect(nextSiteFilter('all', 'everything')).toBe('all');
   });
 });

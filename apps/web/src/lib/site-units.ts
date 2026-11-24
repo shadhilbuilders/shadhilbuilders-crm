@@ -52,6 +52,37 @@ export function siteCounts(units: readonly UnitRow[], now: Date): SiteCounts {
   return counts;
 }
 
+/** Every value the chip row can carry, in render order. */
+const SITE_FILTERS = ['all', 'needs', 'updated', 'none'] as const;
+
+/** Narrow an untrusted widget value ("", a stale label) to a real filter. */
+export function isSiteFilter(value: string): value is SiteFilter {
+  return (SITE_FILTERS as readonly string[]).includes(value);
+}
+
+/**
+ * The filter a chip press should leave behind (2026-11-24).
+ *
+ * A single-select toggle lets you press the chip that is ALREADY on, and the
+ * widget reports that as an empty value. There is no "no filter" state on this
+ * page: an empty filter matches no row at all (`matchesFilter` falls through its
+ * switch), so the list would go blank while the counts above it stay full. That
+ * is not a state worth offering, so:
+ *
+ *   - pressing the active chip, or anything the widget invents, changes nothing;
+ *   - any other real filter wins.
+ *
+ * "All" is the way back to the whole list, and it is a chip like the others.
+ */
+export function nextSiteFilter(
+  current: SiteFilter,
+  pressed: string | null | undefined,
+): SiteFilter {
+  if (pressed === null || pressed === undefined || pressed === '') return current;
+  if (pressed === current) return current;
+  return isSiteFilter(pressed) ? pressed : current;
+}
+
 /**
  * The default filter: "Needs a photo" when there is work in that bucket,
  * otherwise All. An empty default filter on a page whose whole job is "which
