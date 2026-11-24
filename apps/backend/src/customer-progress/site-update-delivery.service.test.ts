@@ -20,9 +20,15 @@ import {
   type DeliveryInput,
 } from './site-update-delivery.service';
 
-const NOW = new Date('2026-11-23T10:00:00.000Z');
-const WARM = new Date('2026-11-23T09:00:00.000Z'); // an hour ago: window open
-const COLD = new Date('2026-11-20T09:00:00.000Z'); // days ago: window closed
+// RELATIVE TO THE RUN, not to a fixed calendar day (2026-11-24). The service
+// reads the real clock to decide whether the buyer's 24h window is open, so
+// pinning these to a date makes the whole file turn red the moment that date's
+// window closes - which is what happened at 09:00Z on 2026-11-24, with no code
+// change behind it. The expected message bodies take the date from NOW, so they
+// keep asserting that the capture date is in the text.
+const NOW = new Date();
+const WARM = new Date(NOW.getTime() - 60 * 60 * 1000); // an hour ago: window open
+const COLD = new Date(NOW.getTime() - 4 * 24 * 60 * 60 * 1000); // days ago: window closed
 
 const ctx = (over: Partial<DeliveryContext> = {}): DeliveryContext => ({
   templateName: 'shadhil_site_update',
@@ -84,7 +90,7 @@ describe('deliveryCaption', () => {
 
   it('greets by first name, then names the villa, the stage and the date', () => {
     expect(deliveryCaption(input, null, 'Asha')).toBe(
-      'Hello Asha, here is your latest site update for villa A-101 (plot 37) · STRUCTURE · 2026-11-23.\nPlinth poured',
+      `Hello Asha, here is your latest site update for villa A-101 (plot 37) · STRUCTURE · ${NOW.toISOString().slice(0, 10)}.\nPlinth poured`,
     );
   });
 
@@ -103,7 +109,7 @@ describe('deliveryCaption', () => {
         'Asha',
       ),
     ).toBe(
-      'Hello Asha, here is your latest site update for villa A-101 (plot 37) · 2026-11-23.\nYour site team has posted a new update.',
+      `Hello Asha, here is your latest site update for villa A-101 (plot 37) · ${NOW.toISOString().slice(0, 10)}.\nYour site team has posted a new update.`,
     );
   });
 
@@ -240,6 +246,7 @@ describe('SiteUpdateDeliveryService', () => {
         mediaKey: 'org/u/clip.mp4',
         mediaType: 'video/mp4',
       }),
+      h.tx,
     );
   });
 
@@ -285,6 +292,7 @@ describe('SiteUpdateDeliveryService', () => {
         sendType: 'TEMPLATE',
         templateName: 'shadhil_site_update_video',
       }),
+      h.tx,
     );
   });
 
@@ -360,7 +368,7 @@ describe('SiteUpdateDeliveryService', () => {
     // requiring opt-in there would block the ordinary case for no reason.
     const h = harness({ consent: null });
     await h.service.recordAndSend({ ...input, tx: h.tx });
-    expect(h.enqueue).toHaveBeenCalledWith(expect.objectContaining({ sendType: 'FREEFORM' }));
+    expect(h.enqueue).toHaveBeenCalledWith(expect.objectContaining({ sendType: 'FREEFORM' }), h.tx);
   });
 
   it('records SKIPPED_NO_TEMPLATE outside the window and sends nothing', async () => {
@@ -435,6 +443,35 @@ describe('SiteUpdateDeliveryService', () => {
     }
   });
 
+  it("queues on the caller's transaction, so the outbound insert passes its policy", async () => {
+    // MEASURED IN PRODUCTION (2026-11-24): without the tx the insert ran on the
+    // bare client, got `42501 new row violates row-level security policy for
+    // table "OutboundMessage"`, and every site update recorded PENDING while
+    // nothing was queued. The Message row and the delivery row both looked fine.
+    const h = harness();
+    await h.service.recordAndSend({ ...input, tx: h.tx });
+    expect(h.enqueue).toHaveBeenCalledTimes(1);
+    const calls = h.enqueue.mock.calls as unknown as Array<[unknown, unknown]>;
+    expect(calls[0]?.[1]).toBe(h.tx);
+  });
+
+  it('records FAILED, not PENDING, when the outbox refuses the row', async () => {
+    const h = harness();
+    h.enqueue.mockRejectedValueOnce(
+      new Error('new row violates row-level security policy for table "OutboundMessage"'),
+    );
+    await h.service.recordAndSend({ ...input, tx: h.tx });
+
+    const updates = h.client.siteUpdateDelivery.update.mock.calls as unknown as Array<
+      [{ data: { status: string; errorCode?: string } }]
+    >;
+    const settled = updates.map((call) => call[0].data);
+    expect(settled.at(-1)).toMatchObject({ status: 'FAILED', errorCode: 'ENQUEUE_FAILED' });
+    // PENDING is a promise to the staff screen. Nothing was queued, so it must not
+    // be the last word.
+    expect(settled.some((data) => data.status === 'PENDING')).toBe(false);
+  });
+
   it('hands the delivery id to the outbox, so the worker can report the outcome', async () => {
     // THE BUG (2026-11-23): the row was written, the message was queued, and
     // nothing linked the two, so every delivery read PENDING forever. The id is
@@ -443,6 +480,7 @@ describe('SiteUpdateDeliveryService', () => {
     await h.service.recordAndSend({ ...input, tx: h.tx });
     expect(h.enqueue).toHaveBeenCalledWith(
       expect.objectContaining({ siteUpdateDeliveryId: 'sud-1' }),
+      h.tx,
     );
   });
 });

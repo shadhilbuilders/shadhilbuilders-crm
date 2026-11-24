@@ -427,39 +427,60 @@ export class SiteUpdateDeliveryService {
     });
 
     const mediaKey = plan.media === 'video' ? row.key : row.posterKey;
-    await this.deps.outbound.enqueue({
-      messageId: message.id,
-      organizationId: input.organizationId,
-      leadId: target.leadId,
-      // The link the worker uses to report the outcome. Without it the delivery
-      // row stays PENDING forever and the staff row says "Sending to buyer…"
-      // over an update the buyer received hours ago.
-      siteUpdateDeliveryId: deliveryId,
-      sendType: plan.send === 'template' ? 'TEMPLATE' : 'FREEFORM',
-      freeformBody: body,
-      ...(plan.send === 'template'
-        ? {
-            templateName: plan.templateName,
-            // Body order is the approved template's order: {{1}} the greeting
-            // name (or "there"), {{2}} the villa number, {{3}} the engineer's
-            // note or a neutral line. 'photo' is the URL button's variable,
-            // sent as its own component by OutboundService.
-            templateVars: {
-              '1': target.kind === 'lead' ? target.greeting : NEUTRAL_GREETING,
-              '2': input.unitLabel,
-              '3': noteSlot(input.caption, input.hasNote),
-              photo: input.rowId,
-            },
-          }
-        : {}),
-      ...(mediaKey === null
-        ? {}
-        : {
-            mediaKey,
-            mediaType: plan.media === 'video' ? 'video/mp4' : 'image/jpeg',
-            mediaFilename: plan.media === 'video' ? 'site-update.mp4' : 'site-update.jpg',
-          }),
-    });
+    // THE TX, NOT THE BARE CLIENT (2026-11-24). `OutboundMessage` is FORCE RLS
+    // with an insert arm that needs `app.user_id`, which Prisma sets only on the
+    // caller's transaction. Without the override the insert ran on the injected
+    // client and was denied with 42501 - measured in production: the Message row
+    // and this PENDING row were written, nothing was queued, and every site
+    // update since the feature landed said PENDING forever.
+    try {
+      await this.deps.outbound.enqueue(
+        {
+          messageId: message.id,
+          organizationId: input.organizationId,
+          leadId: target.leadId,
+          // The link the worker uses to report the outcome. Without it the delivery
+          // row stays PENDING forever and the staff row says "Sending to buyer…"
+          // over an update the buyer received hours ago.
+          siteUpdateDeliveryId: deliveryId,
+          sendType: plan.send === 'template' ? 'TEMPLATE' : 'FREEFORM',
+          freeformBody: body,
+          ...(plan.send === 'template'
+            ? {
+                templateName: plan.templateName,
+                // Body order is the approved template's order: {{1}} the greeting
+                // name (or "there"), {{2}} the villa number, {{3}} the engineer's
+                // note or a neutral line. 'photo' is the URL button's variable,
+                // sent as its own component by OutboundService.
+                templateVars: {
+                  '1': target.kind === 'lead' ? target.greeting : NEUTRAL_GREETING,
+                  '2': input.unitLabel,
+                  '3': noteSlot(input.caption, input.hasNote),
+                  photo: input.rowId,
+                },
+              }
+            : {}),
+          ...(mediaKey === null
+            ? {}
+            : {
+                mediaKey,
+                mediaType: plan.media === 'video' ? 'video/mp4' : 'image/jpeg',
+                mediaFilename: plan.media === 'video' ? 'site-update.mp4' : 'site-update.jpg',
+              }),
+        },
+        input.tx as unknown as Parameters<OutboundService['enqueue']>[1],
+      );
+    } catch (err) {
+      // A row that could not be queued is FAILED, not PENDING. PENDING is a
+      // promise to the staff screen ("Sending to buyer..."); nothing was sent and
+      // nothing will be, so the row has to say so.
+      const reason = err instanceof Error ? err.message : String(err);
+      await this.settle(input, 'FAILED', { errorCode: 'ENQUEUE_FAILED', reason });
+      this.deps.logger.error(
+        `[site-update-delivery] enqueue failed for unit=${input.unitId} batch=${input.batchId}: ${reason}`,
+      );
+      return;
+    }
     await this.settle(input, 'PENDING', {});
   }
 
