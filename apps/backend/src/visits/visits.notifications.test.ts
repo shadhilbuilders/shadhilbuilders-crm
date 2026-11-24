@@ -147,7 +147,7 @@ const NOTIFICATION_POLL_MS = 100;
 async function waitForNotifications(
   userId: string,
   role: JwtPayload['role'],
-  predicate: (rows: { type: string }[]) => boolean,
+  predicate: (rows: { type: string; title: string }[]) => boolean,
 ): Promise<{ type: string; title: string }[]> {
   const deadline = Date.now() + NOTIFICATION_WAIT_MS;
   // Read once up front so the first value is genuinely used by the loop
@@ -177,17 +177,24 @@ async function seedUser(id: string, role: JwtPayload['role']): Promise<void> {
  */
 let seq = 0;
 
-async function seedLeadWithVisit(): Promise<{ leadId: string; visitId: string }> {
+async function seedLeadWithVisit(): Promise<{
+  leadId: string;
+  visitId: string;
+  /** The lead's display name. Titles name the lead, so this is the ONLY way to
+   *  tell this test's notification from a stale one (see the scope note below). */
+  leadName: string;
+}> {
   seq += 1;
   const n = seq;
   const leadId = `test-vnotif-lead-${RUN}-${n}`;
   const visitId = `test-vnotif-visit-${RUN}-${n}`;
+  const leadName = `Notif Lead ${n}`;
   const phone = `91${String(RUN).slice(-7)}${String(n).padStart(4, '0')}`;
   await adminSeed(async (db) => {
     await db.lead.create({
       data: {
         id: leadId,
-        name: `Notif Lead ${n}`,
+        name: leadName,
         ...leadPhoneFields(phone),
         source: 'WHATSAPP',
         state: 'VISIT_SCHEDULED',
@@ -211,7 +218,7 @@ async function seedLeadWithVisit(): Promise<{ leadId: string; visitId: string }>
       },
     });
   });
-  return { leadId, visitId };
+  return { leadId, visitId, leadName };
 }
 
 describe.skipIf(!HAS_DB)('visits notifications - reschedule + outcome', () => {
@@ -294,7 +301,7 @@ describe.skipIf(!HAS_DB)('visits notifications - reschedule + outcome', () => {
   });
 
   it('notifies the project managers + the org admin when a visit is RESCHEDULED', async () => {
-    const { visitId } = await seedLeadWithVisit();
+    const { visitId, leadName } = await seedLeadWithVisit();
     const actor = actorFor(ACTOR_ID, 'MANAGER');
 
     await service.reschedule(actor, visitId, {
@@ -302,12 +309,21 @@ describe.skipIf(!HAS_DB)('visits notifications - reschedule + outcome', () => {
       scheduledFor: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
     });
 
+    // SCOPE (2026-11-24): every wait and assertion below is narrowed to THIS
+    // lead's title. `emit` is fire-and-forget (`void notifications.emit(...)`),
+    // so a row from an earlier test in this file can land while a later one is
+    // polling. Unnarrowed, that makes "the manager was told" pass for the wrong
+    // reason and makes "the actor was not told" fail for one. Verified by a full
+    // parallel run: the exclusion test failed on a row about the PREVIOUS lead.
+    const aboutThisLead = (r: { type: string; title: string }[]): boolean =>
+      r.some((x) => x.type === 'visit.rescheduled' && x.title.includes(leadName));
+
     // MANAGER_ID leads the OTHER team on the project - a recipient, not the actor.
-    const managerRows = await waitForNotifications(MANAGER_ID, 'MANAGER', (r) =>
-      r.some((x) => x.type === 'visit.rescheduled'),
+    const managerRows = (await waitForNotifications(MANAGER_ID, 'MANAGER', aboutThisLead)).filter(
+      (x) => x.title.includes(leadName),
     );
-    const adminRows = await waitForNotifications(ADMIN_ID, 'ADMIN', (r) =>
-      r.some((x) => x.type === 'visit.rescheduled'),
+    const adminRows = (await waitForNotifications(ADMIN_ID, 'ADMIN', aboutThisLead)).filter((x) =>
+      x.title.includes(leadName),
     );
 
     expect(managerRows.map((r) => r.type)).toContain('visit.rescheduled');
@@ -315,11 +331,11 @@ describe.skipIf(!HAS_DB)('visits notifications - reschedule + outcome', () => {
     // The type keeps the inbox's existing `visit` prefix filter working.
     expect(managerRows[0]?.type?.startsWith('visit.')).toBe(true);
     // The title names the LEAD, so the recipient knows WHICH visit moved.
-    expect(managerRows[0]?.title).toContain('Notif Lead');
+    expect(managerRows[0]?.title).toContain(leadName);
   });
 
   it('does NOT notify the actor about their own reschedule', async () => {
-    const { visitId } = await seedLeadWithVisit();
+    const { visitId, leadName } = await seedLeadWithVisit();
     // ACTOR_ID leads the lead's team, so they ARE in the manager recipient set -
     // which is what makes the exclusion assertion meaningful rather than vacuous.
     const actor = actorFor(ACTOR_ID, 'MANAGER');
@@ -333,11 +349,14 @@ describe.skipIf(!HAS_DB)('visits notifications - reschedule + outcome', () => {
     // before asserting the actor's inbox is empty - otherwise this would pass
     // simply because nothing had fired yet.
     await waitForNotifications(MANAGER_ID, 'MANAGER', (r) =>
-      r.some((x) => x.type === 'visit.rescheduled'),
+      r.some((x) => x.type === 'visit.rescheduled' && x.title.includes(leadName)),
     );
 
+    // Scoped to THIS lead on purpose: the actor manages the lead's team, so
+    // earlier tests in this file legitimately notify them about THEIR leads. A
+    // late-arriving row about another lead is not the regression under test.
     const actorRows = await notificationsFor(ACTOR_ID, 'MANAGER');
-    expect(actorRows).toEqual([]);
+    expect(actorRows.filter((x) => x.title.includes(leadName))).toEqual([]);
   });
 
   it('notifies the lead owner when a visit is COMPLETED', async () => {
