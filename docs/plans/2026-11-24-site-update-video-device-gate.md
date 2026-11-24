@@ -145,18 +145,35 @@ which is why both Android rows land on the same engineer. No account records a h
 so each owner confirms their device matches the row before running it, and writes the model
 into the Result cell.
 
-| #   | Device                                | Pass criteria                                                                                               | Artefact         | Owner                                                               | Date | Result |
-| --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------- | ---- | ------ |
-| 1   | Android mid-range, Android 13, Chrome | record starts under 1.5s; 20s clip uploads on throttled 3G within 90s; playback starts under 3s; seek works | probe + video    | site eng (ENGINEER, shadhilbuilderleads@gmail.com)                  |      |        |
-| 2   | Android low-end, Android 11, Chrome   | same, upload within 120s, survives backgrounding mid-upload                                                 | probe + video    | site eng (second handset; if only one exists, run row 1 and say so) |      |        |
-| 3   | iPhone, current iOS, Safari           | same; MP4 recording works from the in-app recorder; permission denial recovers without a reload             | probe + video    | Vignesh M (OWNER, vignesh@shadhilbuilders.in)                       |      |        |
-| 4   | iPhone, previous iOS, Safari          | same                                                                                                        | probe + video    | ram (ADMIN, ram@shadhilbuilders.in)                                 |      |        |
-| 5   | Buyer, WhatsApp in-app browser        | portal opens from the deep link, clip plays, no download prompt                                             | screen recording | BLOCKED, see below                                                  |      |        |
+| #   | Device                                | Pass criteria                                                                                               | Artefact         | Owner                                                                    | Date | Result |
+| --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------ | ---- | ------ |
+| 1   | Android mid-range, Android 13, Chrome | record starts under 1.5s; 20s clip uploads on throttled 3G within 90s; playback starts under 3s; seek works | probe + video    | site eng (ENGINEER, shadhilbuilderleads@gmail.com)                       |      |        |
+| 2   | Android low-end, Android 11, Chrome   | same, upload within 120s, survives backgrounding mid-upload                                                 | probe + video    | site eng (second handset; if only one exists, run row 1 and say so)      |      |        |
+| 3   | iPhone, current iOS, Safari           | same; MP4 recording works from the in-app recorder; permission denial recovers without a reload             | probe + video    | Vignesh M (OWNER, vignesh@shadhilbuilders.in)                            |      |        |
+| 4   | iPhone, previous iOS, Safari          | same                                                                                                        | probe + video    | ram (ADMIN, ram@shadhilbuilders.in)                                      |      |        |
+| 5   | Buyer, WhatsApp in-app browser        | portal opens from the deep link, clip plays, no download prompt                                             | screen recording | Gate Buyer (test org CUSTOMER on an APPROVED booking, Test Greens A-665) |      |        |
 
-Row 5 cannot be owned yet. Production has exactly one CUSTOMER account and it is the seed
-`customer@shadhilbuilders.in` attached to no real lead, so there is no buyer to send a WhatsApp
-link to. Creating a buyer account for a real lead comes first, and then the row is owned by
-whoever handles that buyer's updates.
+Row 5 has an account. Two exist, and only one of them can show a unit today:
+
+- **Gate Buyer**, `gate.buyer@shadhilbuilders.in`, CUSTOMER in the `test` organisation, linked to
+  the lead on Test Greens A-665 (APPROVED). Created through `POST /api/users` as that org's OWNER,
+  so it carries the audit row and the forced password rotation. Verified end to end: sign-in 200,
+  the portal refused with `PASSWORD_CHANGE_REQUIRED` until the password was rotated, then
+  `GET /customer-portal/me` returned A-665 with its commercial terms.
+- **buyer.paalamugan@shadhilbuilders.in**, CUSTOMER in `shadhil-builders`, linked to the Paalamugan S
+  lead. Sign-in and the portal shell work, but the portal returns `units: []` because this
+  organisation has exactly one booking and it is CANCELLED, and `customer-portal/me` only reads
+  APPROVED bookings. Nothing to test until a booking is approved.
+
+Sign in with the EMAIL, not the phone. `login-identifier` resolves a phone against `User.phone`, and
+a CUSTOMER deliberately has no phone of its own (the number lives on the lead), so a buyer typing
+their number gets `kind: invalid` no matter what they type in the password field. The login form
+says "email or phone" because it serves staff too.
+
+Credentials are not written here. Ask for them, or reset the account in the Users page.
+
+Row 5 cannot be owned yet by a real buyer either way. Production has exactly one CUSTOMER account
+outside the test org and it is the seed `customer@shadhilbuilders.in` attached to no real lead.
 
 Rows 3 and 4 record only from the in-app recorder: a Photos clip is `.mov`, refused by design,
 and the error names HEVC and says to record in the app or export as MP4. Row 5 uses a buyer
