@@ -91,6 +91,14 @@ export const LEAD_STATES_AWAITING_A_VISIT = [
  * POST /api/visits - schedule a new site visit. The lead must be in one of
  * {@link SCHEDULABLE_LEAD_STATES}; the service enforces this.
  */
+/**
+ * `salesExecId` is optional in SHAPE but required in PRACTICE for anyone who
+ * cannot conduct a visit themselves: a telecaller must name the exec, or the
+ * server answers 400. A manager, exec, admin or owner may omit it on create and
+ * means "me"; on reschedule, omitting it keeps whoever already conducts the
+ * visit. The server, not this schema, owns that rule because it depends on the
+ * caller's role.
+ */
 export const CreateSiteVisitDtoSchema = z.object({
   leadId: z.string().cuid2(),
   scheduledFor: z

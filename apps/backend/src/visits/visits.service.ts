@@ -61,6 +61,21 @@ import { TeamAccessService } from '../teams/team-access.service';
 
 import { canTransition } from './visits.state-machine';
 
+/**
+ * Roles that may be the person a visit is scheduled with.
+ *
+ * The two write paths that set `SiteVisit.userId` (create and reschedule) used to
+ * disagree: create validated the assignee's role, reschedule did not validate it
+ * at all. One list and one guard, so a hole cannot reopen on one path only.
+ */
+const VISIT_CONDUCTOR_ROLES = ['SALES_EXEC', 'MANAGER', 'ADMIN', 'OWNER'] as const;
+
+function assertConductsVisits(role: string): void {
+  if (!(VISIT_CONDUCTOR_ROLES as readonly string[]).includes(role)) {
+    throw new BadRequestException(`Visit assignee must be SALES_EXEC or higher (got ${role})`);
+  }
+}
+
 /** Timeline wording per recorded visit outcome. */
 const VISIT_OUTCOME_SENTENCE: Readonly<Record<string, string>> = {
   COMPLETED: 'Visit completed',
@@ -336,6 +351,22 @@ export class VisitsService {
   }
 
   /**
+   * Who conducts the visit. `salesExecId` is REQUIRED from anyone who cannot
+   * conduct a visit themselves: the `?? actor.sub` fallback made a telecaller the
+   * assignee of their own booking, and the lead then froze at VISIT_SCHEDULED
+   * after the visit, because a telecaller may not drive the handoff to VISITED.
+   * A manager, exec, admin or owner booking their own visit still leaves the
+   * field empty and means "me".
+   */
+  private resolveAssignee(actor: JwtPayload, salesExecId: string | undefined): string {
+    if (salesExecId !== undefined) return salesExecId;
+    if ((VISIT_CONDUCTOR_ROLES as readonly string[]).includes(actor.role)) return actor.sub;
+    throw new BadRequestException(
+      `A ${actor.role} must name the sales exec who will conduct this visit (salesExecId).`,
+    );
+  }
+
+  /**
    * POST /api/visits - schedule a new visit. The lead must exist;
    * RLS policies on SiteVisit gate the write by parent Lead team.
    *
@@ -385,7 +416,7 @@ export class VisitsService {
         );
       }
 
-      const userId = dto.salesExecId ?? actor.sub;
+      const userId = this.resolveAssignee(actor, dto.salesExecId);
 
       // Verify the assigned user exists + has a valid role.
       const assignee = await tx.user.findUnique({
@@ -395,16 +426,7 @@ export class VisitsService {
       if (assignee === null) {
         throw new NotFoundException(`User ${userId} not found`);
       }
-      if (
-        assignee.role !== 'SALES_EXEC' &&
-        assignee.role !== 'MANAGER' &&
-        assignee.role !== 'ADMIN' &&
-        assignee.role !== 'OWNER'
-      ) {
-        throw new BadRequestException(
-          `Visit assignee must be SALES_EXEC or higher (got ${assignee.role})`,
-        );
-      }
+      assertConductsVisits(assignee.role);
 
       // T-VISIT-EXEC-LEAD-VISIBILITY (2026-09-28): give the conducting exec
       // access to the lead (see the helper's doc comment for why the
@@ -1036,7 +1058,11 @@ export class VisitsService {
         );
       }
 
-      const userId = dto.salesExecId ?? actor.sub;
+      // A reschedule keeps the exec already conducting the visit unless a new one
+      // is named, so the field stays optional here for everyone. The role guard
+      // below still applies: a legacy visit assigned to a telecaller cannot be
+      // rescheduled into another dead end.
+      const userId = dto.salesExecId ?? existing.userId;
       const assignee = await tx.user.findUnique({
         where: { id: userId },
         select: { id: true, name: true, role: true },
@@ -1044,6 +1070,7 @@ export class VisitsService {
       if (assignee === null) {
         throw new NotFoundException(`User ${userId} not found`);
       }
+      assertConductsVisits(assignee.role);
 
       // T-VISIT-EXEC-LEAD-VISIBILITY (2026-09-28): a re-scheduled visit can
       // move to a DIFFERENT exec, who needs the same access the original

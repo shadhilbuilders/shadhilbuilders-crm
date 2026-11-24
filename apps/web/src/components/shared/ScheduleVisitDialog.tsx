@@ -9,7 +9,8 @@
 // shape and surfaces errors verbatim via toast.
 //
 // scheduledFor is required (must be in the future per the Zod refine);
-// salesExecId is optional (defaults to actor.sub on the server).
+// salesExecId is required from a telecaller and optional for a manager or exec,
+// who may omit it and mean "me" (visits.service.ts resolveAssignee).
 //
 // T-DASH-QUEUE (2026-09-16) - TELECALLER FIX. Two things blocked a telecaller
 // from scheduling a visit at all, both verified against the running server:

@@ -289,6 +289,8 @@ describe.skipIf(!HAS_DB)('visit -> lead sync coverage (T-LEAD-SYNC-COVERAGE)', (
     // list. Now the role is checked first, so the move is recorded instead of
     // failing - which is the whole point of a reschedule.
     const { leadId, visitId } = await seed('NO_SHOW');
+    // No salesExecId: the reschedule keeps whoever already conducts the visit, so
+    // the telecaller can move the date without naming anyone.
     const row = await service.reschedule(actorFor(TC_ID, 'TELECALLER'), visitId, {
       visitId,
       scheduledFor: new Date(Date.now() + 172_800_000).toISOString(),

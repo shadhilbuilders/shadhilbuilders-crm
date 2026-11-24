@@ -42,6 +42,7 @@ const SE_ID = `test-voc-se-${RUN}`;
 // `Lead.ownerId` and `SiteVisit.userId` collapse to the same row. Without this
 // the two names could never differ in a test, which is exactly why the
 // dashboard's mislabelling went unnoticed.
+const MGR_ID = `test-voc-mgr-${RUN}`;
 const TC_ID = `test-voc-tc-${RUN}`;
 const SE2_ID = `test-voc-se2-${RUN}`;
 const TEAM_ID = `test-voc-team-${RUN}`;
@@ -55,7 +56,10 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   );
 }
 
-function actorFor(userId: string, role: 'ADMIN' | 'SALES_EXEC' | 'TELECALLER'): JwtPayload {
+function actorFor(
+  userId: string,
+  role: 'ADMIN' | 'SALES_EXEC' | 'TELECALLER' | 'MANAGER' | 'OWNER',
+): JwtPayload {
   return {
     sub: userId,
     email: `${userId}@example.com`,
@@ -934,6 +938,8 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
         [ADMIN_ID, 'ADMIN', 'VOC Test Admin'],
         [SE_ID, 'SALES_EXEC', 'VOC Test SE'],
         [TC_ID, 'TELECALLER', 'VOC Test Telecaller'],
+        // A manager, so "omit salesExecId and mean me" has a role that can conduct.
+        [MGR_ID, 'MANAGER', 'VOC Test Manager'],
       ] as const) {
         await db.user.upsert({
           where: { id },
@@ -1021,6 +1027,73 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
       ).rejects.toMatchObject({ name: 'BadRequestException' });
     });
   }
+
+  it('refuses a telecaller booking who does not name the exec', async () => {
+    // The `?? actor.sub` fallback made the telecaller the visit's assignee, and a
+    // telecaller may not drive VISIT_SCHEDULED -> VISITED, so the lead froze after
+    // the visit with nothing on screen explaining why. Refuse up front instead.
+    const leadId = await seedLeadInState('VISIT_REQUESTED');
+    await expect(
+      service.create(
+        actorFor(TC_ID, 'TELECALLER') as never,
+        {
+          leadId,
+          scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        } as never,
+      ),
+    ).rejects.toMatchObject({
+      name: 'BadRequestException',
+      message: expect.stringContaining('must name the sales exec'),
+    });
+    // Nothing was written: the refusal happens before the visit row exists.
+    const visits = await adminSeed((db) => db.siteVisit.count({ where: { leadId } }));
+    expect(visits).toBe(0);
+  });
+
+  it('lets a manager book a visit without naming anyone, meaning themselves', async () => {
+    // A manager reads a lead through `lead_select_manager`, which needs
+    // Team.managerId to be that manager, so the fixture owns a team for them. That
+    // is also the real-world condition: a manager can only conduct a visit on a
+    // lead their own team holds.
+    const teamId = `test-voc-mgr-team-${RUN}`;
+    const leadId = `test-cve-mgr-lead-${RUN}`;
+    await adminSeed(async (db) => {
+      await db.team.upsert({
+        where: { id: teamId },
+        update: { managerId: MGR_ID },
+        create: {
+          id: teamId,
+          name: `VOC Manager Team ${RUN}`,
+          managerId: MGR_ID,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      });
+      await db.lead.create({
+        data: {
+          id: leadId,
+          name: 'CVE Manager Lead',
+          ...leadPhoneFields(`93${String(RUN).slice(-8)}001`),
+          source: 'WHATSAPP',
+          state: 'VISIT_REQUESTED',
+          ownerId: TC_ID,
+          ownerType: 'TELECALLER',
+          teamId,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          projectId: TEST_PROJECT_ID,
+        },
+      });
+    });
+    TEST_LEAD_IDS.push(leadId);
+
+    const row = await service.create(
+      actorFor(MGR_ID, 'MANAGER') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      } as never,
+    );
+    expect(row.userId).toBe(MGR_ID);
+  });
 
   it('ACCEPTS a NO_SHOW lead - the reported defect', async () => {
     // The exact user report: scheduling from the dashboard queue on a NO_SHOW
@@ -1263,6 +1336,7 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - the check-in stamp', () 
         [ADMIN_ID, 'VOC Test Admin', 'ADMIN'],
         [SE_ID, 'VOC Test SE', 'SALES_EXEC'],
         [SE2_ID, 'VOC Test SE Two', 'SALES_EXEC'],
+        [MGR_ID, 'VOC Test Manager', 'MANAGER'],
         [TC_ID, 'VOC Test Telecaller', 'TELECALLER'],
       ] as const) {
         await db.user.upsert({
