@@ -1,6 +1,9 @@
 # Site update templates: the UTILITY submission
 
-Draft, 2026-11-24. Nothing here has been created on Meta yet.
+Submitted 2026-11-24. Both templates are `PENDING` under review.
+
+    shadhil_villa_update_image   id 1004663232706917   PENDING   UTILITY   en
+    shadhil_villa_update_video   id 1032885586520701   PENDING   UTILITY   en
 
 ## Why resubmit
 
@@ -65,7 +68,21 @@ new names cost one environment variable each.
 
 ### Image
 
-The payloads live in `docs/whatsapp-templates/` so they can be submitted without retyping. Image:
+The payloads live in `docs/whatsapp-templates/` so they can be submitted without retyping. They are
+the body of the request, not the whole request: a media header also needs a sample, and Meta only
+takes that sample as an asset handle from the Resumable Upload API. A public ImageKit URL in
+`example.header_handle` is refused with `2388273`, "Templates with IMAGE header type need an
+example/sample". The working sequence is:
+
+    POST /v21.0/{app_id}/uploads?file_name=…&file_length=…&file_type=image/jpeg   → {id}
+    POST /v21.0/{id}   Authorization: OAuth <token>   file_offset: 0   <raw bytes> → {h}
+    example.header_handle: ["4:…"]      ← the value of h
+
+The app id here is 4114848658818773, and the two samples are the same ffmpeg test files, uploaded
+public to ImageKit under `/template-samples`, because Meta fetches them while it reviews. They can
+be deleted once both templates are approved.
+
+Then the template call:
 
 `POST https://graph.facebook.com/v21.0/1575406997723159/message_templates`
 
@@ -119,8 +136,8 @@ curl -s -X POST \
   -d @docs/whatsapp-templates/shadhil_villa_update_image.json
 ```
 
-The response carries an `id` and `status: "PENDING"`. Review has taken minutes here before and can
-take a day.
+The response carries an `id` and `status: "PENDING"`, and Meta keeps `category: "UTILITY"` on it.
+Review has taken minutes here before and can take a day.
 
 ## What changes once it is approved
 
