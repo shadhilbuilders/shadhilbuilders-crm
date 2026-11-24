@@ -170,7 +170,9 @@ a CUSTOMER deliberately has no phone of its own (the number lives on the lead), 
 their number gets `kind: invalid` no matter what they type in the password field. The login form
 says "email or phone" because it serves staff too.
 
-Credentials are not written here. Ask for them, or reset the account in the Users page.
+Credentials are not written here. The buyer password was reset on 2026-11-24 and lives in `~/gate-buyer-credentials.txt` on the operator machine (0600): URL, email, password, and the scope line. The reset was done at the database layer with the app's own scrypt contract (`salt:key`, N=16384 r=16 p=1, 64-byte key, salt used as the raw hex string), `mustChangePassword` set back to false so the buyer lands in the portal and not on the rotation screen, and an `AuditLog` row written with `action = 'user.passwordReset'` and no acting user, since no staff session was used. Verified end to end after the change: `POST /api/auth/sign-in/email` over the public origin returned 200 with no rotation gate, and `GET /api/bff/customer-portal/me` returned 200 with one unit, `A-665` (plot 37).
+
+The Users page has no password control for another account. It has only the self-service form, and the sole admin path is `POST /api/users/:id/change-password` (`users.controller.ts`), which needs a staff session in that organisation and a new password supplied by the caller. Nothing in the UI would have done this reset, which is why the database path was used.
 
 Row 5 cannot be owned yet by a real buyer either way. Production has exactly one CUSTOMER account
 outside the test org and it is the seed `customer@shadhilbuilders.in` attached to no real lead.
