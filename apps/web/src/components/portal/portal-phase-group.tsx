@@ -34,11 +34,19 @@ function EntryRow({
   photo,
   index,
   focused,
+  last,
   onOpen,
 }: {
   photo: TimelinePhoto;
   index: number;
   focused: boolean;
+  /**
+   * Last row of its group (2026-11-25). It drops the hairline: the next group's
+   * header already opens with a 2px rule, so keeping it boxed the heading in
+   * between two lines, and on the final group it left a rule hanging above the
+   * "Show earlier photos" button.
+   */
+  last: boolean;
   onOpen: () => void;
 }) {
   const note = photo.caption.trim();
@@ -51,7 +59,8 @@ function EntryRow({
       data-qa="portal-photo-row"
       data-focused={focused ? 'true' : undefined}
       className={
-        'portal-hairline-b group grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-x-4 gap-y-1 py-4 sm:grid-cols-12 sm:items-center sm:gap-x-5 ' +
+        'group grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-x-4 gap-y-1 py-4 sm:grid-cols-12 sm:items-center sm:gap-x-5 ' +
+        (last ? '' : 'portal-hairline-b ') +
         (focused ? 'animate-portal-focus' : '')
       }
     >
@@ -115,12 +124,19 @@ function EntryRow({
 export function PortalPhaseGroup({
   group,
   current,
+  first,
   startIndex,
   focusedPhotoId,
   onOpenPhoto,
 }: {
   group: PhaseGroup<TimelinePhoto>;
   current: boolean;
+  /**
+   * First group in the feed (2026-11-25). Later groups take a `mt-8` lead-in:
+   * with the last row's hairline gone, two groups would otherwise butt together
+   * with a single 2px rule between them and read as one block.
+   */
+  first: boolean;
   /** Index of this group's first photo in the whole feed (eager-load cutoff). */
   startIndex: number;
   focusedPhotoId: string | null;
@@ -134,6 +150,7 @@ export function PortalPhaseGroup({
       aria-labelledby={`phase-${group.key}`}
       data-qa="portal-phase-group"
       data-current={current ? 'true' : undefined}
+      className={first ? undefined : 'mt-8'}
     >
       <div className="portal-rule-b flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 pb-2.5">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -164,6 +181,7 @@ export function PortalPhaseGroup({
             photo={photo}
             index={startIndex + i}
             focused={photo.id === focusedPhotoId}
+            last={i === group.photos.length - 1}
             onOpen={() => onOpenPhoto(photo.id)}
           />
         ))}

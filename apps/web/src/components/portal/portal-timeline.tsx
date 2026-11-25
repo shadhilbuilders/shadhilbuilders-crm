@@ -55,7 +55,12 @@ function TimelineSkeleton() {
         <div className="h-5 w-40 animate-pulse bg-[var(--portal-hair)] motion-reduce:animate-none" />
       </div>
       {[0, 1, 2].map((i) => (
-        <div key={i} className="portal-hairline-b flex items-center gap-4 py-4">
+        // Same rule as the real rows: the last one carries no hairline, so the
+        // skeleton does not promise a line the loaded feed will not draw.
+        <div
+          key={i}
+          className={(i === 2 ? '' : 'portal-hairline-b ') + 'flex items-center gap-4 py-4'}
+        >
           <div className="size-[4.5rem] shrink-0 animate-pulse bg-[var(--portal-hair)] motion-reduce:animate-none" />
           <div className="min-w-0 flex-1 space-y-2">
             <div className="h-3.5 w-3/5 animate-pulse bg-[var(--portal-hair)] motion-reduce:animate-none" />
@@ -119,6 +124,7 @@ export function PortalTimeline({
           key={group.key}
           group={group}
           current={i === 0 && newestPhaseId !== null}
+          first={i === 0}
           startIndex={starts[i] ?? 0}
           focusedPhotoId={focusedPhotoId}
           onOpenPhoto={onOpenPhoto}
@@ -129,7 +135,7 @@ export function PortalTimeline({
           type="button"
           variant="outline"
           size="lg"
-          className="mt-5 w-full rounded-full"
+          className="mt-7 w-full rounded-full"
           onClick={onLoadMore}
           disabled={isLoadingMore}
           data-qa="portal-load-more"
