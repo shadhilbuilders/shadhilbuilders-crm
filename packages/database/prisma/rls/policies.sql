@@ -984,7 +984,56 @@ CREATE POLICY consent_insert_admin ON "Consent"
   WITH CHECK (
     current_setting('app.user_role', true) = 'ADMIN'
     AND "organizationId" = current_setting('app.user_org_id', true)
+    -- T-CONSENT-ORG (2026-11-26): the row's org must be its LEAD's org, not
+    -- only the actor's. Same predicate `consent_insert_owner` already carries.
+    AND EXISTS (
+      SELECT 1
+        FROM "Lead" l
+       WHERE l."id" = "Consent"."leadId"
+         AND l."organizationId" = current_setting('app.user_org_id', true)
+    )
   );
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- T-CONSENT-ORG (2026-11-26): the column pair as a structural invariant.
+-- ────────────────────────────────────────────────────────────────────────────
+-- The policies above bind the app role only, so the owner role (BYPASSRLS:
+-- every seed and every script) could still store a Consent row whose
+-- organizationId names a tenant its lead does not belong to. The trigger closes
+-- that for every writer, including an UPDATE.
+--
+-- SECURITY DEFINER so the check does not depend on the caller's own visibility
+-- of the Lead: a legitimate writer may be unable to SELECT the lead whose org is
+-- being verified, and treating "not found" as a rejection would refuse valid
+-- writes.
+CREATE OR REPLACE FUNCTION consent_org_matches_lead() RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org TEXT;
+BEGIN
+  SELECT "organizationId" INTO v_org FROM "Lead" WHERE "id" = NEW."leadId";
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Consent.leadId % names no Lead', NEW."leadId"
+      USING ERRCODE = '23503';
+  END IF;
+  IF NEW."organizationId" IS DISTINCT FROM v_org THEN
+    RAISE EXCEPTION
+      'Consent.organizationId % is not its lead %''s org %',
+      NEW."organizationId", NEW."leadId", v_org
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS consent_org_matches_lead_trg ON "Consent";
+CREATE TRIGGER consent_org_matches_lead_trg
+  BEFORE INSERT OR UPDATE OF "organizationId", "leadId" ON "Consent"
+  FOR EACH ROW
+  EXECUTE FUNCTION consent_org_matches_lead();
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- Week 5 - ManagerAssignmentRule RLS (Plan §18 D2 + T-ARM-SCHEMA).

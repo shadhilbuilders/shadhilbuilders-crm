@@ -1764,3 +1764,38 @@ need a person with a phone.
 `getCapabilities()` and treat "no capability" as a normal answer. A platform check is a guess
 about hardware you cannot see, and `getCapabilities` can throw, so the probe needs a guard around
 it or it takes the recorder down before the first frame.
+
+## Round 64 - 2026-11-26, 03:52 IST - A consent row belongs to its lead's tenant
+
+The backlog said both `Consent` INSERT policies checked the row against the actor's org and never
+against the lead's. Half of that had already been fixed: `consent_insert_owner` gained the predicate
+in a later round, `consent_insert_admin` did not. So an ADMIN could append a marketing opt-in stamped
+with their own org to a lead in another tenant, and nothing stopped them.
+
+**Two walls, not one.** The policy fix alone would still leave the hole open for the owner role,
+which every seed and every script runs as: policies do not bind BYPASSRLS. So the invariant is a
+trigger, `consent_org_matches_lead`, on BEFORE INSERT OR UPDATE. It raises 23514 when the row's org
+is not its lead's and 23503 when the lead does not exist. The policy keeps the predicate as well,
+which is defence in depth rather than the primary lock, and the test says so instead of pretending
+it exercises a path it does not.
+
+**The repair relinks, it deletes nothing.** An existing mismatched row is updated to its lead's org,
+which is the owner's call and the right one: the ledger's only value is that it survives as evidence
+of what the buyer agreed to. Measured before writing it: 144 dev consent rows, 0 mismatched. The
+statement is still proved, because "it would have worked" is not a claim: a test disables the
+trigger inside a transaction, writes a mismatched row, runs the UPDATE read out of the migration
+file itself, asserts the row moved to the lead's org, and then rolls the whole thing back, so the
+database is exactly as it was.
+
+**SECURITY DEFINER on the trigger function, deliberately.** The check reads `Lead`, and a legitimate
+writer may not be able to see that lead under its own policies. A trigger that answered "not found"
+for a row that exists would refuse valid writes.
+
+**Verification.** `packages/database/test/consent-rls.test.ts` 14 passing, six of them new. Mutations:
+dropping the trigger turned the owner-role refusal and the repair case red while the ADMIN case
+stayed green (the policy caught it, which is the whole point of keeping both); reverting the policy's
+text turned only the defence-in-depth assertion red. Both restored, and the migration is idempotent,
+which is how it was restored.
+
+**Migration:** `20261126033000_consent_org_matches_lead`, applied to dev and to the test database.
+`policies.sql` carries the same delta, since it is the source of truth and migrations are the log.

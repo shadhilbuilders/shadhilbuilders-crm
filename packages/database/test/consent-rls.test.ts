@@ -18,6 +18,8 @@
 // Seeding runs through the owner role (BYPASSRLS) because the INSERT policies
 // gate on app.user_role, and a fixture that seeds consent rows would be proving
 // its own policy.
+import { existsSync, readFileSync } from 'node:fs';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { prisma } from '../src/index';
@@ -38,6 +40,14 @@ const TC_OTHER = `${TAG}tcx`; // same team, not the owner
 const ADMIN = `${TAG}adm`;
 const LEAD = `${TAG}lead`;
 const LEAD_B = `${TAG}leadb`;
+// A lead in the OTHER org, plus the staff it needs (Lead requires owner, team
+// and project). Used to prove the lead-org predicate rather than the actor-org
+// one: the actor below is an ADMIN of ORG writing a row stamped ORG, so only a
+// check against the LEAD's org can refuse it.
+const PROJ_B = `${TAG}prjb`;
+const TEAM_C = `${TAG}teamc`;
+const MGR_C = `${TAG}mgrc`;
+const LEAD_C = `${TAG}leadc`;
 
 const ownerPrisma = createDirectPrismaClient();
 
@@ -152,6 +162,45 @@ beforeAll(async () => {
       },
     });
   }
+
+  // The other tenant's own staff, so LEAD_C is a real lead rather than a bare id.
+  await db['project']!.create({
+    data: {
+      id: PROJ_B,
+      name: `Consent RLS B ${PROJ_B}`,
+      slug: PROJ_B,
+      address: 'x',
+      organizationId: ORG_B,
+    },
+  });
+  await db['user']!.create({
+    data: {
+      id: MGR_C,
+      email: `${MGR_C}@test.local`,
+      name: `Consent RLS ${MGR_C}`,
+      role: 'MANAGER',
+      organizationId: ORG_B,
+      mustChangePassword: false,
+    },
+  });
+  await db['team']!.create({
+    data: { id: TEAM_C, name: `Consent RLS C ${TEAM_C}`, organizationId: ORG_B, managerId: MGR_C },
+  });
+  await db['lead']!.create({
+    data: {
+      id: LEAD_C,
+      name: `Consent RLS ${LEAD_C}`,
+      phone: `91${TAG.slice(4, 12)}003`.slice(0, 15),
+      phoneE164: `91${TAG.slice(4, 12)}003`.slice(0, 15),
+      source: 'WEBSITE',
+      state: 'NEW',
+      teamId: TEAM_C,
+      ownerId: MGR_C,
+      ownerType: 'MANAGER',
+      organizationId: ORG_B,
+      projectId: PROJ_B,
+    },
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -165,13 +214,13 @@ afterAll(async () => {
   await db['auditLog']!.deleteMany({
     where: { organizationId: ORG, entityId: { in: [LEAD, LEAD_B] } },
   });
-  await db['lead']!.deleteMany({ where: { id: { in: [LEAD, LEAD_B] } } });
+  await db['lead']!.deleteMany({ where: { id: { in: [LEAD, LEAD_B, LEAD_C] } } });
   await db['teamMember']!.deleteMany({ where: { userId: { in: [TC_OWNER, TC_OTHER] } } });
-  await db['team']!.deleteMany({ where: { id: { in: [TEAM_A, TEAM_B] } } });
+  await db['team']!.deleteMany({ where: { id: { in: [TEAM_A, TEAM_B, TEAM_C] } } });
   await db['user']!.deleteMany({
-    where: { id: { in: [MGR_A, MGR_B, TC_OWNER, TC_OTHER, ADMIN] } },
+    where: { id: { in: [MGR_A, MGR_B, MGR_C, TC_OWNER, TC_OTHER, ADMIN] } },
   });
-  await db['project']!.deleteMany({ where: { id: PROJ } });
+  await db['project']!.deleteMany({ where: { id: { in: [PROJ, PROJ_B] } } });
   await db['organization']!.deleteMany({ where: { id: ORG_B } });
   await ownerPrisma.$disconnect();
 }, 60_000);
@@ -254,5 +303,120 @@ describe('Consent RLS', () => {
       }),
     );
     expect(rows.map((r) => r.granted)).toEqual([true, true, false]);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-CONSENT-ORG (2026-11-26): a consent row belongs to its lead's tenant.
+// ────────────────────────────────────────────────────────────────────────────
+// The bug this pins: both INSERT policies compared the row to the ACTOR's org
+// and never to the LEAD's, so an ADMIN could append a marketing opt-in to
+// another tenant's lead by stamping their own org on it. The newest MARKETING
+// row decides whether a buyer may be mailed, so that row would have answered
+// for the wrong person.
+class RolledBack extends Error {}
+
+/** The shipping repair statement, read from the migration rather than copied. */
+function repairStatement(): string {
+  const candidates = [
+    'prisma/migrations/20261126033000_consent_org_matches_lead/migration.sql',
+    '../prisma/migrations/20261126033000_consent_org_matches_lead/migration.sql',
+  ];
+  const found = candidates.find((p) => existsSync(p));
+  if (found === undefined) throw new Error('consent migration not found from ' + process.cwd());
+  const sql = readFileSync(found, 'utf8');
+  const start = sql.indexOf('UPDATE "Consent" c');
+  if (start === -1) throw new Error('the repair UPDATE is gone from the migration');
+  return sql.slice(start, sql.indexOf(';', start) + 1);
+}
+
+describe('T-CONSENT-ORG: a Consent row belongs to its lead org', () => {
+  it("refuses an ADMIN stamping their own org onto another tenant's lead", async () => {
+    // Row org = the ACTOR's org, so the old policy was satisfied; only a check
+    // against LEAD_C's org (ORG_B) can refuse this. Which wall answers first is
+    // Postgres's business (measured: the trigger does, error 23514); the
+    // assertion is the refusal itself, and the policy is pinned separately
+    // below, because a behind-the-trigger wall never gets to speak.
+    const err = await tryInsertConsent(ctxOf(ADMIN, 'ADMIN'), LEAD_C, true);
+    expect(err).not.toBeNull();
+  });
+
+  it('the admin insert policy carries the lead-org predicate too (defence in depth)', async () => {
+    // The trigger refuses first today. If it were ever dropped, the policy is
+    // what would still be standing, so its text is asserted rather than assumed.
+    const rows = await ownerPrisma.$queryRaw<{ with_check: string | null }[]>`
+      SELECT with_check FROM pg_policies
+       WHERE tablename = 'Consent' AND policyname = 'consent_insert_admin'`;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.with_check).toContain('"Lead" l');
+  });
+
+  it('still lets an ADMIN append a row to a lead in their own org', async () => {
+    expect(await tryInsertConsent(ctxOf(ADMIN, 'ADMIN'), LEAD, true)).toBeNull();
+  });
+
+  it('refuses a mismatched row even through the owner role, which no policy binds', async () => {
+    // The policy gate only binds the app role. Every seed and every script runs
+    // as the owner, so without the trigger the invariant would be advisory.
+    await expect(
+      ownerPrisma.consent.create({
+        data: {
+          leadId: LEAD,
+          organizationId: ORG_B,
+          consentType: 'MARKETING',
+          granted: true,
+          grantedAt: new Date(),
+          source: 'trigger_test',
+        },
+      }),
+    ).rejects.toThrow(/is not its lead|23514/);
+  });
+
+  it('allows the owner role to write a consistent row', async () => {
+    const row = await ownerPrisma.consent.create({
+      data: {
+        leadId: LEAD,
+        organizationId: ORG,
+        consentType: 'MARKETING',
+        granted: true,
+        grantedAt: new Date(),
+        source: 'trigger_ok_test',
+      },
+    });
+    expect(row.organizationId).toBe(ORG);
+    await ownerPrisma.consent.delete({ where: { id: row.id } });
+  });
+
+  it('the repair relinks a mismatched row instead of deleting it', async () => {
+    // The trigger now refuses the rows the repair exists to fix, so the
+    // statement is proved in a transaction that is rolled back: trigger off,
+    // a mismatched row in, the shipped UPDATE, the assertion, then ROLLBACK.
+    await expect(
+      ownerPrisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          'ALTER TABLE "Consent" DISABLE TRIGGER consent_org_matches_lead_trg',
+        );
+        await tx.consent.create({
+          data: {
+            leadId: LEAD,
+            organizationId: ORG_B,
+            consentType: 'MARKETING',
+            granted: true,
+            grantedAt: new Date(),
+            source: 'repair_test',
+          },
+        });
+
+        const affected = await tx.$executeRawUnsafe(repairStatement());
+        const row = await tx.consent.findFirst({
+          where: { leadId: LEAD, source: 'repair_test' },
+          select: { organizationId: true },
+        });
+
+        expect(affected).toBeGreaterThan(0);
+        expect(row?.organizationId).toBe(ORG);
+        throw new RolledBack('rollback: the repair was proved, not applied');
+      }),
+    ).rejects.toBeInstanceOf(RolledBack);
   });
 });
