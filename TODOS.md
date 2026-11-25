@@ -28,28 +28,6 @@ portal has never displayed a phone — only `Organization.contactPhone` in
 **Priority:** P3
 **Depends on:** the `User.phone` slice landing first.
 
-### Org-scope the `changeRole()` and `assignManager()` target reads
-
-**What:** Both read the target user with `findUnique({ where: { id } })` and no
-`organizationId` filter (`users.service.ts:456`, `:963`), gated only on the role
-hierarchy. `User` carries no RLS, so an ADMIN in org A can currently act on a user
-in org B if they know the id.
-
-**Why it matters more now:** the `User.phone` slice fixes `update()` (third site)
-and adds a **per-org** unique phone index. The same missing filter on the other two
-paths is the same bug class, and it is worse on a column with a tenant-scoped
-constraint.
-
-**Context:** found during the 2026-11-18 review of
-`docs/designs/2026-11-18-user-phone.md`; deliberately not bundled there to keep
-that diff to one behavioural change per site. `update()` gets the filter in this
-slice.
-
-**Effort:** S
-**Priority:** P2
-**Depends on:** None — but land it separately, with a cross-org test in
-`users.service.rls.test.ts`.
-
 ### ~~Multi-team ENGINEER shows the manager of their newest team~~ — RESOLVED 2026-11-07
 
 **Decision (product):** report EVERY team and its manager.
@@ -350,3 +328,21 @@ touch their own project-scoped rows. Convert any that start counting org-wide ro
 cron, with `createTestTenant` + `holdCronLockForFile`.
 
 ## Completed
+
+### Org-scope the five `User` target reads - DONE 2026-11-25 (Round 61)
+
+**What shipped:** `changeRole()`, `assignManager()`, `remove()`, `getUser()` and
+`changePassword()` all read the target user with `organizationId: actor.organizationId`.
+The backlog listed two sites; the class had five.
+
+**Why the count was wrong:** `User` carries no RLS, so every read of a user by id in the
+service layer is a hand-written tenant check, and the last audit found three of them. The
+two it missed were the read path and the password reset, and the reset is account takeover
+across tenants rather than a leak: the admin-reset branch needs only that the actor outrank
+the target, and an ADMIN outranks a TELECALLER in every org.
+
+**Proof:** five DB-backed cross-org cases in `users.service.rls.test.ts`. All five fail
+against the pre-fix service (reverted and re-run) and pass after it, with the rows asserted
+untouched.
+
+**Effort:** S, as estimated. The work was the audit, not the edit.

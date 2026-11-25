@@ -1605,3 +1605,54 @@ compiled CSS before editing the class list again. Three of these bugs were the l
 declaring the property itself, and the two that were ours were a custom property that does
 not exist, which fails silently at computed-value time with no error anywhere. Grep the
 theme block before naming a token.
+
+## Round 61 - 2026-11-25, ~23:40 IST - Five cross-org reads, and the two the backlog named
+
+`User` carries no row-level security. It is the one table in this schema where FORCE RLS does
+not stand behind the application code, so every service read of a user by id is a hand-written
+tenant check. The backlog had this written down as two sites, `changeRole()` and
+`assignManager()`. Reading the file for the class found five, and two of the three that were
+never reported are worse than the two that were:
+
+1. `changeRole()` - the role hierarchy check cannot catch it. An ADMIN outranks a TELECALLER
+   wherever that TELECALLER lives, so the guard passes and the write lands. Reverting the fix
+   and re-running the new test shows the call reaching the audit write, which is the exploit
+   rather than a hypothesis.
+2. `assignManager()` - team membership is the grant that opens project access for an ENGINEER,
+   so a foreign admin pulling a user onto their own team is an access grant, not a cosmetic
+   move.
+3. `remove()` - soft-delete of another org's user.
+4. `getUser()` - another org's staff record, including phone and reporting line.
+5. `changePassword()` - the worst of the five. The admin-reset branch only requires that the
+   actor outrank the target, so an ADMIN in org A could reset a password in org B. That is
+   account takeover across tenants, and it was one `findUnique({ id })` away.
+
+All five now read `{ id, organizationId: actor.organizationId }`. `update()` took the same fix
+on 2026-11-18 and is untouched. Four use `findFirst`, which is the shape `update()`
+established; `getUser` keeps `findUnique` with the extra term, because Prisma compiles it into
+the same `WHERE id = ... AND organizationId = ...` and this method's mock harness already
+models two DISTINCT `user.findFirst` consumers, so routing a third one through the same name
+would have made those assertions lie.
+
+**Verification (the only kind that counts for a security fix):**
+
+- Each site has a DB-backed cross-org case in `users.service.rls.test.ts`, five in total. The
+  service was reverted to HEAD and the file re-run: all five fail. With the fix: all five
+  pass, and the rows are asserted untouched afterwards, not just the throw.
+- Backend 2238 across 123 files. Lint and `tsc` clean.
+- The foreign side of the `assignManager` case is a real tenant from `createTestTenant`, with a
+  real team led by that org's admin. The first version used a made-up team id, and it passed
+  against the unfixed code for the wrong reason: `team not found` was doing the work the org
+  term was supposed to do.
+- No orphan rows left behind. `organization.deleteMany()` deletes NOTHING on this table and
+  reports success, which is how 73 orgs leaked into the test database once already; the tenant
+  fixture's `dispose()` purges the RESTRICT children in dependency order.
+
+Two mock harnesses follow the service: `assignManager.test.ts` aliases `findFirst` onto its
+existing user stub, and the customer `tx()` factory delegates `findFirst` to `findUnique` so
+one preset serves both paths instead of each test presetting twice and drifting.
+
+**Lesson for the next agent:** a role-hierarchy check is not a tenant check. `outranks()` says
+what someone may do, never to whom, and on a table without RLS the second half is the
+application's job. Also: when a defect is written down as "two sites", grep the class before
+fixing two. The count in a TODO is a report from the last person who looked, not a bound.
