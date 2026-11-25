@@ -1518,3 +1518,90 @@ account linked to a unit that has photos. Every `Booking.userId` on a photograph
 points at a staff account (OWNER), left over from before the portal existed. Unit A/1
 (`cmwqk5yfe008201q7tvyeuk34`) holds 5 photos and 2 clips, so it is the right target once
 a real buyer is booked to it.
+
+## Round 60 - 2026-11-25, 15:46 IST - The portal feed narrows by stage
+
+A buyer asked to see their photos grouped by construction stage. What shipped is a chip
+row above the feed carrying the server's per-stage totals, and a `?stage=` filter that
+runs in the database. Five calls, each with a reason worth keeping:
+
+1. **Sections were rejected on purpose.** The timeline is cursor-paginated at 50 a page,
+   so true sections need one cursor per stage, and grouping whatever pages happened to
+   load shows the same stage twice under a heading that lies about it. The feed stays one
+   flat newest-first list. The other rejected option was filtering the loaded pages in the
+   browser: that shows an empty list under a chip that says 24 until the buyer scrolls far
+   enough.
+2. **The totals cannot disagree with the rows under them, because they are the same
+   query.** `readStageCounts` groups by stage with the same where clause as
+   `readTimelinePage`, so a chip is not a second opinion. An unknown `?stage=` is refused
+   by `parseStageFilter` rather than dropped, because an unfiltered page that looks
+   filtered is worse than an error. Nobody investigates the page that renders.
+3. **`UNSET` is its own bucket, "Stage not set".** Never folded into NOT_STARTED. One
+   means the engineer did not record a stage, the other means the site has not begun, and
+   a buyer reading their own build deserves the difference.
+4. **Exactly one chip is always on.** A ToggleGroup reports a press on the active chip as
+   `''`, and an empty filter matches nothing, so a refused press keeps the current value
+   and the controlled `value` snaps the widget back. Same rule as the site filter.
+5. **A deep link outranks the chip until it has opened.** The notified photo is very
+   likely not in a narrowed list, and filtering away the thing the message was about is
+   the bug that guard exists for. The feed section also renders whenever the counts say
+   there is something, even when the chosen stage is empty, so the buyer always has a way
+   back to All.
+
+The strip itself took five more passes, and most of them were the library owning a
+property, not our class being wrong. Measured at 430px, the width this portal is read at:
+
+- Six chips need about 560px, and a ToggleGroup root is ONE flex item, so `flex-wrap` on
+  the wrapper did nothing: every chip sat on one row and the last two clipped off the
+  right edge with no way to reach them. The wrapper scrolls now, edge to edge with the
+  scrollbar hidden below `sm`, and from `sm` it wraps.
+- The overflow rule first went on the group. Its root ships its own `w-fit flex` and
+  drops a passed `className` (checked in the DOM: the class never arrived), so that rule
+  was dead. It lives on the wrapper.
+- `gap` classes cannot land on the group either. It takes its spacing from a `--gap`
+  variable that its own `spacing` prop sets, and the measured gap was 0px, which read as
+  a segmented table rather than a row of chips. Each item carries `mr-1.5` now, 6px.
+- The selected chip rendered transparent twice, for two unrelated reasons. First
+  `--portal-ink`, a token the portal theme never defines (it has `--portal-navy` and
+  `--portal-ink-2`); an undefined var makes the declaration invalid at computed-value
+  time, so the checked chip had no fill and the strip looked like it opened with nothing
+  selected. Then the widget's checked state, which it reports as `aria-pressed` and whose
+  library styles beat a plain utility of equal specificity. The state utilities carry the
+  important flag now, confirmed in the built CSS.
+- Radix scrolls the checked chip into view on mount, so the strip opened already scrolled
+  past All, with the one selected chip off-screen. The wrapper resets its scroll on mount.
+
+The fill is the owner's ruling: the chosen filter takes the brand green. Green is
+fill-only in this palette, so white type is out at 2.64:1. Navy on `#63B233` is 6.32:1,
+and that pairing is `--portal-on-green: #011b4d`, defined in both themes because the green
+itself does not change between them. Resting chips moved from `--portal-tint` to
+`--secondary`, the design system's neutral for a resting control, `#f2f2f0` against the
+page's `#f7f7f5` in light and identical in dark where both resolve to `#26231d`. The row
+also lost its own rule: two 2px rules 13px apart read as a box drawn around the phase
+header, so the strip sits on the page with air and `pb-5` under it.
+
+**Verification (measured, not assumed):**
+
+- 301 lines of tests across four files. `portal-stages.test.ts` holds 11 and passes 11/11
+  on a fresh run; the backend's "stage filtering and totals" block holds 5, on top of the
+  controller cases for the query string.
+- Full suites at the end of the block: backend 2233/2233, web 1950 of 1951. The one red
+  was a timeout in `PlotLayout.test.tsx` while a build and CI ran on the same 6 vCPU box;
+  that file runs 31/31 alone, and CI's Unit Tests job was green on the same SHA.
+- CI on `3134796`: all eight jobs pass (Guardrails, RLS Isolation Matrix, Design detector,
+  Lint, E2E, Unit Tests, Type Check, Build; Docker images skipped). The Coolify deploy
+  succeeded on the same SHA.
+- Measured on the live portal at 430px: checked chip background `rgb(99,178,51)`, border
+  `rgb(63,116,25)`, label `rgb(1,27,77)`, 40px tall; resting chips `rgb(242,242,240)` on
+  a 35% ink hairline; 6px between chips.
+
+Companion change in the same block (`0812a7b`): the visit outcome reply now returns
+`checkinDueAt` and `checkinQueuedAt`. The quiet-hours stamp was only readable by opening
+psql, so the live gate that proves the rule never ran. Reading the stamps out over HTTP
+makes it assertable, and nothing about when they are written changed.
+
+**Lesson for the next agent:** when a control ignores its styling, read the DOM and the
+compiled CSS before editing the class list again. Three of these bugs were the library
+declaring the property itself, and the two that were ours were a custom property that does
+not exist, which fails silently at computed-value time with no error anywhere. Grep the
+theme block before naming a token.
