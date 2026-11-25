@@ -157,11 +157,37 @@ into the Result cell.
 
 | #   | Device                                | Pass criteria                                                                                               | Artefact         | Owner                                                                    | Date       | Result                                                                                                                    |
 | --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Android mid-range, Android 13, Chrome | record starts under 1.5s; 20s clip uploads on throttled 3G within 90s; playback starts under 3s; seek works | probe + video    | site eng (ENGINEER, shadhilbuilderleads@gmail.com)                       |            | blocked: poster upload fails on the second object, see defect 1                                                           |
-| 2   | Android low-end, Android 11, Chrome   | same, upload within 120s, survives backgrounding mid-upload                                                 | probe + video    | site eng (second handset; if only one exists, run row 1 and say so)      |            | blocked: same                                                                                                             |
-| 3   | iPhone, current iOS, Safari           | same; MP4 recording works from the in-app recorder; permission denial recovers without a reload             | probe + video    | Vignesh M (OWNER, vignesh@shadhilbuilders.in)                            |            | blocked: same                                                                                                             |
-| 4   | iPhone, previous iOS, Safari          | same                                                                                                        | probe + video    | ram (ADMIN, ram@shadhilbuilders.in)                                      |            | blocked: same                                                                                                             |
+| 1   | Android mid-range, Android 13, Chrome | record starts under 1.5s; 20s clip uploads on throttled 3G within 90s; playback starts under 3s; seek works | probe + video    | site eng (ENGINEER, shadhilbuilderleads@gmail.com)                       |            | not run: defect 1 below is fixed (`acd7f0d`, 2026-11-24), so this waits on the handset, not the code                      |
+| 2   | Android low-end, Android 11, Chrome   | same, upload within 120s, survives backgrounding mid-upload                                                 | probe + video    | site eng (second handset; if only one exists, run row 1 and say so)      |            | not run: defect 1 below is fixed (`acd7f0d`, 2026-11-24), so this waits on the handset, not the code                      |
+| 3   | iPhone, current iOS, Safari           | same; MP4 recording works from the in-app recorder; permission denial recovers without a reload             | probe + video    | Vignesh M (OWNER, vignesh@shadhilbuilders.in)                            |            | not run: defect 1 below is fixed (`acd7f0d`, 2026-11-24), so this waits on the handset, not the code                      |
+| 4   | iPhone, previous iOS, Safari          | same                                                                                                        | probe + video    | ram (ADMIN, ram@shadhilbuilders.in)                                      |            | not run: defect 1 below is fixed (`acd7f0d`, 2026-11-24), so this waits on the handset, not the code                      |
 | 5   | Buyer, WhatsApp in-app browser        | portal opens from the deep link, clip plays, no download prompt                                             | screen recording | Gate Buyer (test org CUSTOMER on an APPROVED booking, Test Greens A-665) | 2026-11-24 | desktop Chromium half done and measured (deep link, play, seek, no download path); the webview on a handset is still open |
+
+## Defect 1, and why four rows stopped
+
+Recorded here on 2026-11-26 because the table above pointed at "defect 1" for two days without
+anywhere to read it.
+
+**Symptom.** On a real recording attempt the clip uploaded and the poster was refused by
+ImageKit with `400`, `The token ... has been used before`.
+
+**Cause.** A grant carried ONE upload token, and ImageKit burns a token on the first upload that
+presents it. A take uploads two objects (the clip and the poster) into the same folder, so the
+second object was presenting a spent token. The folder cannot move to work around it: the record
+route checks both keys against the upload id.
+
+**Fix.** `acd7f0d`, 2026-11-24, "each object in a take gets its own ImageKit ticket": the grant
+now carries a ticket per slot, minted separately, same folder, same expiry.
+
+**Proof it stays fixed.** `apps/backend/src/storage/imagekit.storage.test.ts` asserts
+`auth.tickets.clip.token !== auth.tickets.poster.token`, and
+`apps/web/src/lib/site-video/upload.test.ts` asserts the poster's form carries the POSTER
+ticket rather than the clip's. Without the second assertion a client could hold two tickets and
+still send one twice.
+
+**What that changes here.** Rows 1 to 4 were written as blocked on this defect. The fix is on
+`main` (13:08 IST on 2026-11-24) and `main` deploys on push, so it is in production. Those four
+rows are now blocked on handsets only, and they have never been run against a real camera.
 
 Row 5 has an account. Two exist, and only one of them can show a unit today:
 
