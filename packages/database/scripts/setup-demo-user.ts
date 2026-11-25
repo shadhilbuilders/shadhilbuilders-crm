@@ -103,6 +103,15 @@ async function main() {
       role: 'OWNER',
       organizationId: demoOrg.id,
       mustChangePassword: false,
+      // 2026-11-25: sign-in accepts an email OR a phone, and the phone path had no
+      // seeded account to exercise it (every other fixture number belongs to a
+      // Lead). This is the demo OWNER's number, and `login-phone.spec.ts` signs in
+      // with it. Stored the way `update()` stores a number: E.164 digits with no
+      // `+` (`auth_account_identities` compares `User.phone` against exactly what
+      // the resolver normalised the typed value to, so `9876500001` in the table
+      // would never match `919876500001` from the form). Keep it in step with
+      // `DEMO_PHONE` in `apps/web/src/test/e2e/helpers.ts`.
+      phone: '919876500001',
     },
     create: {
       email: DEMO_EMAIL,
@@ -111,6 +120,7 @@ async function main() {
       organizationId: demoOrg.id,
       emailVerified: true,
       mustChangePassword: false,
+      phone: '919876500001',
     },
   });
 

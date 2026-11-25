@@ -11,6 +11,20 @@ export const DEMO_EMAIL = 'demo@shadhilbuilders.in';
 export const DEMO_PASSWORD = 'demo123';
 
 /**
+ * The demo OWNER's phone number, as a person would type it (2026-11-25).
+ *
+ * Sign-in accepts an email or a phone, and this is the only seeded account that
+ * has BOTH a password and a number: every other fixture number belongs to a Lead.
+ * `login-phone.spec.ts` signs in with it, which is the one thing the component
+ * tests cannot prove because they stub the resolver.
+ *
+ * The seed stores the canonical E.164 digits (`919876500001`); this stays the
+ * human form on purpose, so the spec types what a person would. Change both
+ * together: `packages/database/scripts/setup-demo-user.ts`.
+ */
+export const DEMO_PHONE = '9876500001';
+
+/**
  * The seeded site engineer (bootstrap org, `shadhil-builders`).
  *
  * Same convention as DEMO_EMAIL: the repo seeds a known placeholder password
@@ -109,6 +123,36 @@ export async function loginAs(page: Page, email: string, password: string): Prom
 }
 
 /**
+ * Fill and submit the login form WITHOUT assuming the outcome.
+ *
+ * Split out of `signInOnLoginForm` so a spec can assert a REFUSAL: that helper
+ * treats "left /login" as the only success and throws otherwise. Both share the
+ * hydration wait, and that wait is the load-bearing part. A click before React
+ * has attached the submit handler submits the form natively, the page reloads
+ * with empty fields, and the failure reads exactly like "the message never
+ * appeared" (observed on the third sign-in of a run, 2026-11-25).
+ */
+export async function fillLoginForm(
+  page: Page,
+  identifier: string,
+  password: string,
+): Promise<void> {
+  const field = page.locator('input#identifier, input[name="identifier"]');
+  await field.waitFor({ state: 'visible', timeout: 30_000 });
+  await page.waitForFunction(
+    () => {
+      const form = document.querySelector('form');
+      if (!(form instanceof HTMLFormElement)) return false;
+      return Object.keys(form).some((k) => k.startsWith('__react'));
+    },
+    { timeout: 15_000 },
+  );
+  await field.fill(identifier);
+  await page.locator('[data-qa="login-password"]').fill(password);
+  await page.getByRole('button', { name: /sign in/i }).click();
+}
+
+/**
  * Fill and submit the login form, assuming the page is ALREADY on /login with
  * no session. Shared by `login` (which reuses an existing session when it can)
  * and `loginAs` (which always starts clean).
@@ -131,30 +175,13 @@ export async function loginAs(page: Page, email: string, password: string): Prom
  *     already left /login before deciding anything went wrong.
  */
 async function signInOnLoginForm(page: Page, email: string, password: string): Promise<void> {
-  // The field accepts an email OR a phone number since 2026-11-21, so it is
-  // named `identifier`. `input[name="email"]` no longer exists.
-  const emailInput = page.locator('input#identifier, input[name="identifier"]');
-  const passwordInput = page.locator('[data-qa="login-password"]');
-  const submit = page.getByRole('button', { name: /sign in/i });
-
   for (let attempt = 0; attempt < 3; attempt += 1) {
     // A previous attempt may have won the navigation race already.
     if (!stillOnLogin(new URL(page.url()))) return;
 
     try {
       // WAIT for the form; never `count()` it (see race 1 above).
-      await emailInput.waitFor({ state: 'visible', timeout: 30_000 });
-      await page.waitForFunction(
-        () => {
-          const form = document.querySelector('form');
-          if (!(form instanceof HTMLFormElement)) return false;
-          return Object.keys(form).some((k) => k.startsWith('__react'));
-        },
-        { timeout: 15_000 },
-      );
-      await emailInput.fill(email);
-      await passwordInput.fill(password);
-      await submit.click();
+      await fillLoginForm(page, email, password);
     } catch (err) {
       // Race 2: the page may have navigated out from under the form. Leaving
       // /login IS the success condition, so check that before rethrowing.
