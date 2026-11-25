@@ -5,6 +5,8 @@
 import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
 
 import { ApiError, api } from '@/apis/client';
+import type { ConstructionStage } from '@shadhil/api-types';
+
 import type { TimelinePhoto, TimelineResponse } from '@/hooks/queries/customer-progress';
 
 export type { TimelinePhoto, TimelineResponse };
@@ -74,10 +76,25 @@ export function notLinkedInfo(err: unknown): { officePhone: string | null } | nu
 
 const ME_KEY = ['customer-portal', 'me'] as const;
 const TIMELINE_KEY = ['customer-portal', 'timeline'] as const;
+const STAGES_KEY = ['customer-portal', 'stages'] as const;
 const PROBE_KEY = ['customer-portal', 'probe'] as const;
 
-const cursorQs = (cursor: string | undefined): string =>
-  cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+/**
+ * The stage filter's value on the wire (2026-11-25).
+ *
+ * `'all'` is the absence of a filter, not a stage: it must produce exactly the
+ * URL every pre-existing client sends. `'UNSET'` is the server's sentinel for
+ * captures that recorded no stage, and the type keeps a typo impossible.
+ */
+export type StageFilter = 'all' | 'UNSET' | ConstructionStage;
+
+/** Query string for the cursor AND the stage, in one place so they cannot drift. */
+const timelineQs = (cursor: string | undefined, stage: StageFilter): string => {
+  const params: string[] = [];
+  if (cursor) params.push(`cursor=${encodeURIComponent(cursor)}`);
+  if (stage !== 'all') params.push(`stage=${encodeURIComponent(stage)}`);
+  return params.length === 0 ? '' : `?${params.join('&')}`;
+};
 
 export function useCustomerMe() {
   return useQuery({
@@ -87,16 +104,53 @@ export function useCustomerMe() {
   });
 }
 
-export function useCustomerTimeline(unitId: string | null) {
+/**
+ * The timeline, optionally narrowed to one stage.
+ *
+ * The filter is a SERVER query parameter and part of the query key, so each
+ * stage is its own paginated list: switching chips starts a fresh cursor chain
+ * instead of filtering whatever happened to be loaded. Filtering loaded pages in
+ * the browser would show an empty list under a chip that says 24 until the buyer
+ * scrolled far enough, which is the bug this shape exists to avoid.
+ */
+export function useCustomerTimeline(unitId: string | null, stage: StageFilter = 'all') {
   return useInfiniteQuery({
-    queryKey: [...TIMELINE_KEY, unitId ?? ''],
+    queryKey: [...TIMELINE_KEY, unitId ?? '', stage],
     enabled: unitId !== null,
     queryFn: ({ pageParam }: { pageParam?: string }) =>
       api<TimelineResponse>(
-        `/customer-portal/units/${unitId as string}/photos${cursorQs(pageParam)}`,
+        `/customer-portal/units/${unitId as string}/photos${timelineQs(pageParam, stage)}`,
       ),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
+    retry: false,
+  });
+}
+
+/** One stage's total, as the server counted it. */
+export type StageCount = {
+  stage: ConstructionStage;
+  count: number;
+};
+
+/** Per-stage totals plus the captures that recorded no stage. */
+export type StageCounts = {
+  stages: StageCount[];
+  unset: number;
+  total: number;
+};
+
+/**
+ * The chips' numbers, from the server so a heading states a real total rather
+ * than "however many you have scrolled past". Sorted by the server in build
+ * order; the client never re-sorts, because two orderings is how a ladder ends
+ * up starting with FINISHING on one device and FOUNDATION on another.
+ */
+export function useCustomerStageCounts(unitId: string | null) {
+  return useQuery({
+    queryKey: [...STAGES_KEY, unitId ?? ''],
+    enabled: unitId !== null,
+    queryFn: () => api<StageCounts>(`/customer-portal/units/${unitId as string}/stages`),
     retry: false,
   });
 }

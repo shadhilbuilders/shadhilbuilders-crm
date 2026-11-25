@@ -460,3 +460,91 @@ describe('timeline parity with the staff route', () => {
     expect(portalPage1.photos.every((p) => p.canMutate === false)).toBe(true);
   });
 });
+
+// ── Stage grouping (2026-11-25) ─────────────────────────────────────────────
+//
+// protects= the buyer's feed can be narrowed to one stage through the API, the
+//           chips' totals come from the server with the SAME filter as the feed,
+//           null-stage captures land in their own `unset` bucket rather than in
+//           NOT_STARTED, and both reads still refuse a unit that is not theirs;
+// fails_when= the stage rides along as a client-side filter (server where clause
+//           untouched), `unset` is folded into a stage total, the totals use a
+//           different where clause than the feed, or the stage endpoints skip the
+//           booking check;
+// no_claim= the controller's query-string parsing (parseStageFilter unit test)
+//           and the rendered chips (web tests).
+describe('stage filtering and totals', () => {
+  it('narrows the feed on the server when a stage is given', async () => {
+    const tx = baseTx({});
+    setTx(tx);
+    const portal = new CustomerPortalService(prismaStub);
+    await portal.timeline(actor('CUSTOMER'), 'unit-1', undefined, 'PLASTERING');
+    const where = (
+      tx.progressPhoto.findMany.mock.calls[0] as unknown as [{ where: Record<string, unknown> }]
+    )[0].where;
+    expect(where).toMatchObject({ unitId: 'unit-1', stage: 'PLASTERING' });
+  });
+
+  it('asks for stage: null for the UNSET bucket, which is not NOT_STARTED', async () => {
+    const tx = baseTx({});
+    setTx(tx);
+    const portal = new CustomerPortalService(prismaStub);
+    await portal.timeline(actor('CUSTOMER'), 'unit-1', undefined, 'UNSET');
+    const where = (
+      tx.progressPhoto.findMany.mock.calls[0] as unknown as [{ where: Record<string, unknown> }]
+    )[0].where;
+    expect(where['stage']).toBeNull();
+  });
+
+  it('keeps the historical query exactly when no stage is given', async () => {
+    const tx = baseTx({});
+    setTx(tx);
+    const portal = new CustomerPortalService(prismaStub);
+    await portal.timeline(actor('CUSTOMER'), 'unit-1', undefined);
+    const where = (
+      tx.progressPhoto.findMany.mock.calls[0] as unknown as [{ where: Record<string, unknown> }]
+    )[0].where;
+    expect('stage' in where).toBe(false);
+  });
+
+  it('counts each stage, keeps unset apart, and sorts in build order', async () => {
+    const tx = baseTx({
+      progressPhoto: {
+        findMany: vi.fn(async () => []),
+        groupBy: vi.fn(async () => [
+          { stage: 'PLASTERING', _count: { _all: 6 } },
+          { stage: null, _count: { _all: 3 } },
+          { stage: 'FOUNDATION', _count: { _all: 8 } },
+          { stage: 'STRUCTURE', _count: { _all: 24 } },
+        ]),
+      },
+    });
+    setTx(tx);
+    const portal = new CustomerPortalService(prismaStub);
+    const counts = await portal.stageCounts(actor('CUSTOMER'), 'unit-1');
+    expect(counts.stages).toEqual([
+      { stage: 'FOUNDATION', count: 8 },
+      { stage: 'STRUCTURE', count: 24 },
+      { stage: 'PLASTERING', count: 6 },
+    ]);
+    expect(counts.unset).toBe(3);
+    expect(counts.total).toBe(41);
+
+    // Same tenant filter as the feed: a heading whose number came from a wider
+    // query than the list under it is worse than no number at all.
+    const args = (
+      tx.progressPhoto.groupBy.mock.calls[0] as unknown as [{ where: Record<string, unknown> }]
+    )[0];
+    expect(args.where).toEqual({ unitId: 'unit-1', organizationId: ORG });
+  });
+
+  it('refuses the totals for a unit the buyer does not own', async () => {
+    const tx = baseTx({
+      booking: { findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []) },
+    });
+    setTx(tx);
+    const portal = new CustomerPortalService(prismaStub);
+    await expect(portal.stageCounts(actor('CUSTOMER'), 'unit-x')).rejects.toThrow(/not found/i);
+    expect(tx.progressPhoto.groupBy).not.toHaveBeenCalled();
+  });
+});

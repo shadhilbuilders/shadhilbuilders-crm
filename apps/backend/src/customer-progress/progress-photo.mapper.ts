@@ -20,7 +20,47 @@
 // this same shape and has no business receiving staff authority flags.
 import type { RlsTx, SiteUpdateDeliveryStatus } from '@shadhil/database';
 
+import type { ConstructionStage } from '@shadhil/api-types';
+
 export const PAGE_SIZE = 50;
+
+/**
+ * The stage ladder in the order a site is built, which is the order a buyer
+ * reads it in. NOT_STARTED leads because it is a stage a capture can RECORD
+ * (the note sheet offers it), not merely the fallback label a missing stage
+ * gets: a photo with `stage: null` is "Stage not set" and counts in `unset`,
+ * never here. Mirrors `CONSTRUCTION_STAGES` in apps/web/src/lib/labels.ts.
+ */
+export const CONSTRUCTION_STAGE_ORDER: ConstructionStage[] = [
+  'NOT_STARTED',
+  'FOUNDATION',
+  'STRUCTURE',
+  'MASONRY',
+  'PLASTERING',
+  'WATERPROOFING',
+  'FLOORING',
+  'FINISHING',
+  'READY',
+];
+
+/** One stage's total, for the portal's filter chips (2026-11-25). */
+export interface StageCountDto {
+  stage: ConstructionStage;
+  count: number;
+}
+
+/**
+ * Per-stage totals plus the count of items that recorded no stage.
+ *
+ * `unset` is its own field, not a stage, because the product rule is that a
+ * capture with no stage is "Stage not set" and must never be relabelled as
+ * NOT_STARTED - the two mean different things to a buyer waiting on a build.
+ */
+export interface StageCountsResponseDto {
+  stages: StageCountDto[];
+  unset: number;
+  total: number;
+}
 
 /** Timeline entry DTO (single authoritative shape, pinned by the spec). */
 export interface TimelinePhotoDto {
@@ -202,6 +242,47 @@ function imageUrlFor(row: PhotoRow): string {
 }
 
 /** Map one stored row (+ its creator label) to the wire DTO. */
+/**
+ * How many items each construction stage holds, plus the ones that recorded none.
+ *
+ * WHY a separate read from the timeline (2026-11-25): the portal groups by stage,
+ * and a group heading has to show a real total, not "however many you have
+ * scrolled past". groupBy on `stage` is one round trip and the counts cannot
+ * drift from the feed as long as both use the same filter.
+ *
+ * The filter is deliberately IDENTICAL to `readTimelinePage`'s (unit + org, no
+ * archived predicate). Adding `archivedAt: null` here would make a heading say 8
+ * over a list that shows 9, which is worse than either number alone.
+ */
+export async function readStageCounts(
+  tx: RlsTx,
+  args: { unitId: string; organizationId: string },
+): Promise<StageCountsResponseDto> {
+  const rows = await tx.progressPhoto.groupBy({
+    by: ['stage'],
+    where: { unitId: args.unitId, organizationId: args.organizationId },
+    _count: { _all: true },
+  });
+
+  let total = 0;
+  let unset = 0;
+  const stages: StageCountDto[] = [];
+  for (const row of rows) {
+    total += row._count._all;
+    // `null` is Prisma's own key for "no stage recorded" and it is not a stage.
+    if (row.stage === null) {
+      unset += row._count._all;
+    } else {
+      stages.push({ stage: row.stage, count: row._count._all });
+    }
+  }
+  // Canonical construction order, so the chips read like the site's progress
+  // rather than like whichever stage happened to be uploaded first.
+  const order = new Map(CONSTRUCTION_STAGE_ORDER.map((s, i) => [s, i] as const));
+  stages.sort((a, b) => (order.get(a.stage) ?? 99) - (order.get(b.stage) ?? 99));
+  return { stages, unset, total };
+}
+
 export function toTimelinePhotoDto(
   row: PhotoRow,
   label: CreatorLabel | null,
@@ -249,6 +330,19 @@ export async function readTimelinePage(
      */
     onlyPhotoId?: string;
     /**
+     * Restrict the page to one construction stage (2026-11-25), or to the rows
+     * that recorded none (`'UNSET'`). `undefined` keeps the historical
+     * everything-page exactly. Filtering on the SERVER, not in the browser,
+     * because the portal timeline is cursor-paginated: a client-side filter over
+     * loaded pages shows an empty list under a chip that says 24 until the buyer
+     * scrolls far enough, and no amount of care fixes that.
+     *
+     * `null` is NOT the same as `undefined` here: null means "rows with no
+     * stage", which Prisma expresses as `stage: null`. The caller maps the
+     * `'UNSET'` sentinel to that, and this function never guesses.
+     */
+    stageFilter?: ConstructionStage | 'UNSET';
+    /**
      * Who is asking, for the advisory canMutate flag. Required so the buyer and
      * staff timelines emit the identical wire shape; the portal passes
      * `viewer: null` and every row comes back `canMutate: false`.
@@ -262,6 +356,9 @@ export async function readTimelinePage(
     where: {
       unitId: args.unitId,
       organizationId: args.organizationId,
+      ...(args.stageFilter !== undefined
+        ? { stage: args.stageFilter === 'UNSET' ? null : args.stageFilter }
+        : {}),
       ...(args.onlyPhotoId !== undefined ? { id: args.onlyPhotoId } : {}),
       ...(cursor !== null
         ? {

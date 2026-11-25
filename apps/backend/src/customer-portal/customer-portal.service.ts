@@ -13,11 +13,14 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { rlsContextFrom, withRlsContext, type RlsTx } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
+import type { ConstructionStage } from '@shadhil/api-types';
 
 import { CodedForbiddenException } from '../common/errors/coded-exception';
 import { PrismaService } from '../prisma/prisma.module';
 import {
+  readStageCounts,
   readTimelinePage,
+  type StageCountsResponseDto,
   type TimelineResponseDto,
 } from '../customer-progress/progress-photo.mapper';
 
@@ -247,24 +250,52 @@ export class CustomerPortalService {
     actor: JwtPayload,
     unitId: string,
     cursorRaw: string | undefined,
+    stageFilter?: ConstructionStage | 'UNSET',
   ): Promise<TimelineResponseDto> {
     this.assertCustomer(actor);
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
-      const { leadId } = await this.loadCustomer(tx, actor);
-      const booking = await tx.booking.findFirst({
-        where: { unitId, leadId, organizationId: actor.organizationId, status: 'APPROVED' },
-        select: { id: true },
-      });
-      if (booking === null) throw new NotFoundException('Unit not found.');
+      await this.assertUnitIsTheirs(tx, actor, unitId);
       return readTimelinePage(tx, {
         unitId,
         organizationId: actor.organizationId,
         cursorRaw,
+        ...(stageFilter !== undefined ? { stageFilter } : {}),
         // A buyer has no write arm on any table (spec D5), so canMutate is
         // false on every row. Passed explicitly to keep the wire shape
         // identical to the staff timeline.
         scope: { viewer: null, leadsProject: false },
       });
     });
+  }
+
+  /**
+   * Per-stage totals for the portal's filter chips (2026-11-25).
+   *
+   * Same access wall as the timeline, and deliberately the same shape of read:
+   * a buyer may only count what they may list, so this resolves the unit through
+   * the same APPROVED booking before touching ProgressPhoto.
+   */
+  async stageCounts(actor: JwtPayload, unitId: string): Promise<StageCountsResponseDto> {
+    this.assertCustomer(actor);
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      await this.assertUnitIsTheirs(tx, actor, unitId);
+      return readStageCounts(tx, { unitId, organizationId: actor.organizationId });
+    });
+  }
+
+  /**
+   * "Is this unit one of MY APPROVED bookings", or 404.
+   *
+   * 404 rather than 403 on purpose: telling a buyer "that unit exists but is not
+   * yours" leaks whose it is, and the portal never offers a unit the caller
+   * cannot see anyway.
+   */
+  private async assertUnitIsTheirs(tx: RlsTx, actor: JwtPayload, unitId: string): Promise<void> {
+    const { leadId } = await this.loadCustomer(tx, actor);
+    const booking = await tx.booking.findFirst({
+      where: { unitId, leadId, organizationId: actor.organizationId, status: 'APPROVED' },
+      select: { id: true },
+    });
+    if (booking === null) throw new NotFoundException('Unit not found.');
   }
 }

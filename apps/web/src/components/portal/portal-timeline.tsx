@@ -39,6 +39,13 @@ export type PortalTimelineProps = {
   onOpenPhoto: (photoId: string) => void;
   /** Photo opened from a push deep link: gets the single motion moment. */
   focusedPhotoId?: string | null;
+  /**
+   * Set when the feed is narrowed to one stage (2026-11-25). Only used for the
+   * empty state: "First photos coming soon" is a promise about the BUILD, and it
+   * would be a lie above a chip that says Brickwork 0 for a unit whose other
+   * stages are full of photos.
+   */
+  filteredStageLabel?: string | null;
 };
 
 function TimelineSkeleton() {
@@ -68,6 +75,7 @@ export function PortalTimeline({
   onLoadMore,
   onOpenPhoto,
   focusedPhotoId = null,
+  filteredStageLabel = null,
 }: PortalTimelineProps) {
   if (isLoading) return <TimelineSkeleton />;
 
@@ -77,8 +85,16 @@ export function PortalTimeline({
         <Empty
           media={<LuCamera className="size-full" />}
           mediaVariant="icon"
-          title="First photos coming soon"
-          description="We'll notify you when the first photo lands."
+          title={
+            filteredStageLabel === null
+              ? 'First photos coming soon'
+              : `No ${filteredStageLabel} photos yet`
+          }
+          description={
+            filteredStageLabel === null
+              ? "We'll notify you when the first photo lands."
+              : 'Pick another stage above, or All to see everything.'
+          }
         />
       </div>
     );

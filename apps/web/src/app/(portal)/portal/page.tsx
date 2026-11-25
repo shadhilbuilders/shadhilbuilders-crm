@@ -27,14 +27,22 @@ import { PortalLock } from '@/components/portal/portal-lock';
 import { PortalMilestones } from '@/components/portal/portal-milestones';
 import { PortalPageSkeleton } from '@/components/portal/portal-skeleton';
 import { PortalPushPrompt } from '@/components/portal/portal-push-prompt';
+import { PortalStageFilter } from '@/components/portal/portal-stage-filter';
 import { PortalTimeline } from '@/components/portal/portal-timeline';
 import { UnitSwitcher } from '@/components/portal/unit-switcher';
 import {
   notLinkedInfo,
   useCustomerMe,
+  useCustomerStageCounts,
   useCustomerTimeline,
   useDeepLinkUnit,
 } from '@/hooks/queries/customer-portal';
+import {
+  effectiveStageFilter,
+  stageChips,
+  totalItems,
+  type StageFilter,
+} from '@/lib/portal-stages';
 
 function PortalProgress() {
   const router = useRouter();
@@ -53,7 +61,17 @@ function PortalProgress() {
   const selectedUnitId = chosenUnitId ?? deepLinkUnitId ?? units[0]?.unitId ?? null;
   const selectedUnit = units.find((u) => u.unitId === selectedUnitId) ?? null;
 
-  const timeline = useCustomerTimeline(selectedUnitId);
+  // ── Stage grouping (2026-11-25) ───────────────────────────────────────────
+  // The chips carry the server's per-stage totals and narrow the feed through the
+  // API, so the count on a chip and the rows under it cannot disagree and every
+  // stage is its own cursor chain. A deep link overrides the chip until it has
+  // been opened: the notified photo is very likely not in a narrowed list, and
+  // the one thing that message was for must not be filtered away.
+  const [chosenStage, setChosenStage] = useState<StageFilter>('all');
+  const stageFilter = effectiveStageFilter(chosenStage, deepLinkPhotoId);
+  const stageCounts = useCustomerStageCounts(selectedUnitId);
+
+  const timeline = useCustomerTimeline(selectedUnitId, stageFilter);
   const photos = useMemo(
     () => (timeline.data?.pages ?? []).flatMap((page) => page.photos),
     [timeline.data],
@@ -78,7 +96,11 @@ function PortalProgress() {
   //
   // The hero already carries the "first photos coming soon" placeholder, so the
   // ledger's own empty state would say it twice.
-  const showTimeline = timeline.isPending || photos.length > 0;
+  // Also true when the COUNTS say there is something, even if the chosen stage
+  // has none (2026-11-25). Without the counts term, picking a stage that holds no
+  // items hid the whole section - chips included - so the buyer had no way back
+  // to All and saw a page that simply lost their photos.
+  const showTimeline = timeline.isPending || photos.length > 0 || totalItems(stageCounts.data) > 0;
 
   if (me.isPending) return <PortalPageSkeleton />;
 
@@ -185,8 +207,18 @@ function PortalProgress() {
 
       {showTimeline ? (
         <div className="pt-2">
+          <PortalStageFilter
+            counts={stageCounts.data}
+            value={stageFilter}
+            onChange={setChosenStage}
+          />
           <PortalTimeline
             photos={photos}
+            filteredStageLabel={
+              stageFilter === 'all'
+                ? null
+                : (stageChips(stageCounts.data).find((c) => c.value === stageFilter)?.label ?? null)
+            }
             isLoading={timeline.isPending}
             hasMore={timeline.hasNextPage}
             isLoadingMore={timeline.isFetchingNextPage}
