@@ -76,9 +76,18 @@ export function PortalStageFilter({ counts, value, onChange }: PortalStageFilter
           ),
           'aria-label': `${chip.label}, ${chip.count} ${chip.count === 1 ? 'item' : 'items'}`,
           'data-qa': `portal-stage-${chip.value}`,
-          // Resting chips carry a tint and a mid-grey hairline so they read as
-          // tappable; the checked one inverts to ink on paper, which is the only
-          // difference that has to survive a glance on a phone in daylight.
+          // Resting chips sit on `--secondary`, the design system's neutral for a
+          // resting control, not the page's `--portal-tint`: a filter chip is a
+          // control and the two differ in the light theme (#f2f2f0 vs #f7f7f5),
+          // where the tint is too close to paper to read as something you press.
+          // In dark mode they are the same value, so nothing shifts there.
+          //
+          // The checked one is a GREEN block (owner ruling, 2026-11-25: the
+          // selected filter takes the brand green) with navy type, because white
+          // on #63B233 is 2.64:1 and navy on it is 6.32:1 - the token
+          // --portal-on-green carries that decision. `--secondary` cannot serve
+          // here and neither can `--success`, which is #3f7419, a dark green ink
+          // for type, not the brand green as a fill.
           //
           // THE STATE UTILITIES CARRY `!` ON PURPOSE (measured): this widget
           // reports its checked state as `aria-pressed`, and the library's own
@@ -91,7 +100,7 @@ export function PortalStageFilter({ counts, value, onChange }: PortalStageFilter
           // root takes its spacing from a `--gap` var set by its own `spacing`
           // prop, so a class here cannot add one.
           className:
-            'mr-1.5 h-auto! min-h-10 min-w-0! shrink-0! rounded-none! border border-[var(--portal-ink-2)]/35 bg-[var(--portal-tint)] px-3! py-2! text-[0.6875rem] font-medium tracking-[0.06em] whitespace-nowrap text-[var(--portal-navy)] uppercase shadow-none! transition-none last:mr-0 hover:border-[var(--portal-navy)] hover:bg-[var(--portal-tint)] aria-pressed:border-[var(--portal-navy)]! aria-pressed:bg-[var(--portal-navy)]! aria-pressed:text-[var(--portal-paper)]! aria-pressed:[&_span]:text-[var(--portal-paper)]!',
+            'mr-1.5 h-auto! min-h-10 min-w-0! shrink-0! rounded-none! border border-[var(--portal-ink-2)]/35 bg-[var(--secondary)] px-3! py-2! text-[0.6875rem] font-medium tracking-[0.06em] whitespace-nowrap text-[var(--portal-navy)] uppercase shadow-none! transition-none last:mr-0 hover:border-[var(--portal-navy)] hover:bg-[var(--secondary)] aria-pressed:border-[var(--portal-green-ink)]! aria-pressed:bg-[var(--portal-green)]! aria-pressed:text-[var(--portal-on-green)]! aria-pressed:[&_span]:text-[var(--portal-on-green)]!',
         }))}
       />
     </div>

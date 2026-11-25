@@ -47,6 +47,14 @@ html.portal-theme {
   --portal-green: #63b233;
   --portal-green-ink: #3f7419;
   --portal-green-wash: #f0f7ea;
+  /**
+   * What type may sit ON the green fill (2026-11-25). The brand note above is
+   * right that green is fill-only on paper, which leaves white out: white on
+   * #63B233 is 2.64:1 and fails even the large-text floor. Navy on the same
+   * green is 6.32:1, so the selected stage chip is a green block with navy type.
+   * Named rather than inlined so the pairing is decided once, here.
+   */
+  --portal-on-green: #011b4d;
   --portal-paper: #ffffff;
   --portal-surface: #ffffff;
   --portal-tint: #f7f7f5;
@@ -89,6 +97,9 @@ html.portal-theme.dark {
   --portal-green: #63b233;
   --portal-green-ink: #9bd06e;
   --portal-green-wash: #22301a;
+  /* The green fill does not change with the theme, so what sits on it does not
+     either: near-white here would be 2.29:1 and unreadable. */
+  --portal-on-green: #011b4d;
   --portal-paper: #14130f;
   --portal-surface: #1c1a16;
   --portal-tint: #26231d;
