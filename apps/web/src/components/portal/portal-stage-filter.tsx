@@ -91,7 +91,7 @@ export function PortalStageFilter({ counts, value, onChange }: PortalStageFilter
           // root takes its spacing from a `--gap` var set by its own `spacing`
           // prop, so a class here cannot add one.
           className:
-            'mr-1.5 h-auto! min-h-10 min-w-0! shrink-0! rounded-none! border border-[var(--portal-ink-2)]/35 bg-[var(--portal-tint)] px-3! py-2! text-[0.6875rem] font-medium tracking-[0.06em] whitespace-nowrap text-[var(--portal-navy)] uppercase shadow-none! transition-none last:mr-0 hover:border-[var(--portal-ink)] hover:bg-[var(--portal-tint)] aria-pressed:border-[var(--portal-ink)]! aria-pressed:bg-[var(--portal-ink)]! aria-pressed:text-[var(--portal-paper)]! aria-pressed:[&_span]:text-[var(--portal-paper)]!',
+            'mr-1.5 h-auto! min-h-10 min-w-0! shrink-0! rounded-none! border border-[var(--portal-ink-2)]/35 bg-[var(--portal-tint)] px-3! py-2! text-[0.6875rem] font-medium tracking-[0.06em] whitespace-nowrap text-[var(--portal-navy)] uppercase shadow-none! transition-none last:mr-0 hover:border-[var(--portal-navy)] hover:bg-[var(--portal-tint)] aria-pressed:border-[var(--portal-navy)]! aria-pressed:bg-[var(--portal-navy)]! aria-pressed:text-[var(--portal-paper)]! aria-pressed:[&_span]:text-[var(--portal-paper)]!',
         }))}
       />
     </div>
