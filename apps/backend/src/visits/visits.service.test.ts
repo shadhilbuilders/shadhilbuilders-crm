@@ -22,6 +22,7 @@ import { LEAD_STATES } from '../leads/leads.state-machine';
 import { LeadsService } from '../leads/leads.service';
 
 import { VisitsService } from './visits.service';
+import { nextCheckinSlot } from './checkin-schedule';
 
 // Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
 // Lead_phone_equals_phoneE164). One evaluation feeds both columns.
@@ -1501,11 +1502,18 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - the check-in stamp', () 
     });
 
     expect(returned.checkinDueAt).toBeTruthy();
-    // Inside the window the slot is "now", so it cannot be earlier than the call
-    // and cannot be more than a minute later.
+    // The slot is the quiet-hours rule's own answer, and that rule has its own
+    // tests in checkin-schedule.test.ts. This line used to assume "inside the
+    // window the slot is now", which passed all afternoon and failed after 20:00
+    // IST: the run at 23:16 IST got 08:00 the next morning and the assertion
+    // called a correct answer wrong. Compare against the rule for the instant on
+    // either side of the call, so a run that straddles 20:00 cannot flake either.
     const dueAt = new Date(returned.checkinDueAt as string).getTime();
-    expect(dueAt).toBeGreaterThanOrEqual(before - 1000);
-    expect(dueAt).toBeLessThanOrEqual(before + 60_000);
+    const allowed = [
+      nextCheckinSlot(new Date(before)).getTime(),
+      nextCheckinSlot(new Date()).getTime(),
+    ];
+    expect(allowed).toContain(dueAt);
     expect(returned.checkinQueuedAt).toBeNull();
   });
 });
