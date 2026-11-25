@@ -1713,3 +1713,54 @@ phone path works, and an e2e that fills a form before hydration cannot tell you 
 missing. Both failures look like product bugs and both are test bugs. If a toast does not
 appear, photograph the form's fields first: empty fields after a submit mean a native
 submission, not a silent handler.
+
+## Round 63 - 2026-11-26, 02:59 IST - The camera zooms itself
+
+A site engineer wanted zoom while recording. There were two honest ways to build it, and the
+cheap one covers the phones that already work.
+
+**Route A, taken: the camera's own crop.** After the stream is granted the engine asks the video
+track for its `zoom` capability and, where the range exists, drives it with
+`applyConstraints({ advanced: [{ zoom }] })`. The device does the cropping, so the recorder keeps
+recording the SAME track, the clip stays 720p, and the poster, the 14 MiB cap, the ledger and the
+server contract are all untouched. A stop applied mid-clip does not restart anything: the frames
+simply come from a narrower view, which is why the chips can sit on the recording screen at all.
+
+**Route B, declined for now: a canvas between camera and recorder.** `drawImage` into a canvas,
+`captureStream(30)`, record that. It would work on iPhone, and it costs a per-frame repaint on the
+Android 11 handset in gate row 2, a visibly softer picture (a 2x crop of a 720-wide capture is 360
+wide upscaled unless the capture resolution also rises), and it replaces the one thing the whole
+recorder is built around. That is a project with a spike on a handset, not a control in a bar.
+
+**What gates the control is a capability, not a platform.** Chrome on Android reports a `zoom`
+range; Safari on iOS does not, and one community report has iOS 17 beginning to expose it, so a
+platform check would rot. `readZoomCapability()` returns null when there is no range, when the
+range cannot actually move (`max <= min`), or when `getCapabilities` throws, which some platforms
+do. Null means the capture bar renders no zoom row at all rather than a dead button.
+
+**The labels tell the truth.** Stops are the camera's widest view, twice that and three times
+that, each clamped to the device maximum and labelled with the value actually requested. A camera
+that tops out at 1.5x gets "1x" and "1.5x", not a "3x" button that quietly does 1.5x. Values snap
+to the device's own grid counted from its own minimum, and a stop that rounds onto its predecessor
+is dropped, so the row never shows the same zoom twice.
+
+**A refused stop does not move the chip.** `setZoom` clamps, asks, and only records the new value
+on success; the UI re-reads the engine on success alone. A camera that rejects the constraint
+leaves the row where the person last saw it working, which is the difference between "this stop
+did not take" and "the app forgot where it was".
+
+**Verification.** 52 tests across the three files. The engine cases pin that a take asks for the
+camera once and applies the constraint to the track MediaRecorder already holds, that the range
+is clamped, and that a refusal keeps the previous value. The screen cases pin that the row
+appears only once a stream reports a range, that a stop does not end the take, and that a refused
+stop leaves the previous chip pressed. Reverting the applyConstraints call and the chip's
+re-read turned four of those cases red, and both files went back byte-identical.
+
+**Not claimed:** that any of this works on a handset. It is unit-proven and it has never been run
+against a real camera. The four device-gate rows are the ones that decide that, and they already
+need a person with a phone.
+
+**Lesson for the next agent:** when a browser feature is platform-dependent, gate it on
+`getCapabilities()` and treat "no capability" as a normal answer. A platform check is a guess
+about hardware you cannot see, and `getCapabilities` can throw, so the probe needs a guard around
+it or it takes the recorder down before the first frame.

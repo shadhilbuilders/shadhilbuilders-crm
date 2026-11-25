@@ -43,6 +43,7 @@ function fakeStream(audio = true) {
     stream: {
       getTracks: () => tracks,
       getAudioTracks: () => tracks.filter((t) => t.kind === 'audio'),
+      getVideoTracks: () => tracks.filter((t) => t.kind === 'video'),
     } as unknown as MediaStream,
   };
 }
@@ -53,6 +54,10 @@ function setup(
     permission?: PermissionState;
     webmOnly?: boolean;
     audioTrack?: boolean;
+    /** The range the fake camera reports; null means "no zoom on this platform". */
+    zoom?: { min: number; max: number; step: number } | null;
+    /** True when the device refuses an applyConstraints. */
+    refusesZoom?: boolean;
   } = {},
 ) {
   FakeRecorder.types = new Set(opts.webmOnly ? ['video/webm'] : [RECORDER_MIME]);
@@ -68,12 +73,17 @@ function setup(
         else resolveMedia = resolve;
       }),
   );
+  const applyZoom = vi.fn(async () => {
+    if (opts.refusesZoom) throw new Error('ConstraintNotSatisfiedError');
+  });
   const env: RecorderEnv = {
     getUserMedia,
     MediaRecorder: FakeRecorder as never,
     permissions: opts.permission
       ? { query: vi.fn(async () => ({ state: opts.permission }) as PermissionStatus) }
       : undefined,
+    zoomCapability: () => opts.zoom ?? null,
+    applyZoom,
     now: () => clock.t,
     setTimeout: (fn, ms) => {
       timers.push({ fn, ms, id: nextId, interval: false });
@@ -102,7 +112,16 @@ function setup(
   } satisfies EngineHandlers;
   const engine = new RecorderEngine(env, handlers);
   const grant = () => resolveMedia?.(fs.stream);
-  return { engine, handlers, getUserMedia, clock, timers, tracks: fs.tracks, grant };
+  return {
+    engine,
+    handlers,
+    getUserMedia,
+    applyZoom,
+    clock,
+    timers,
+    tracks: fs.tracks,
+    grant,
+  };
 }
 
 async function started(s: ReturnType<typeof setup>, audio = false) {
@@ -232,5 +251,57 @@ describe('inCountdown', () => {
   it('turns on for the last ten seconds only', () => {
     expect(RecorderEngine.inCountdown(34_999)).toBe(false);
     expect(RecorderEngine.inCountdown(35_000)).toBe(true);
+  });
+});
+
+describe('zoom (route A: the camera crops itself)', () => {
+  it('reports no zoom before a stream exists and after release', async () => {
+    const s = setup({ zoom: { min: 1, max: 4, step: 0.1 } });
+    expect(s.engine.zoomState()).toBeNull();
+    await started(s);
+    expect(s.engine.zoomState()).toEqual({ capability: { min: 1, max: 4, step: 0.1 }, value: 1 });
+    s.engine.release();
+    expect(s.engine.zoomState()).toBeNull();
+  });
+
+  it('offers nothing on a platform that reports no range', async () => {
+    const s = setup({ zoom: null });
+    await started(s);
+    expect(s.engine.zoomState()).toBeNull();
+    // A stop is a no-op rather than a throw: the UI has no control to press.
+    await expect(s.engine.setZoom(2)).resolves.toBe(false);
+    expect(s.applyZoom).not.toHaveBeenCalled();
+  });
+
+  it('zooms the SAME track the recorder holds, without restarting it', async () => {
+    const s = setup({ zoom: { min: 1, max: 4, step: 0.1 } });
+    await started(s);
+
+    await expect(s.engine.setZoom(2)).resolves.toBe(true);
+
+    // One camera request for the whole take, and the constraint lands on the
+    // video track MediaRecorder is already recording.
+    expect(s.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(s.applyZoom).toHaveBeenCalledWith(s.tracks[0], 2);
+    expect(s.engine.zoomState()?.value).toBe(2);
+    // Still recording: the take did not end when the view changed.
+    expect(s.handlers.onStopped).not.toHaveBeenCalled();
+  });
+
+  it('clamps to the device range instead of asking for the impossible', async () => {
+    const s = setup({ zoom: { min: 1, max: 4, step: 0.1 } });
+    await started(s);
+    await s.engine.setZoom(9);
+    expect(s.applyZoom).toHaveBeenLastCalledWith(s.tracks[0], 4);
+    expect(s.engine.zoomState()?.value).toBe(4);
+  });
+
+  it('keeps the previous value when the camera refuses', async () => {
+    const s = setup({ zoom: { min: 1, max: 4, step: 0.1 }, refusesZoom: true });
+    await started(s);
+
+    await expect(s.engine.setZoom(3)).resolves.toBe(false);
+    // The chip must not move to a stop the camera never took.
+    expect(s.engine.zoomState()?.value).toBe(1);
   });
 });

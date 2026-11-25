@@ -11,8 +11,10 @@ import {
   classifyCameraError,
   pickRecorderMime,
   queryCameraPermission,
+  readZoomCapability,
   recorderOptions,
   supportsAudio,
+  zoomStops,
 } from './recorder-support';
 
 const named = (name: string) => Object.assign(new Error(name), { name });
@@ -75,5 +77,75 @@ describe('queryCameraPermission', () => {
     expect(await queryCameraPermission(undefined)).toBeNull();
     const bad = { query: vi.fn(async () => Promise.reject(new TypeError('no camera name'))) };
     expect(await queryCameraPermission(bad)).toBeNull();
+  });
+});
+
+describe('readZoomCapability', () => {
+  const track = (caps: unknown) => ({ getCapabilities: () => caps as never });
+
+  it('reads the device range, defaulting a missing step to 0.1', () => {
+    expect(readZoomCapability(track({ zoom: { min: 1, max: 8 } }))).toEqual({
+      min: 1,
+      max: 8,
+      step: 0.1,
+    });
+    expect(readZoomCapability(track({ zoom: { min: 1, max: 4, step: 0.5 } }))).toEqual({
+      min: 1,
+      max: 4,
+      step: 0.5,
+    });
+  });
+
+  it('is null on a platform that reports no zoom (iOS Safari)', () => {
+    expect(readZoomCapability(track({ facingMode: ['environment'] }))).toBeNull();
+  });
+
+  it('is null for a range that cannot zoom, rather than a dead control', () => {
+    expect(readZoomCapability(track({ zoom: { min: 1, max: 1 } }))).toBeNull();
+    expect(readZoomCapability(track({ zoom: { min: 2 } }))).toBeNull();
+    expect(readZoomCapability(track({ zoom: { min: Number.NaN, max: 4 } }))).toBeNull();
+    expect(readZoomCapability(null)).toBeNull();
+  });
+
+  it('survives a getCapabilities that throws', () => {
+    // Some platforms throw here; an unguarded probe would take the recorder down
+    // before the first frame.
+    const throwing = {
+      getCapabilities: () => {
+        throw new Error('not supported');
+      },
+    };
+    expect(readZoomCapability(throwing)).toBeNull();
+  });
+});
+
+describe('zoomStops', () => {
+  it('offers 1x, 2x and 3x on a range that reaches 3x', () => {
+    expect(zoomStops({ min: 1, max: 8, step: 0.1 }).map((s) => s.label)).toEqual([
+      '1x',
+      '2x',
+      '3x',
+    ]);
+  });
+
+  it('labels the value it actually asks for when the device tops out early', () => {
+    // A camera that cannot do 3x must not grow a "3x" button that does 1.5x.
+    expect(zoomStops({ min: 1, max: 1.5, step: 0.1 })).toEqual([
+      { value: 1, label: '1x' },
+      { value: 1.5, label: '1.5x' },
+    ]);
+  });
+
+  it('snaps to the device grid counted from its own minimum', () => {
+    const stops = zoomStops({ min: 0.5, max: 4, step: 0.25 });
+    expect(stops.map((s) => s.value)).toEqual([0.5, 1, 1.5]);
+    for (const stop of stops) {
+      expect(Math.round((stop.value - 0.5) / 0.25)).toBeCloseTo((stop.value - 0.5) / 0.25, 6);
+    }
+  });
+
+  it('never repeats a stop', () => {
+    const values = zoomStops({ min: 1, max: 1.2, step: 0.1 }).map((s) => s.value);
+    expect(new Set(values).size).toBe(values.length);
   });
 });

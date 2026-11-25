@@ -43,7 +43,7 @@ import {
   type Clip,
 } from '@/lib/site-video/recorder-machine';
 import { RecorderEngine, browserRecorderEnv, type RawTake } from '@/lib/site-video/recorder-engine';
-import { supportsAudio } from '@/lib/site-video/recorder-support';
+import { supportsAudio, zoomStops, type ZoomCapability } from '@/lib/site-video/recorder-support';
 
 const STAGE_UNSET = '__unset__';
 const STAGE_OPTIONS = [
@@ -74,6 +74,10 @@ export function SiteRecorder(props: SiteRecorderProps) {
   const [elapsed, setElapsed] = useState(0);
   const [stage, setStage] = useState<string | null>(defaultStage);
   const [caption, setCaption] = useState('');
+  // The camera's own zoom, when it has one (2026-11-26). Null on a platform
+  // that exposes no range, which is how the control stays absent rather than
+  // dead on an iPhone.
+  const [zoom, setZoom] = useState<{ capability: ZoomCapability; value: number } | null>(null);
   const liveRef = useRef<HTMLVideoElement | null>(null);
   const engineRef = useRef<RecorderEngine | null>(null);
   const takenAtRef = useRef<string>(new Date().toISOString());
@@ -101,6 +105,16 @@ export function SiteRecorder(props: SiteRecorderProps) {
     await engine.start(audioRef.current);
   }, []);
 
+  // Route A: the camera zooms ITSELF. A stop applied mid-clip keeps the
+  // recording going - only what the sensor sees changes - so there is no pause,
+  // no second encode and nothing added to the upload path.
+  const applyZoom = useCallback(async (value: number) => {
+    const engine = engineRef.current;
+    if (engine === null) return;
+    const accepted = await engine.setZoom(value);
+    if (accepted) setZoom(engine.zoomState());
+  }, []);
+
   // Engine lives for the sheet's open lifetime. Handlers only dispatch.
   useEffect(() => {
     if (!open) return;
@@ -108,6 +122,8 @@ export function SiteRecorder(props: SiteRecorderProps) {
       onGranted: (stream) => {
         dispatch({ type: 'GRANTED' });
         if (liveRef.current !== null) liveRef.current.srcObject = stream;
+        // null on iOS Safari and on any camera that reports no zoom range.
+        setZoom(engine.zoomState());
       },
       onDenied: (permanent) => dispatch({ type: 'DENIED', permanent }),
       onUnsupported: () => dispatch({ type: 'UNSUPPORTED' }),
@@ -140,6 +156,7 @@ export function SiteRecorder(props: SiteRecorderProps) {
     const onHidden = () => {
       if (document.visibilityState === 'hidden') {
         engine.release();
+        setZoom(null);
         dispatch({ type: 'CLOSE' });
       }
     };
@@ -148,6 +165,7 @@ export function SiteRecorder(props: SiteRecorderProps) {
       document.removeEventListener('visibilitychange', onHidden);
       engine.release();
       engineRef.current = null;
+      setZoom(null);
       dispatch({ type: 'CLOSE' });
     };
   }, [open, begin]);
@@ -275,6 +293,34 @@ export function SiteRecorder(props: SiteRecorderProps) {
               data-qa="recorder-live-video"
             />
           )}
+
+          {/* Zoom applies WHILE recording: each stop is one applyConstraints on
+              the track the recorder already holds. 44px tall so it meets the
+              same tap-target floor as the stop control. */}
+          {step.kind === 'recording' && zoom !== null ? (
+            <div
+              className="flex flex-wrap items-center justify-center gap-2"
+              data-qa="recorder-zoom"
+            >
+              {zoomStops(zoom.capability).map((stop) => {
+                const active = Math.abs(stop.value - zoom.value) < 1e-9;
+                return (
+                  <Button
+                    key={stop.label}
+                    type="button"
+                    size="sm"
+                    variant={active ? 'default' : 'outline'}
+                    aria-pressed={active}
+                    className="h-11 min-w-11 tabular-nums"
+                    data-qa={`recorder-zoom-${stop.label}`}
+                    onClick={() => void applyZoom(stop.value)}
+                  >
+                    {stop.label}
+                  </Button>
+                );
+              })}
+            </div>
+          ) : null}
 
           {step.kind === 'idle' && (
             <Button type="button" size="lg" onClick={() => void begin()} data-qa="recorder-start">

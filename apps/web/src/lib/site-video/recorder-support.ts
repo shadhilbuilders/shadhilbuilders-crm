@@ -43,6 +43,81 @@ export function buildConstraints(audio: boolean): MediaStreamConstraints {
   };
 }
 
+/** What a camera says it can do about zoom, in its own units (its min is the widest view). */
+export interface ZoomCapability {
+  min: number;
+  max: number;
+  step: number;
+}
+
+/** One zoom control the capture bar offers. */
+export interface ZoomStop {
+  value: number;
+  label: string;
+}
+
+interface ZoomTrackLike {
+  /**
+   * Typed `unknown` on purpose: the DOM lib's `MediaTrackCapabilities` has no
+   * `zoom` member, so a narrower return type here makes the real
+   * `MediaStreamTrack` structurally incompatible with this probe.
+   */
+  getCapabilities(): unknown;
+}
+
+interface ZoomCapabilitiesLike {
+  zoom?: { min?: unknown; max?: unknown; step?: unknown } | null;
+}
+
+/**
+ * The camera's zoom range, or null when there is nothing honest to offer.
+ *
+ * Chrome on Android exposes `zoom` on MediaStreamTrack; Safari on iOS does not,
+ * which is why this returns null instead of promising a control (verified: the
+ * Image Capture PTZ constraints are Chrome-only). `getCapabilities` also throws
+ * on some platforms, so the probe is guarded - an unguarded throw here would
+ * take the whole recorder down before the first frame.
+ */
+export function readZoomCapability(track: ZoomTrackLike | null): ZoomCapability | null {
+  if (track === null) return null;
+  let caps: unknown;
+  try {
+    caps = track.getCapabilities();
+  } catch {
+    return null;
+  }
+  const zoom = (caps as ZoomCapabilitiesLike | null | undefined)?.zoom;
+  if (zoom === undefined || zoom === null) return null;
+  const { min, max, step } = zoom;
+  if (typeof min !== 'number' || typeof max !== 'number') return null;
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+  const resolvedStep = typeof step === 'number' && Number.isFinite(step) && step > 0 ? step : 0.1;
+  return { min, max, step: resolvedStep };
+}
+
+/** Snap a value onto the device's own grid, counted from its own minimum. */
+function onStep(value: number, cap: ZoomCapability): number {
+  const steps = Math.round((value - cap.min) / cap.step);
+  return Math.round((cap.min + steps * cap.step) * 100) / 100;
+}
+
+/**
+ * Up to three stops: the widest view the camera offers, then twice and three
+ * times that, each clamped to the device's maximum and labelled with the value
+ * actually asked for. A camera whose range ends at 1.5x gets "1x" and "1.5x",
+ * not a button that promises 2x and quietly does 1.5x.
+ */
+export function zoomStops(cap: ZoomCapability): ZoomStop[] {
+  const stops: ZoomStop[] = [];
+  for (const multiplier of [1, 2, 3] as const) {
+    const wanted = Math.min(cap.max, Math.max(cap.min, cap.min * multiplier));
+    const value = onStep(wanted, cap);
+    if (stops.some((stop) => Math.abs(stop.value - value) < 1e-9)) continue;
+    stops.push({ value, label: `${value}x` });
+  }
+  return stops;
+}
+
 export function recorderOptions(mimeType: string, audio: boolean): MediaRecorderOptions {
   return {
     mimeType,

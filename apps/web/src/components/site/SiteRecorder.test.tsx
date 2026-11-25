@@ -20,6 +20,9 @@ import type { Clip } from '@/lib/site-video/recorder-machine';
 
 const mocks = vi.hoisted(() => ({
   handlers: null as null | Record<string, (...a: never[]) => void>,
+  /** What the engine reports for zoom; each test sets it. */
+  zoom: null as null | { capability: { min: number; max: number; step: number }; value: number },
+  setZoom: vi.fn(async (): Promise<boolean> => true),
   release: vi.fn(),
   stop: vi.fn(),
   start: vi.fn(),
@@ -38,6 +41,8 @@ vi.mock('@/lib/site-video/recorder-engine', () => ({
     start = mocks.start;
     stop = mocks.stop;
     release = mocks.release;
+    zoomState = () => mocks.zoom;
+    setZoom = mocks.setZoom;
   },
   browserRecorderEnv: () => ({}),
 }));
@@ -107,6 +112,7 @@ async function toPreview() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.handlers = null;
+  mocks.zoom = null;
   mocks.start.mockResolvedValue(undefined);
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -138,6 +144,53 @@ describe('SiteRecorder', () => {
     expect(q('recorder-audio-unavailable')).not.toBeNull();
     await click('recorder-start');
     expect(mocks.start).toHaveBeenCalledWith(false);
+  });
+
+  it('offers the camera zoom while recording, and applies a stop mid-clip', async () => {
+    mocks.zoom = { capability: { min: 1, max: 4, step: 0.1 }, value: 1 };
+    await mount();
+    // No stream yet, so no range: the control must not appear before the camera does.
+    expect(q('recorder-zoom')).toBeNull();
+
+    await click('recorder-start');
+    await fire('onGranted', { getTracks: () => [] });
+
+    expect(q('recorder-zoom')).not.toBeNull();
+    expect(q('recorder-zoom-1x')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('recorder-zoom-2x')?.getAttribute('aria-pressed')).toBe('false');
+
+    // The engine reports the new value once the camera accepts, and the chip follows it.
+    mocks.zoom = { ...mocks.zoom!, value: 2 };
+    await click('recorder-zoom-2x');
+    expect(mocks.setZoom).toHaveBeenCalledWith(2);
+    expect(q('recorder-zoom-2x')?.getAttribute('aria-pressed')).toBe('true');
+    // The take carries on: a zoom is not a stop.
+    expect(q('video-review')).toBeNull();
+    expect(q('recorder-stop')).not.toBeNull();
+  });
+
+  it('shows no zoom control on a camera that reports no range (iPhone today)', async () => {
+    mocks.zoom = null;
+    await mount();
+    await click('recorder-start');
+    await fire('onGranted', { getTracks: () => [] });
+
+    // An honest absence, not a disabled button: there is nothing to offer.
+    expect(q('recorder-zoom')).toBeNull();
+  });
+
+  it('leaves the chip where it was when the camera refuses the stop', async () => {
+    mocks.zoom = { capability: { min: 1, max: 4, step: 0.1 }, value: 1 };
+    mocks.setZoom.mockResolvedValueOnce(false);
+    await mount();
+    await click('recorder-start');
+    await fire('onGranted', { getTracks: () => [] });
+
+    await click('recorder-zoom-3x');
+
+    expect(mocks.setZoom).toHaveBeenCalledWith(3);
+    expect(q('recorder-zoom-1x')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('recorder-zoom-3x')?.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('Record starts the camera with audio off by default, then shows a stop control', async () => {
