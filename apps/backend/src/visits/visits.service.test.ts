@@ -1487,4 +1487,25 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - the check-in stamp', () 
     );
     expect(row?.checkinDueAt).toBeNull();
   });
+
+  // 2026-11-25: the due slot is on the RESPONSE now, not only in the row. The live
+  // gate that proves "a 22:30 completion sends nothing tonight" runs over HTTP
+  // against production and has no psql, so an unexposed column made the rule
+  // unassertable - which is why that gate had never run.
+  it('returns the due slot on the outcome response', async () => {
+    const { visitId } = await seedLeadWithVisit();
+    const before = Date.now();
+    const returned = await service.updateOutcome(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
+      visitId,
+      outcome: 'COMPLETED',
+    });
+
+    expect(returned.checkinDueAt).toBeTruthy();
+    // Inside the window the slot is "now", so it cannot be earlier than the call
+    // and cannot be more than a minute later.
+    const dueAt = new Date(returned.checkinDueAt as string).getTime();
+    expect(dueAt).toBeGreaterThanOrEqual(before - 1000);
+    expect(dueAt).toBeLessThanOrEqual(before + 60_000);
+    expect(returned.checkinQueuedAt).toBeNull();
+  });
 });

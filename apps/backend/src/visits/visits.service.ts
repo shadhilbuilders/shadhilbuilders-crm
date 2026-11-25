@@ -136,6 +136,19 @@ export interface VisitRow {
    * CANCELLED outcome, which by owner ruling never moves the lead.
    */
   leadSyncNote?: string;
+  /**
+   * Quiet hours (2026-11-25): when the buyer's check-in for a COMPLETED visit
+   * becomes sendable, and once it has been claimed by the reminder cron.
+   *
+   * Exposed because the deferral is otherwise invisible: the check-in is not
+   * queued in a table the API can read, it is a timestamp the cron scans, so a
+   * gate that claims "22:30 completed, nothing sent tonight" had to open psql
+   * to see it. These two fields make the rule assertable over HTTP.
+   *
+   * Null on a visit that owes no check-in (not COMPLETED, or outcome cleared).
+   */
+  checkinDueAt?: string | null; // ISO, when the cron may send
+  checkinQueuedAt?: string | null; // ISO, set once the cron has claimed it
 }
 
 export interface VisitListResult {
@@ -855,6 +868,10 @@ export class VisitsService {
           outcome: true,
           notes: true,
           updatedAt: true,
+          // Returned so the caller sees when the check-in becomes sendable rather
+          // than having to read the row (see VisitRow.checkinDueAt).
+          checkinDueAt: true,
+          checkinQueuedAt: true,
           lead: { select: { name: true, owner: { select: { name: true } } } },
           user: { select: { name: true } },
         },
@@ -1045,6 +1062,11 @@ export class VisitsService {
         outcome: updated.outcome,
         notes: updated.notes,
         updatedAt: updated.updatedAt.toISOString(),
+        // Quiet hours: the due slot and the cron's claim, so a caller (and the live
+        // gate) can assert "this completion waits until 08:00" without psql.
+        checkinDueAt: updated.checkinDueAt === null ? null : updated.checkinDueAt.toISOString(),
+        checkinQueuedAt:
+          updated.checkinQueuedAt === null ? null : updated.checkinQueuedAt.toISOString(),
         // Only present when the lead did NOT follow - see VisitRow.leadSyncNote.
         ...(leadSyncNote !== undefined ? { leadSyncNote } : {}),
       };
