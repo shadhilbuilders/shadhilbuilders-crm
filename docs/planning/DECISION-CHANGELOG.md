@@ -1606,7 +1606,7 @@ declaring the property itself, and the two that were ours were a custom property
 not exist, which fails silently at computed-value time with no error anywhere. Grep the
 theme block before naming a token.
 
-## Round 61 - 2026-11-25, ~23:40 IST - Five cross-org reads, and the two the backlog named
+## Round 61 - 2026-11-26, 01:03 IST - Five cross-org reads, and the two the backlog named
 
 `User` carries no row-level security. It is the one table in this schema where FORCE RLS does
 not stand behind the application code, so every service read of a user by id is a hand-written
@@ -1656,3 +1656,60 @@ one preset serves both paths instead of each test presetting twice and drifting.
 what someone may do, never to whom, and on a table without RLS the second half is the
 application's job. Also: when a defect is written down as "two sites", grep the class before
 fixing two. The count in a TODO is a report from the last person who looked, not a bound.
+
+## Round 62 - 2026-11-26, 02:01 IST - The phone login, proven at runtime
+
+The component tests for this feature stub the resolver, so four things were never actually
+tested: the public BFF route answering without a session, `auth_account_identities` matching a
+real `User.phone`, better-auth issuing a cookie from the email the resolver returned, and the
+refusal leaving no session behind. `apps/web/src/test/e2e/login-phone.spec.ts` covers all
+four, because it is the last place where a stub cannot stand in for the boundary under test.
+
+**The fixture is the finding.** There was no account in the seed with both a password and a
+phone number, which is why this case could not be written earlier: every phone in the fixtures
+belongs to a `Lead`, and leads do not sign in. The demo OWNER now carries `919876500001`. It is
+stored in the canonical E.164 digits, not as `9876500001`, because the resolver compares the
+normalised input string against `User.phone` as a string, so a table holding the local form
+would never match the form's `91`-prefixed value and the failure would look like "no account
+with that number". The number sits outside the seeded Lead range (`9876510001` to
+`9876510004`) on purpose: a collision would have been a per-org unique violation at seed time,
+not at test time.
+
+**Three failures before it ran, and only the third was about the spec.**
+
+1. Playwright's `webServer` gave up at 120s while `next dev` was still compiling. The first
+   Turbopack compile of `/login` measured 84s on this machine, and the run also queues two
+   auth setups behind it. Starting `next dev` by hand and letting `reuseExistingServer` pick it
+   up is the working shape here. Do not raise the timeout and call it fixed; the next cold
+   build will find the new ceiling.
+2. The Chromium bundle for this Playwright version had never been downloaded on this box
+   (`chromium_headless_shell-1234`). `pnpm exec playwright install chromium`, 114.7 MiB.
+3. The unknown-number case clicked before React had attached the submit handler. The form went
+   native, the page reloaded with empty fields, and no toast appeared. The snapshot looks
+   exactly like a missing message, which is why this one is worth writing down: it reads as a
+   product defect. The existing `signInOnLoginForm` helper already waits for hydration and
+   retries, so the fix was to extract `fillLoginForm` from it and export that, rather than
+   writing a second filler with its own timing assumptions. One implementation, two callers.
+
+`signInOnLoginForm` cannot serve a refusal test even now: it treats "left /login" as the only
+success and throws after three tries. That is why the split exists, and why the spec calls
+`fillLoginForm` for the two refusal cases and `loginAs` for the success case.
+
+**What the assertions are actually claiming.** Leaving `/login` proves a cookie exists, not
+whose it is, so the success case reads `/api/auth/get-session` and matches the email and the
+OWNER role: a form that signed in as whatever it typed would still have left the page. Both
+refusal cases assert the SAME message for a wrong password and for an unknown number, because
+distinct wording would make the login form a way to ask whether a phone number has an account,
+and both check that no session was created, because a refusal that still logs you in is the
+bug nobody notices.
+
+**Verification.** 5 passed in 23.4s cold, 7.7s warm, including the two `auth.setup` sessions.
+Changing the failure string in `LoginForm.tsx` turned the two refusal cases red; the file went
+back byte-identical and the run went green again. Web type-check and lint clean, database
+type-check clean, and the full `hermes verify` gate ok on the same tree.
+
+**Lesson for the next agent:** a component test that stubs the resolver cannot tell you the
+phone path works, and an e2e that fills a form before hydration cannot tell you the message is
+missing. Both failures look like product bugs and both are test bugs. If a toast does not
+appear, photograph the form's fields first: empty fields after a submit mean a native
+submission, not a silent handler.

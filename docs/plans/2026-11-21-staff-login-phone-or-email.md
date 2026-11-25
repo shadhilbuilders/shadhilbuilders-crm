@@ -12,7 +12,20 @@ One real gap was found in that check: the web side had NO test, while "Tests" be
 component coverage and a Playwright case. `apps/web/src/app/(guest)/login/LoginForm.test.tsx`
 now pins the phone path, the picker and its Back action, the single failure string, the
 transport-failure wording and the `?next` same-origin guard, 12 cases, each verified to fail
-against a mutated implementation. The Playwright case is still not written.
+against a mutated implementation.
+
+The Playwright case was written after that, on the same day, and it is
+`apps/web/src/test/e2e/login-phone.spec.ts` (`419a4cf`): the phone owner signs in and lands in
+the app, a wrong password is refused with the same generic message, and an unknown number gets
+the identical message. Each refusal also asserts that no session was left behind, and the
+success case reads the session back over `/api/auth/get-session` to check it belongs to the
+demo email and OWNER role rather than to whatever the form typed. It ran against the real
+stack (pgbouncer, the dev database, the NestJS API and `next dev`), 5 passed, and the two
+refusal cases were confirmed to fail against the mutated failure string.
+
+Making it run needed a fixture, not a mock: no seeded user had both a password and a phone
+number, because every fixture number in the seed belongs to a `Lead`. The demo OWNER now
+carries `919876500001` (`packages/database/scripts/setup-demo-user.ts`).
 
 Design review: 4/10 before, 8/10 after, all seven passes run. See the completion summary at the end.
 
@@ -279,7 +292,7 @@ Database-backed, in the RLS matrix style against `shadhil_crm_test`: `auth_accou
 
 Web component tests: login phone path, picker render, second submit and back action, dialog disclosure including the blank-payload case, Settings placeholder state and duplicate/password errors, users table cell rules (three cases), search by phone, and a test that the accept page renders no `users.invalid` text.
 
-End to end, one Playwright case alongside the existing invite audit: sign in through the BFF route with a phone and password, land on the app, and confirm a wrong password returns the generic message.
+End to end, `apps/web/src/test/e2e/login-phone.spec.ts`: sign in through the BFF route with a phone and password, land on the app, and confirm a wrong password returns the generic message. Built as three cases: that sign-in, the wrong password, and an unknown number, with the last two also asserting that no session was created.
 
 ## Rollout
 
