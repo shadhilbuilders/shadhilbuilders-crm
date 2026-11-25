@@ -45,6 +45,7 @@ import { createDirectPrismaClient } from '@shadhil/database/test-db-isolation';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { CodedConflictException } from '../common/errors/coded-exception';
+import { createTestTenant } from '../test-utils/test-tenant';
 import { UsersService } from './users.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
@@ -1018,5 +1019,224 @@ describe('user phone - uniqueness + attribution (live DB)', () => {
     await adminSeed(async (db) => {
       await db.user.deleteMany({ where: { id: victimId } });
     });
+  }, 30_000);
+
+  it('an ADMIN in another org cannot change this org’s user role', async () => {
+    if (prisma === null) return;
+    const victimId = createId();
+    await adminSeed(async (db) => {
+      await db.user.create({
+        data: {
+          id: victimId,
+          email: `victim-role-${victimId}@test.local`,
+          name: 'Victim Role',
+          role: 'TELECALLER',
+          organizationId: ORG,
+        },
+      });
+    });
+
+    // try/finally, not a trailing delete: the interesting failure is the one
+    // where this assertion breaks, and an orphan role-TELECALLER row left in the
+    // demo org is exactly the residue a later run trips over.
+    try {
+      const users = new UsersService({ $client: prisma } as unknown as PrismaService);
+      const foreignAdmin = actorFor({
+        sub: createId(),
+        role: 'ADMIN',
+        organizationId: `org-foreign-${createId().slice(0, 10)}`,
+      });
+
+      // The hierarchy guard cannot catch this on its own: an ADMIN outranks a
+      // TELECALLER wherever that TELECALLER lives, and `User` has no RLS to
+      // filter the row. Only the org term on the target read stands in the way.
+      await expect(
+        users.changeRole(foreignAdmin, victimId, { role: 'SALES_EXEC' }),
+      ).rejects.toThrow('not found');
+
+      // The write is what matters, not just the throw: prove the row is untouched.
+      const after = await adminSeed(async (db) =>
+        db.user.findUnique({ where: { id: victimId }, select: { role: true } }),
+      );
+      expect(after?.role).toBe('TELECALLER');
+    } finally {
+      await adminSeed(async (db) => {
+        await db.user.deleteMany({ where: { id: victimId } });
+      });
+    }
+  }, 30_000);
+
+  it('an ADMIN in another org cannot pull this org’s user onto a foreign team', async () => {
+    if (prisma === null) return;
+    const victimId = createId();
+    const foreignAdminId = createId();
+    const foreignTeamId = createId();
+    const tenant = await createTestTenant('users-assign');
+
+    // A REAL foreign side: an organisation of its own, and a team in it led by
+    // that org's admin. A made-up team id would let "team not found" pass for the
+    // wrong reason and prove nothing about the org term on the target read.
+    // `createTestTenant` is the sanctioned fixture here, because its `dispose()`
+    // purges the org's RESTRICT children in dependency order - a plain
+    // `organization.deleteMany()` deletes NOTHING and reports success.
+    try {
+      await tenant.admin.user.createMany({
+        data: [
+          {
+            id: foreignAdminId,
+            email: `foreign-admin-${foreignAdminId}@test.local`,
+            name: 'Foreign Admin',
+            role: 'ADMIN',
+            organizationId: tenant.organizationId,
+          },
+          {
+            id: victimId,
+            email: `victim-assign-${victimId}@test.local`,
+            name: 'Victim Assign',
+            role: 'SALES_EXEC',
+            organizationId: ORG,
+          },
+        ],
+      });
+      await tenant.admin.team.create({
+        data: {
+          id: foreignTeamId,
+          name: 'Foreign Team',
+          organizationId: tenant.organizationId,
+          managerId: foreignAdminId,
+        },
+      });
+
+      const users = new UsersService({ $client: prisma } as unknown as PrismaService);
+      const foreignAdmin = actorFor({
+        sub: foreignAdminId,
+        role: 'ADMIN',
+        organizationId: tenant.organizationId,
+      });
+
+      // Without the org term this call SUCCEEDS: the target is found, ADMIN
+      // outranks SALES_EXEC, the foreign team is visible under the actor's own
+      // GUCs, and the membership write lands. Team membership is the grant that
+      // opens project access, so that is a cross-tenant access grant, not a
+      // cosmetic write.
+      await expect(
+        users.assignManager(foreignAdmin, victimId, { teamId: foreignTeamId }),
+      ).rejects.toThrow('not found');
+
+      const memberships = await tenant.admin.teamMember.count({
+        where: { userId: victimId, teamId: foreignTeamId },
+      });
+      expect(memberships).toBe(0);
+    } finally {
+      await tenant.admin.user.deleteMany({ where: { id: victimId } });
+      await tenant.dispose();
+    }
+  }, 30_000);
+
+  it('an ADMIN in another org cannot soft-delete this org’s user', async () => {
+    if (prisma === null) return;
+    const victimId = createId();
+    await adminSeed(async (db) => {
+      await db.user.create({
+        data: {
+          id: victimId,
+          email: `victim-remove-${victimId}@test.local`,
+          name: 'Victim Remove',
+          role: 'TELECALLER',
+          organizationId: ORG,
+        },
+      });
+    });
+
+    try {
+      const users = new UsersService({ $client: prisma } as unknown as PrismaService);
+      const foreignAdmin = actorFor({
+        sub: createId(),
+        role: 'ADMIN',
+        organizationId: `org-foreign-${createId().slice(0, 10)}`,
+      });
+
+      // Destructive, admin-only, and `User` has no RLS: without the org term the
+      // row is found and stamped deleted.
+      await expect(users.remove(foreignAdmin, victimId)).rejects.toThrow('not found');
+
+      const after = await adminSeed(async (db) =>
+        db.user.findUnique({ where: { id: victimId }, select: { deletedAt: true } }),
+      );
+      expect(after?.deletedAt).toBeNull();
+    } finally {
+      await adminSeed(async (db) => {
+        await db.user.deleteMany({ where: { id: victimId } });
+      });
+    }
+  }, 30_000);
+
+  it('an ADMIN in another org cannot read this org’s user detail', async () => {
+    if (prisma === null) return;
+    const victimId = createId();
+    await adminSeed(async (db) => {
+      await db.user.create({
+        data: {
+          id: victimId,
+          email: `victim-detail-${victimId}@test.local`,
+          name: 'Victim Detail',
+          role: 'TELECALLER',
+          organizationId: ORG,
+        },
+      });
+    });
+
+    try {
+      const users = new UsersService({ $client: prisma } as unknown as PrismaService);
+      const foreignAdmin = actorFor({
+        sub: createId(),
+        role: 'ADMIN',
+        organizationId: `org-foreign-${createId().slice(0, 10)}`,
+      });
+
+      // The read carries email, phone, role and the reporting line, so a
+      // cross-tenant id must 404 rather than return another org's staff record.
+      await expect(users.getUser(foreignAdmin, victimId)).rejects.toThrow('not found');
+    } finally {
+      await adminSeed(async (db) => {
+        await db.user.deleteMany({ where: { id: victimId } });
+      });
+    }
+  }, 30_000);
+
+  it('an ADMIN in another org cannot reset this org’s user password', async () => {
+    if (prisma === null) return;
+    const victimId = createId();
+    await adminSeed(async (db) => {
+      await db.user.create({
+        data: {
+          id: victimId,
+          email: `victim-password-${victimId}@test.local`,
+          name: 'Victim Password',
+          role: 'TELECALLER',
+          organizationId: ORG,
+        },
+      });
+    });
+
+    try {
+      const users = new UsersService({ $client: prisma } as unknown as PrismaService);
+      const foreignAdmin = actorFor({
+        sub: createId(),
+        role: 'ADMIN',
+        organizationId: `org-foreign-${createId().slice(0, 10)}`,
+      });
+
+      // The admin-reset branch needs only that the actor outrank the target, and
+      // an ADMIN outranks a TELECALLER in every org. Left open, this is account
+      // takeover across tenants rather than a data leak.
+      await expect(
+        users.changePassword(foreignAdmin, victimId, { newPassword: 'not-the-real-one-1' }),
+      ).rejects.toThrow('not found');
+    } finally {
+      await adminSeed(async (db) => {
+        await db.user.deleteMany({ where: { id: victimId } });
+      });
+    }
   }, 30_000);
 });

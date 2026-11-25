@@ -754,9 +754,20 @@ export class UsersService {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const client = tx as unknown as PrismaClient;
 
-      // 1. Target must exist.
-      const target = await client.user.findUnique({
-        where: { id: targetUserId },
+      // 1. Target must exist IN THIS ORG.
+      //
+      // T-ORG-EXPLICIT (2026-11-25): this read used to be a bare
+      // `findUnique({ id })`. `User` carries NO row-level security, so without
+      // this filter an ADMIN in org A could change the role of a user in org B
+      // by id alone - and the hierarchy check below cannot catch it, because an
+      // ADMIN does outrank a TELECALLER wherever that TELECALLER lives.
+      // `update()` got the same fix on 2026-11-18; this is its twin, and the
+      // write here is the more dangerous of the two.
+      //
+      // A cross-org id now reads as absent, which is the answer we want - the
+      // same "not found" a genuinely missing row produces.
+      const target = await client.user.findFirst({
+        where: { id: targetUserId, organizationId: actor.organizationId },
       });
       if (!target) {
         throw new NotFoundException(`User ${targetUserId} not found`);
@@ -1220,9 +1231,13 @@ export class UsersService {
       throw new ForbiddenException('Only ADMIN or OWNER can delete users.');
     }
 
-    // 1. Target must exist + not already deleted + not OWNER.
-    const target = await this.client.user.findUnique({
-      where: { id: targetUserId },
+    // 1. Target must exist IN THIS ORG, not already deleted, and not OWNER.
+    //
+    // T-ORG-EXPLICIT (2026-11-25): bare `findUnique({ id })` here let an ADMIN
+    // in org A soft-delete a user in org B by id. `User` has no RLS, and this
+    // method runs on the bare client, so the org term IS the tenant guard.
+    const target = await this.client.user.findFirst({
+      where: { id: targetUserId, organizationId: actor.organizationId },
     });
     if (!target) {
       throw new NotFoundException(`User ${targetUserId} not found`);
@@ -1279,8 +1294,19 @@ export class UsersService {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const client = tx as unknown as PrismaClient;
 
+      // T-ORG-EXPLICIT (2026-11-25): the read used to be `findUnique({ id,
+      // deletedAt: null })`. `User` has no RLS, so an ADMIN in org A could read
+      // another org's user detail (email, phone, role, reporting line) by id.
+      // The org term rides on the same unique lookup rather than a `findFirst`:
+      // this method's mock harness already models two DISTINCT `user.findFirst`
+      // consumers (this read and `findOrgOwner`), and Prisma compiles the extra
+      // filter into the same `WHERE id = ... AND organizationId = ...`.
       const target = await client.user.findUnique({
-        where: { id: targetUserId, deletedAt: null },
+        where: {
+          id: targetUserId,
+          organizationId: actor.organizationId,
+          deletedAt: null,
+        },
         select: {
           id: true,
           email: true,
@@ -1500,8 +1526,14 @@ export class UsersService {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const client = tx as unknown as PrismaClient;
 
-      const target = await client.user.findUnique({
-        where: { id: targetUserId },
+      // Target must exist IN THIS ORG - same T-ORG-EXPLICIT rule as
+      // `update()` and `changeRole()`. `User` has no RLS, so a bare
+      // `findUnique({ id })` let an ADMIN in org A move a user in org B onto one
+      // of org A's teams, which is a cross-tenant access grant (team membership
+      // is what opens project access for an ENGINEER). The Team read below is
+      // already safe: that table is FORCE RLS, so a foreign team id reads null.
+      const target = await client.user.findFirst({
+        where: { id: targetUserId, organizationId: actor.organizationId },
       });
       if (!target) {
         throw new NotFoundException(`User ${targetUserId} not found`);
@@ -1762,9 +1794,15 @@ export class UsersService {
     targetUserId: string,
     dto: ChangePasswordDto,
   ): Promise<{ ok: true; mustChangePassword: false }> {
-    // 1. Target must exist.
-    const target = await this.client.user.findUnique({
-      where: { id: targetUserId },
+    // 1. Target must exist IN THIS ORG.
+    //
+    // T-ORG-EXPLICIT (2026-11-25): this is the worst of the family. A bare
+    // `findUnique({ id })` let an ADMIN in org A reset the password of a user in
+    // org B, which is an account takeover across tenants - the admin-reset branch
+    // below only requires that the actor outrank the target, and an ADMIN
+    // outranks a TELECALLER in any org. `User` has no RLS to stop it.
+    const target = await this.client.user.findFirst({
+      where: { id: targetUserId, organizationId: actor.organizationId },
       select: { id: true, email: true, role: true, mustChangePassword: true },
     });
     if (target === null) {

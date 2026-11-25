@@ -113,7 +113,7 @@ function makeService(opts: {
   // just on the outer client). `$executeRawUnsafe` is what withRlsContext
   // uses to SET LOCAL the app.user_* GUCs.
   const txMock = {
-    user: { findUnique: userFindUnique },
+    user: { findUnique: userFindUnique, findFirst: userFindUnique },
     team: { findUnique: teamFindUnique, findMany: teamFindMany },
     teamMember: {
       findFirst: teamMemberFindFirst,
@@ -125,7 +125,7 @@ function makeService(opts: {
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
   };
   const fakeClient = {
-    user: { findUnique: userFindUnique },
+    user: { findUnique: userFindUnique, findFirst: userFindUnique },
     team: { findUnique: teamFindUnique, findMany: teamFindMany },
     teamMember: {
       findFirst: teamMemberFindFirst,

@@ -45,25 +45,33 @@ const actor = (role: JwtPayload['role'], sub = 'a-1'): JwtPayload => ({
 });
 
 function tx(over: Record<string, unknown> = {}) {
+  // `user.findFirst` DELEGATES to `findUnique`, so a test that presets the row
+  // once covers both the org-scoped target read (findFirst, 2026-11-25) and
+  // every findUnique path. Presetting each separately is how these mocks drifted
+  // from the service in the first place.
+  const userMock = {
+    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: 'new-1',
+      email: data.email,
+      name: data.name,
+      role: data.role,
+    })),
+    findUnique: vi.fn(),
+    update: vi.fn(async ({ data }: { data: { role: string } }) => ({
+      id: 't-1',
+      email: 'c@x.in',
+      name: 'C',
+      role: data.role,
+    })),
+  };
+  const findFirst = vi.fn((args: unknown) =>
+    (userMock.findUnique as unknown as (a: unknown) => unknown)(args),
+  );
   return {
     lead: { findFirst: vi.fn(async () => ({ id: 'lead-1' })) },
     team: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn() },
     teamMember: { create: vi.fn(), findFirst: vi.fn(async () => null) },
-    user: {
-      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
-        id: 'new-1',
-        email: data.email,
-        name: data.name,
-        role: data.role,
-      })),
-      findUnique: vi.fn(),
-      update: vi.fn(async ({ data }: { data: { role: string } }) => ({
-        id: 't-1',
-        email: 'c@x.in',
-        name: 'C',
-        role: data.role,
-      })),
-    },
+    user: { ...userMock, findFirst },
     account: { upsert: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     auditLog: { create: vi.fn() },
     ...over,
