@@ -1489,3 +1489,32 @@ in one service and not in the twin that needed it. When a list and a detail page
 show the same field, resolve it in one function and make both call it; when a client
 mirrors a server guard, mirror only the part it can actually know, and warn for the
 rest.
+
+## Round 59 - 2026-11-25 - Correcting the scope of the deep-link fix, and what the webview check proved
+
+The portal has TWO auth walls, and only one of them was broken:
+
+1. `apps/web/src/proxy.ts` answers a request carrying NO session cookie with a 307 to
+   `/login?next=<encoded path and query>`. Measured against production with an Android
+   WhatsApp webview UA:
+   `GET /portal?unit=…&photo=…` -> `307`, `Location: /login?next=%2Fportal%3Funit%3D…%26photo%3D…`.
+   That wall was already correct.
+2. `(portal)/layout.tsx` answers a request that HAS a cookie but an unusable session
+   (expired, revoked, wrong org) with the gate's own redirect. That one was hardcoded to
+   `/login?next=/portal` and dropped the query.
+
+So the fix in `726acd2` closes the second wall, which is the one a buyer meets weeks
+after the message arrives, when their session has expired inside WhatsApp's webview. The
+first wall was never broken. An earlier note described the bug as hitting any
+signed-out buyer; that was too broad and this entry is the correction.
+
+Also measured, same UA, no session: `/api/bff/media/<key>` answers `401` for a photo and
+for a video, with and without a `Range` header. Media is private by design, so a buyer
+must be signed in before the deep-linked photo can render. That is a product property,
+not a defect, and it is the reason the signed-in round trip still needs a phone.
+
+Blocker for that round trip, found while setting it up: production has no CUSTOMER
+account linked to a unit that has photos. Every `Booking.userId` on a photographed unit
+points at a staff account (OWNER), left over from before the portal existed. Unit A/1
+(`cmwqk5yfe008201q7tvyeuk34`) holds 5 photos and 2 clips, so it is the right target once
+a real buyer is booked to it.
