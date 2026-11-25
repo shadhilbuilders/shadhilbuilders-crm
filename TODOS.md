@@ -5,29 +5,6 @@ P0 first. Format reference: `~/.cursor/skills/gstack/review/TODOS-format.md`.
 
 ## Users / Teams
 
-### Customer-facing phone display in the portal (blocked on RLS)
-
-**What:** Show a buyer their own mobile number in `/portal`, sourced from their
-`Lead`.
-
-**Why it is not free:** `Lead` has no CUSTOMER SELECT policy (`policies.sql` — only
-`lead_select_telecaller`, `_manager`, `_admin`, `_mentioned`, `_cron_service`), and
-FORCE RLS is on. A CUSTOMER's own `tx.lead.findFirst()` returns **zero rows
-silently**, not an error. `customer-portal.service.ts` therefore never reads `Lead`
-today — it reaches units only through `booking_select_customer`.
-
-**What it needs:** a `SECURITY DEFINER` helper (same shape as
-`customer_lead_id()`, `policies.sql:2036`), a `PortalMeDto` field, and a test that
-the helper cannot widen another role's read. Roughly a day, and it should not ride
-along with the `User.phone` change.
-
-**Context:** `docs/designs/2026-11-18-user-phone.md` D3 cut this deliberately. The
-portal has never displayed a phone — only `Organization.contactPhone` in
-`PortalLock` — so this is a new capability, not a regression.
-
-**Priority:** P3
-**Depends on:** the `User.phone` slice landing first.
-
 ### ~~Multi-team ENGINEER shows the manager of their newest team~~ — RESOLVED 2026-11-07
 
 **Decision (product):** report EVERY team and its manager.
@@ -289,6 +266,16 @@ touch their own project-scoped rows. Convert any that start counting org-wide ro
 cron, with `createTestTenant` + `holdCronLockForFile`.
 
 ## Completed
+
+### Customer-facing phone display in the portal - DONE 2026-11-26 (Round 65)
+
+Built exactly as this entry prescribed: `customer_self_phone()` (SECURITY DEFINER, in
+`policies.sql` beside `customer_lead_id()`), a `PortalMeDto.phone` field and the hero line, plus
+tests that the helper cannot widen another role's read. It reuses `customer_lead_id()` rather than
+restating "which lead is this buyer", and adds the one condition that helper cannot carry: nothing
+constrains `User.customerLeadId` to point inside the user's own tenant, so the lead's org is checked
+here. Seven DB cases (no context, staff with a pointer, foreign pointer, unlinked, soft-deleted,
+wrong org, the happy path) and the portal hero's four.
 
 ### A Consent row's organisation must be its lead's - DONE 2026-11-26 (Round 64)
 

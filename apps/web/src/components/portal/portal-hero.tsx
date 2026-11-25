@@ -25,6 +25,7 @@ import { LuCamera } from '@paalstack/react-icons/lu';
 
 import { VideoBadge } from '@/components/site/VideoBadge';
 import { constructionStageLabel } from '@/lib/labels';
+import { formatPhone } from '@/lib/phone';
 import { isPlayableVideo } from '@/lib/site-video/is-video';
 import type { TimelinePhoto } from '@/hooks/queries/customer-portal';
 
@@ -33,6 +34,12 @@ import { stagePosition, updatedLabel } from './portal-progress';
 
 export type PortalHeroProps = {
   customerName: string;
+  /**
+   * The number the project office reaches this buyer on (2026-11-26). Digits,
+   * canonical E.164, no plus. Null renders nothing: the portal exists to show a
+   * buyer their own record, and an empty "we reach you on" reads as a fault.
+   */
+  phone?: string | null;
   unitNumber: string;
   projectName: string;
   /** Newest photo of the selected unit, or null when there is none yet. */
@@ -136,6 +143,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 
 export function PortalHero({
   customerName,
+  phone,
   unitNumber,
   projectName,
   latest,
@@ -161,6 +169,20 @@ export function PortalHero({
           {fullName.length > 0 ? (
             <p className="mb-3 text-sm text-(--portal-ink-2)" data-qa="portal-hero-greeting">
               Hello, {fullName}
+            </p>
+          ) : null}
+          {/* The buyer's own number, so they can see the one this office has on
+              file before it costs them a site visit. Tappable: the person most
+              likely to read this line is standing on a plot, not at a desk. */}
+          {typeof phone === 'string' && phone.trim().length > 0 ? (
+            <p className="mb-3 text-sm text-(--portal-ink-2)" data-qa="portal-hero-phone">
+              We reach you on{' '}
+              <a
+                href={`tel:+${phone.replace(/\D/g, '')}`}
+                className="underline decoration-(--portal-hair) underline-offset-4"
+              >
+                {formatPhone(phone)}
+              </a>
             </p>
           ) : null}
           <h1

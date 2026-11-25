@@ -2108,6 +2108,23 @@ CREATE OR REPLACE FUNCTION customer_lead_id() RETURNS TEXT
 REVOKE ALL ON FUNCTION customer_lead_id() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION customer_lead_id() TO shadhil_app;
 
+-- T-PORTAL-PHONE (2026-11-26): the buyer's own mobile number, for the portal.
+-- Lead has no CUSTOMER SELECT policy by design (internal notes, pricing,
+-- ownership), and RLS cannot grant one column, so the portal reads exactly one
+-- column through this function with the buyer's own context. It does not restate
+-- "which lead is this buyer" - customer_lead_id() answers that - and it adds the
+-- one condition that function cannot carry: nothing constrains
+-- User.customerLeadId to point inside the user's own tenant.
+CREATE OR REPLACE FUNCTION customer_self_phone() RETURNS TEXT
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT l."phone"
+    FROM "Lead" l
+    WHERE l."id" = customer_lead_id()
+      AND l."organizationId" = current_setting('app.user_org_id', true)
+  $$;
+REVOKE ALL ON FUNCTION customer_self_phone() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION customer_self_phone() TO shadhil_app;
+
 CREATE OR REPLACE FUNCTION customer_can_read_unit(p_unit_id TEXT) RETURNS BOOLEAN
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
     SELECT EXISTS (

@@ -153,6 +153,7 @@ function PortalProgress() {
         customerName={me.data?.customerName ?? ''}
         unitNumber={selectedUnit?.unitNumber ?? ''}
         projectName={selectedUnit?.projectName ?? ''}
+        phone={me.data?.phone ?? null}
         latest={heroPhoto}
         isLoading={timeline.isPending}
         onOpenPhoto={setOpenPhotoId}

@@ -1799,3 +1799,44 @@ which is how it was restored.
 
 **Migration:** `20261126033000_consent_org_matches_lead`, applied to dev and to the test database.
 `policies.sql` carries the same delta, since it is the source of truth and migrations are the log.
+
+## Round 65 - 2026-11-26, 04:04 IST - The buyer's own number, one column wide
+
+The portal could not show a buyer their own mobile number. Not because the read was hard, but
+because the number lives on `Lead` and `Lead` has no CUSTOMER SELECT policy: it carries internal
+notes, pricing and ownership, and RLS has no column granularity, so granting the read would hand
+over the whole row. The backlog had already named the shape of the answer, and this is that shape.
+
+**A function, not a policy.** `customer_self_phone()` is SECURITY DEFINER and returns one column
+for one caller: the lead `customer_lead_id()` already resolves, provided that lead is in the
+caller's own org. It deliberately does not restate customer_lead_id's conditions (role CUSTOMER,
+same org, not soft-deleted, pointer set) - a second copy of them is a second thing to keep true,
+and the first version of this function did exactly that before I read the file and deleted it.
+
+**The condition nothing else carries.** No constraint stops `User.customerLeadId` from pointing at
+a lead in another tenant, so "the buyer's own lead" is not automatically "a lead in the buyer's
+org". The function checks the lead's org itself, and that is the case the suite pins hardest: a
+buyer whose pointer names the other tenant's lead gets null, not somebody else's number.
+
+**Fail closed everywhere else too.** No RLS context, a staff account that happens to carry a lead
+pointer, an unlinked buyer, a soft-deleted buyer, and a correct user id presented with the wrong
+org all answer null. Null is also the DTO's answer, and the hero renders no line at all for it -
+an empty "we reach you on" reads as a fault, not as a blank.
+
+**On screen.** The line sits under the greeting, above the unit number, and is a `tel:` link with
+the digits in the href and the house formatter's `98765 43210` as its text. The person most likely
+to read it is standing on a plot.
+
+**Verification.** Seven DB cases in `customer-self-phone.db.test.ts` (fresh tenant per run, through
+`createTestTenant`, so it cannot collide with the shared demo org), 27 backend customer-portal
+tests, and 4 hero cases. Mutations: hiding the hero line turned one case red; making the service
+return `null` turned the phone and empty-bookings cases red; dropping the role check from the
+function turned the staff-pointer and soft-deleted cases red. Everything restored, and the function
+was restored by re-running the migration, which is idempotent.
+
+**Migration:** `20261126043000_customer_self_phone`, applied to dev and test. `policies.sql` holds
+the function beside `customer_lead_id()`, since that file is the source of truth.
+
+**Not claimed:** nothing here renders in production until someone signs in as a buyer and looks.
+The backend and the hero are unit-proven; the wiring from the `me` payload to the page is covered
+by type-check and one prop, not by an end-to-end run against the portal.

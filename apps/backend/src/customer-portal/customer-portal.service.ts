@@ -85,6 +85,16 @@ export interface PortalMilestoneDto {
 
 export interface PortalMeDto {
   customerName: string;
+  /**
+   * The buyer's OWN mobile number, from their linked Lead (2026-11-26). Null
+   * when the account is not linked, the lead has no phone, or the caller is not
+   * a buyer; the portal then renders no line at all rather than an empty label.
+   *
+   * Read through `customer_self_phone()` and not through the Lead: Lead has no
+   * CUSTOMER SELECT policy on purpose (internal notes, pricing, ownership), and
+   * RLS cannot grant one column.
+   */
+  phone: string | null;
   units: PortalUnitDto[];
 }
 
@@ -140,6 +150,13 @@ export class CustomerPortalService {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const { name, leadId } = await this.loadCustomer(tx, actor);
 
+      // The buyer's own number, from the one place willing to hand it over: a
+      // SECURITY DEFINER lookup keyed on this transaction's RLS context, which
+      // returns a single column and null for anyone else (2026-11-26).
+      const phoneRows = await tx.$queryRaw<{ phone: string | null }[]>`
+        SELECT customer_self_phone() AS phone`;
+      const phone = phoneRows[0]?.phone ?? null;
+
       const bookings = await tx.booking.findMany({
         where: { leadId, organizationId: actor.organizationId, status: 'APPROVED' },
         select: {
@@ -172,7 +189,7 @@ export class CustomerPortalService {
 
       const byId = new Map(bookings.map((b) => [b.unit.id, b] as const));
       const unitIds = [...byId.keys()];
-      if (unitIds.length === 0) return { customerName: name, units: [] };
+      if (unitIds.length === 0) return { customerName: name, phone, units: [] };
 
       const projectIds = [...new Set([...byId.values()].map((b) => b.unit.phase.project.id))];
       const [counts, newest, milestoneRows] = await Promise.all([
@@ -242,7 +259,7 @@ export class CustomerPortalService {
           };
         })
         .sort(compareUnits);
-      return { customerName: name, units };
+      return { customerName: name, phone, units };
     });
   }
 

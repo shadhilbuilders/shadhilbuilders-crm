@@ -61,6 +61,12 @@ export type PortalUnit = {
 
 export type PortalMe = {
   customerName: string;
+  /**
+   * The buyer's own mobile number in canonical E.164 digits, or null when the
+   * account is not linked or the lead has no phone (2026-11-26). The hero omits
+   * the line entirely for null: a label with nothing after it reads as a fault.
+   */
+  phone: string | null;
   units: PortalUnit[];
 };
 

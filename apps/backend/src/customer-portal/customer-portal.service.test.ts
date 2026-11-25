@@ -91,7 +91,14 @@ function baseTx(overrides: Record<string, unknown> = {}) {
     // flag (slice 4). A buyer's context has no ProjectStaffRole row, and the
     // parity test compares the two responses, so this must return null.
     projectStaffRole: { findFirst: vi.fn(async () => null) },
-    $queryRaw: vi.fn(async () => [{ creator_name: 'Ravi', creator_is_photo_lead: false }]),
+    // Two different raw queries reach the transaction: the buyer's own phone
+    // (customer_self_phone, 2026-11-26) and the creator labels on the timeline.
+    // The fake answers by SQL, so a swap between them cannot pass unnoticed.
+    $queryRaw: vi.fn(async (strings: TemplateStringsArray) =>
+      strings.join('').includes('customer_self_phone')
+        ? [{ phone: '919876543210' }]
+        : [{ creator_name: 'Ravi', creator_is_photo_lead: false }],
+    ),
     ...overrides,
   };
 }
@@ -201,6 +208,34 @@ describe('me', () => {
         project: { id: `p-${project}`, name: project },
       },
     },
+  });
+
+  it("carries the buyer's own phone, read through customer_self_phone()", async () => {
+    const tx = baseTx({
+      booking: { findFirst: vi.fn(), findMany: vi.fn(async () => [unitRow('u1', 'A-1', 'Metro')]) },
+    });
+    setTx(tx);
+
+    const me = await new CustomerPortalService(prismaStub).me(actor('CUSTOMER'));
+
+    expect(me.phone).toBe('919876543210');
+    // One column, one caller: the read goes through the SECURITY DEFINER lookup
+    // rather than a Lead query, which a CUSTOMER session has no policy for.
+    expect(tx.$queryRaw).toHaveBeenCalled();
+    const sql = String((tx.$queryRaw.mock.calls[0] as [TemplateStringsArray])[0].join(''));
+    expect(sql).toContain('customer_self_phone');
+  });
+
+  it('answers phone: null when the lookup returns nothing, not an empty string', async () => {
+    const tx = baseTx({
+      booking: { findFirst: vi.fn(), findMany: vi.fn(async () => [unitRow('u1', 'A-1', 'Metro')]) },
+      $queryRaw: vi.fn(async () => []),
+    });
+    setTx(tx);
+
+    const me = await new CustomerPortalService(prismaStub).me(actor('CUSTOMER'));
+
+    expect(me.phone).toBeNull();
   });
 
   it('sorts by project name then natural unit number, with count + current phase', async () => {
@@ -397,7 +432,9 @@ describe('me', () => {
   it('returns an empty list (not an error) for a provisioned customer with no APPROVED booking', async () => {
     setTx(baseTx());
     const res = await new CustomerPortalService(prismaStub).me(actor('CUSTOMER'));
-    expect(res).toEqual({ customerName: 'Asha Rao', units: [] });
+    // The empty-bookings path must still carry the person's own details: a buyer
+    // whose unit is not approved yet can still be told which number we hold.
+    expect(res).toEqual({ customerName: 'Asha Rao', phone: '919876543210', units: [] });
   });
 
   it('compareUnits is natural, not lexicographic', () => {
