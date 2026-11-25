@@ -1,6 +1,18 @@
 # Staff login by phone or email, and optional email at invite
 
-Status: revised after an outside review and a design review. Every finding was checked against the code before being accepted. Awaiting build approval.
+Status: BUILT and shipped. The previous line here read "Awaiting build approval" for days
+after the work was already serving production, which is worse than no status at all: it made
+a shipped slice look like a decision still open. All twelve tasks landed on `main`
+(`167a2ca`, `b08881d`, `8081929`), and they were re-checked against the tree on 2026-11-25
+rather than against their own checkboxes: the resolver and its public route, the random
+`noemail+<hex>@users.invalid` placeholder, the account picker, the Settings add-email state,
+the users-table `No email` badge and the lazy invite expiry are all present.
+
+One real gap was found in that check: the web side had NO test, while "Tests" below promises
+component coverage and a Playwright case. `apps/web/src/app/(guest)/login/LoginForm.test.tsx`
+now pins the phone path, the picker and its Back action, the single failure string, the
+transport-failure wording and the `?next` same-origin guard, 12 cases, each verified to fail
+against a mutated implementation. The Playwright case is still not written.
 
 Design review: 4/10 before, 8/10 after, all seven passes run. See the completion summary at the end.
 
