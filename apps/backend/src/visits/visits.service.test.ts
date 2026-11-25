@@ -1132,6 +1132,60 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
     expect(row.userId).toBe(MGR_ID);
   });
 
+  it('leaves the co-owner slot alone for a manager who already leads the team', async () => {
+    // THE SKIP PATH (2026-11-25). A manager reads a lead through
+    // `lead_select_manager` because `Team.managerId` is them, so the co-owner
+    // seat grants them nothing they do not already have. Writing it anyway would
+    // burn the single slot (`Lead.coOwnerId`) and block the next exec who needs
+    // that seat to see the lead at all. Here a telecaller books the visit and
+    // names the manager as the conductor, which is how this arrives in practice.
+    const teamId = `test-voc-skip-team-${RUN}`;
+    const leadId = `test-voc-skip-lead-${RUN}`;
+    await adminSeed(async (db) => {
+      await db.team.upsert({
+        where: { id: teamId },
+        update: { managerId: MGR_ID },
+        create: {
+          id: teamId,
+          name: `VOC Skip Team ${RUN}`,
+          managerId: MGR_ID,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      });
+      await db.lead.create({
+        data: {
+          id: leadId,
+          name: 'VOC Skip Path Lead',
+          ...leadPhoneFields(`94${String(RUN).slice(-8)}002`),
+          source: 'WHATSAPP',
+          state: 'VISIT_REQUESTED',
+          ownerId: TC_ID,
+          ownerType: 'TELECALLER',
+          teamId,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          projectId: TEST_PROJECT_ID,
+          coOwnerId: null,
+        },
+      });
+    });
+    TEST_LEAD_IDS.push(leadId);
+
+    const row = await service.create(
+      actorFor(TC_ID, 'TELECALLER') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: MGR_ID,
+      } as never,
+    );
+
+    expect(row.userId).toBe(MGR_ID);
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { coOwnerId: true } }),
+    );
+    expect(lead?.coOwnerId).toBeNull();
+  });
+
   it('ACCEPTS a NO_SHOW lead - the reported defect', async () => {
     // The exact user report: scheduling from the dashboard queue on a NO_SHOW
     // lead returned 400. The queue was right; the guard was wrong.

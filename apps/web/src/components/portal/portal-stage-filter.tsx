@@ -41,13 +41,18 @@ export function PortalStageFilter({ counts, value, onChange }: PortalStageFilter
   if (chips.length <= 1) return null;
 
   return (
-    <div className="-mx-4 flex items-center pt-1 pb-5 sm:mx-0" data-qa="portal-stage-filter">
+    // The scroll lives on THIS div, not on the ToggleGroup: the library's root
+    // ships its own `w-fit flex` and drops the className it is given (measured
+    // in the DOM - the passed class never arrived), so an overflow rule placed
+    // there is dead. Below sm the strip scrolls edge to edge with the scrollbar
+    // hidden; from sm it is free to overflow visibly.
+    <div
+      className="-mx-4 flex [scrollbar-width:none] items-center overflow-x-auto px-4 pt-1 pb-5 sm:mx-0 sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
+      data-qa="portal-stage-filter"
+    >
       <ToggleGroup
         type="single"
         value={value}
-        // One row that scrolls on a phone, wraps from sm. `w-full` so the strip
-        // owns the bleed and the chips can run past the gutter.
-        className="w-full [scrollbar-width:none] flex-nowrap items-center gap-x-1.5 overflow-x-auto px-4 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
         onValueChange={(next) => {
           const pressed = Array.isArray(next) ? next[0] : next;
           const wanted = nextStageFilter(value, pressed, chips);
@@ -66,7 +71,7 @@ export function PortalStageFilter({ counts, value, onChange }: PortalStageFilter
           // Square, hairline, no radius and no shadow: the two weights the rest
           // of the portal uses. Selected inverts to ink on paper.
           className:
-            'h-auto! min-w-0! shrink-0! rounded-none! border border-[var(--portal-hair)] bg-transparent px-3! py-2! text-[0.6875rem] font-medium tracking-[0.08em] whitespace-nowrap uppercase shadow-none! transition-none hover:border-[var(--portal-ink)] hover:bg-transparent data-[state=on]:border-[var(--portal-ink)] data-[state=on]:bg-[var(--portal-ink)] data-[state=on]:text-[var(--portal-paper)] aria-pressed:border-[var(--portal-ink)] aria-pressed:bg-[var(--portal-ink)] aria-pressed:text-[var(--portal-paper)]',
+            'h-auto! min-h-9 min-w-0! shrink-0! rounded-none! border border-[var(--portal-hair)] bg-transparent px-3! py-2! text-[0.6875rem] font-medium tracking-[0.08em] whitespace-nowrap uppercase shadow-none! transition-none hover:border-[var(--portal-ink)] hover:bg-transparent data-[state=on]:border-[var(--portal-ink)] data-[state=on]:bg-[var(--portal-ink)] data-[state=on]:text-[var(--portal-paper)] aria-pressed:border-[var(--portal-ink)] aria-pressed:bg-[var(--portal-ink)] aria-pressed:text-[var(--portal-paper)]',
         }))}
       />
     </div>
