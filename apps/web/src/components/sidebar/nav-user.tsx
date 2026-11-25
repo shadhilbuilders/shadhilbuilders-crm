@@ -14,12 +14,11 @@
 // Identity (2026-11-24): SessionUser still carries only { id, name, email, role }.
 // The PHOTO therefore comes from the user-detail query, which every role may
 // call for itself: the server resolves the storage key to a render URL, so the
-// browser never builds a media path of its own. Until that query lands (or when
-// the person has no photo) the initials fallback renders, which is what this
-// block showed exclusively before.
+// browser never builds a media path of its own. `SelfAvatar` owns that query and
+// the initials fallback, and the topbar's account menu renders the same one
+// (2026-11-26) so both corners show the same face.
 
 import {
-  Avatar,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -33,10 +32,8 @@ import {
 import { LuLogOut, LuSettings } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 
-import { useUser } from '@/hooks/queries/users';
-import { initials } from '@/lib/initials';
+import { SelfAvatar } from '@/components/shared/SelfAvatar';
 import { ADMIN_LAUNCHER, EMPLOYEE_LAUNCHER } from '@/lib/nav';
-import { useSessionUser } from '@/lib/session';
 
 export function NavUser({
   name,
@@ -68,12 +65,6 @@ export function NavUser({
 }) {
   const AdminIcon = ADMIN_LAUNCHER.icon;
   const EmployeeIcon = EMPLOYEE_LAUNCHER.icon;
-  // The id comes from the session, the photo from the detail query. One request
-  // per shell mount, cached (`staleTime` 30s) and invalidated by useUpdateProfile
-  // after a save, so a new photo shows without a hard reload.
-  const { user } = useSessionUser();
-  const selfQuery = useUser(user?.id);
-  const imageUrl = selfQuery.data?.imageUrl ?? null;
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -95,14 +86,7 @@ export function NavUser({
                 aria-label={`Account menu for ${name}`}
                 title={name}
               >
-                <Avatar
-                  className="h-8 w-8 shrink-0 rounded-lg"
-                  src={imageUrl ?? undefined}
-                  alt=""
-                  fallback={initials(name)}
-                  imageProps={{ className: 'rounded-lg' }}
-                  fallbackProps={{ className: 'rounded-lg text-xs' }}
-                />
+                <SelfAvatar name={name} />
                 <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{name}</span>
                   <span className="text-muted-foreground truncate text-xs">{email}</span>
@@ -113,14 +97,7 @@ export function NavUser({
           <DropdownMenuContent className="w-56 rounded-lg" align="start" side="top" sideOffset={4}>
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar
-                  className="h-8 w-8 rounded-lg"
-                  src={imageUrl ?? undefined}
-                  alt=""
-                  fallback={initials(name)}
-                  imageProps={{ className: 'rounded-lg' }}
-                  fallbackProps={{ className: 'rounded-lg text-xs' }}
-                />
+                <SelfAvatar name={name} />
                 <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{name}</span>
                   <span className="text-muted-foreground truncate text-xs">{email}</span>

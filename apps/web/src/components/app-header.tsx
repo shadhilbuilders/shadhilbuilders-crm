@@ -32,7 +32,7 @@ import {
   ScrollArea,
   Separator,
 } from '@paalstack/react-ui';
-import { LuBell, LuCheckCheck, LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
+import { LuBell, LuCheckCheck, LuLogOut, LuSettings } from '@paalstack/react-icons/lu';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
@@ -40,6 +40,7 @@ import { useEffect, useState } from 'react';
 
 import { SidebarToggleButton } from '@/components/app-shell';
 import { notificationBellLabel, renderedUnreadCount } from '@/components/app-header-helpers';
+import { SelfAvatar } from '@/components/shared/SelfAvatar';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { SseStatusPill } from '@/components/shared/SseStatusPill';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -460,15 +461,18 @@ function UserMenu({
             aria-label={`Account menu for ${name}`}
             data-qa="account-menu"
           >
-            <LuUserRound className="size-5" aria-hidden />
+            <SelfAvatar name={name} />
             <span className="hidden max-w-40 truncate sm:inline">{name}</span>
           </Button>
         }
       />
       <PopoverContent className="w-56" align="end">
-        <div className="mb-2 px-1">
-          <p className="truncate text-sm font-medium">{name}</p>
-          <p className="text-muted-foreground text-xs">{role.replace('_', ' ')}</p>
+        <div className="mb-2 flex items-center gap-2 px-1">
+          <SelfAvatar name={name} />
+          <div className="grid min-w-0 flex-1 leading-tight">
+            <p className="truncate text-sm font-medium">{name}</p>
+            <p className="text-muted-foreground text-xs">{role.replace('_', ' ')}</p>
+          </div>
         </div>
         <Separator />
         {/* Admin mode switch - ABOVE Settings (owner order, 2026-11-09). It is
