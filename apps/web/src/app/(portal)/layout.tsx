@@ -51,6 +51,10 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
         role: user?.role,
         mustChangePassword: user?.mustChangePassword ?? false,
         pathname: pathname ?? '',
+        // The deep link's query must survive the login wall (2026-11-25). Only
+        // the redirect target depends on this, never rendered text, so reading
+        // window here cannot cause a hydration mismatch.
+        search: typeof window === 'undefined' ? '' : window.location.search,
       });
 
   useEffect(() => {

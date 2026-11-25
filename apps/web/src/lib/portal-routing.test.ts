@@ -48,6 +48,65 @@ describe('portalGateFor - area', () => {
     );
   });
 
+  // protects= the WhatsApp site-update button, which deep-links to
+  //   /portal?unit=<id>&photo=<rowId> and relies on the portal opening that photo
+  //   full-bleed. A signed-out buyer used to be sent to a hardcoded /portal, so
+  //   signing in landed them on the feed and the photo they were notified about
+  //   never opened;
+  // fails_when= the query is dropped from `next`, left unencoded (so `&photo=`
+  //   becomes a parameter of /login rather than of the portal), or a path outside
+  //   the portal is remembered as the destination;
+  // no_claim= the login form's own validation of `next`, which is the second check.
+  it('remembers the deep link, query and all, when there is no session', () => {
+    const query = '?unit=unit-1&photo=photo-9';
+    const next = encodeURIComponent(`/portal${query}`);
+    expect(
+      portalGateFor({
+        role: undefined,
+        mustChangePassword: false,
+        pathname: '/portal',
+        search: query,
+      }),
+    ).toBe(`/login?next=${next}`);
+  });
+
+  it('remembers a portal sub-page', () => {
+    // No query, so the destination stays the readable form.
+    expect(
+      portalGateFor({
+        role: undefined,
+        mustChangePassword: true,
+        pathname: '/portal/change-password',
+        search: '',
+      }),
+    ).toBe('/login?next=/portal/change-password');
+  });
+
+  it('never remembers a destination outside the portal', () => {
+    expect(
+      portalGateFor({
+        role: undefined,
+        mustChangePassword: false,
+        pathname: '/admin/secrets',
+        search: '?x=1',
+      }),
+    ).toBe(`/login?next=${encodeURIComponent('/portal?x=1')}`);
+    expect(
+      portalGateFor({ role: undefined, mustChangePassword: false, pathname: '/admin', search: '' }),
+    ).toBe('/login?next=/portal');
+  });
+
+  it('ignores a search that does not start with a question mark', () => {
+    expect(
+      portalGateFor({
+        role: undefined,
+        mustChangePassword: false,
+        pathname: '/portal',
+        search: 'photo=9',
+      }),
+    ).toBe('/login?next=/portal');
+  });
+
   it.each(STAFF)('%s is sent out of the portal regardless of the flag', (role) => {
     // Precedence: the area bounce runs BEFORE the password gate, so an armed
     // staff account is never dropped into a customer rotation screen.

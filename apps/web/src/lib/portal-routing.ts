@@ -38,7 +38,38 @@ export type PortalGateInput = {
   mustChangePassword: boolean;
   /** Current pathname, so the gate can tell "needs rotating" from "already there". */
   pathname: string;
+  /**
+   * Current `location.search`, including the leading `?` (2026-11-25).
+   *
+   * This exists because the WhatsApp button deep-links to
+   * `/portal?unit=<id>&photo=<rowId>` and the portal opens that photo full-bleed.
+   * The gate used to send a signed-out buyer to a hardcoded `/login?next=/portal`,
+   * which dropped the query, so after signing in they arrived at a bare portal and
+   * the photo they were told about never opened - the one thing the message was for.
+   * Omitted means "no query", which keeps the old behaviour exact.
+   */
+  search?: string;
 };
+
+/**
+ * Where a signed-out buyer should be sent so that signing in lands them back on
+ * the exact URL they tapped, query included.
+ *
+ * Only paths under the portal are remembered: this value ends up in a URL, and a
+ * caller that passed something else would be handing out a redirect target we did
+ * not choose. The login form validates `next` again (absolute path on this origin),
+ * so this is the second of two checks, not the only one.
+ */
+function portalLoginNext(pathname: string, search: string | undefined): string {
+  const path = pathname.startsWith('/portal') ? pathname : PORTAL_HOME;
+  // No query keeps the plain form (`/login?next=/portal`), which is both the
+  // historical shape and easier to read in a log. With a query it MUST be
+  // encoded, or `&` would split it into parameters the login form never reads.
+  if (search === undefined || !search.startsWith('?') || search.length < 2) {
+    return `/login?next=${path}`;
+  }
+  return `/login?next=${encodeURIComponent(`${path}${search}`)}`;
+}
 
 /**
  * The path this session must be at, or null when it may stay where it is.
@@ -51,9 +82,11 @@ export function portalGateFor({
   role,
   mustChangePassword,
   pathname,
+  search,
 }: PortalGateInput): string | null {
-  // 1. No session -> sign in, remembering the portal as the destination.
-  if (role === undefined) return `/login?next=${PORTAL_HOME}`;
+  // 1. No session -> sign in, remembering THIS page (query included) as the
+  //    destination, so a WhatsApp photo link survives the login wall.
+  if (role === undefined) return portalLoginNext(pathname, search);
 
   // 2. Only a CUSTOMER may be in the portal at all (no staff preview, D7).
   if (role !== 'CUSTOMER') return '/';
