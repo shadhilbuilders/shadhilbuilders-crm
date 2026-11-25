@@ -127,10 +127,10 @@ export function CreateUserForm({
       phone: '',
       phoneCountry: DEFAULT_PHONE_COUNTRY,
     },
-    // `onTouched` so a mistyped number is flagged while the user is still in
-    // the field (and cleared as soon as it parses), rather than only after a
-    // failed submit. The team/customer-lead refinements above share this.
-    mode: 'onTouched',
+    // `onSubmit`, the house rule: a mistyped number is caught on the first Save
+    // and cleared as soon as it parses. The team/customer-lead refinements above
+    // share this, so their messages also appear at submit rather than on blur.
+    mode: 'onSubmit',
   });
 
   // Watch the role so the Team field appears only for staff (and a MANAGER

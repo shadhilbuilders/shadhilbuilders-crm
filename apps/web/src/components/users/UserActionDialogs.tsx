@@ -90,9 +90,9 @@ function EditUserDialog({
           : toPhoneInputValue(target.phoneE164 ?? target.phone),
       phoneCountry: countryOfStored(target?.phoneE164 ?? target?.phone) ?? DEFAULT_PHONE_COUNTRY,
     },
-    // `onTouched` so a mistyped number is flagged while the user is still in
-    // the field, and cleared as soon as it parses.
-    mode: 'onTouched',
+    // `onSubmit`, the house rule: the number is checked on Save and cleared as
+    // soon as it parses.
+    mode: 'onSubmit',
   });
 
   function onSubmit(values: EditUserFormValues) {

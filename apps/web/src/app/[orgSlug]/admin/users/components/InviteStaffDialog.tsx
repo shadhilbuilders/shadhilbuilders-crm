@@ -157,9 +157,9 @@ function InviteStaffDialogBody({
       phoneCountry: DEFAULT_PHONE_COUNTRY,
       role: (creatableRoles[0] as Role | undefined) ?? 'TELECALLER',
     },
-    // onTouched matches CreateUserForm, so a mistyped number is flagged while
-    // the user is still in the field rather than after a failed submit.
-    mode: 'onTouched',
+    // onSubmit matches CreateUserForm: the number is checked on Save, and
+    // reValidateMode clears the message once it parses.
+    mode: 'onSubmit',
   });
 
   const selectedRole = form.watch('role');

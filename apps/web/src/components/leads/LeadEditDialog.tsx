@@ -119,9 +119,9 @@ export function LeadEditFormBody({
       phoneCountry: countryOfStored(lead.phoneE164 ?? lead.phone) ?? DEFAULT_PHONE_COUNTRY,
       email: lead.email ?? '',
     },
-    // `onTouched`: flag the number while the user is in the field, clear it
-    // as soon as it parses. `name`/`email` keep their existing behaviour.
-    mode: 'onTouched',
+    // `onSubmit`: the number is checked on Save and cleared as soon as it
+    // parses. `name`/`email` behave the same way.
+    mode: 'onSubmit',
   });
 
   return (

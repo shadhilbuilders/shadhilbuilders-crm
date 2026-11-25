@@ -224,12 +224,11 @@ function ProfileSection({
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(ProfileFormSchema),
     defaultValues: { name: initialName, phone: '', phoneCountry: DEFAULT_PHONE_COUNTRY },
-    // `onTouched`, not `onSubmit`: the phone rule exists to catch a mistyped
-    // number WHILE the user is in the field, and `onSubmit` would only reveal
-    // it after a round-trip attempt. `onTouched` waits for the first blur (so
-    // an untouched optional field is never painted red) and react-hook-form's
-    // reValidateMode then clears the message as soon as the value is valid.
-    mode: 'onTouched',
+    // `onSubmit`, the house rule: the phone rule reports on the first Save and
+    // never paints an untouched optional field red. reValidateMode ('onChange',
+    // the default) then clears the message as soon as the number parses, so the
+    // only change from `onTouched` is WHO reveals the message first.
+    mode: 'onSubmit',
   });
 
   // The session's name arrives after the first render on a cold load, so keep

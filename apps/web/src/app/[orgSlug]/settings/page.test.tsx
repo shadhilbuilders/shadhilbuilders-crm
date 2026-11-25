@@ -108,6 +108,15 @@ function setNativeValue(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+/** Submit the form the phone field belongs to, the way Save does. */
+async function submitProfileForm(phone: HTMLInputElement): Promise<void> {
+  const form = phone.closest('form');
+  if (form === null) throw new Error('the phone field is not inside the profile form');
+  await act(async () => {
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+}
+
 const telecaller = {
   id: 'tc-1',
   name: 'Priya Sharma',
@@ -205,7 +214,7 @@ describe('SettingsPage - access', () => {
 });
 
 describe('SettingsPage - profile', () => {
-  it('shows the phone error INLINE, not as a toast or a 400', async () => {
+  it('reports the phone error INLINE on submit, not as a toast or a 400', async () => {
     await mount();
     const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;
 
@@ -213,21 +222,36 @@ describe('SettingsPage - profile', () => {
     // canonical digits it would send (91 + what was typed), which is below the
     // 7-digit shape floor every country shares.
     await act(async () => {
-      phone.focus();
       setNativeValue(phone, '9876');
     });
-    // `onTouched` reveals the message on blur (a real focus/blur pair, or
-    // jsdom does not dispatch it).
-    await act(async () => {
-      phone.blur();
-    });
+    await submitProfileForm(phone);
 
     const inlineError = document.querySelector('[data-qa="form-error-message-phone"]');
     expect(inlineError?.textContent).toContain('Enter a valid phone number');
     // The field is marked invalid for assistive tech, not just coloured.
     expect(phone.getAttribute('aria-invalid')).toBe('true');
-    // Nothing was submitted - the point is to stop before the API.
+    // The resolver stopped the submit before the API. That is the difference
+    // between an inline error and the 400 this test exists to prevent.
     expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+
+  it('paints nothing red before the first submit', async () => {
+    await mount();
+    const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;
+
+    await act(async () => {
+      setNativeValue(phone, '9876');
+    });
+    // Leaving a half-typed number must NOT report, which is the whole
+    // difference between `onSubmit` and `onTouched`. This is the assertion that
+    // fails if anyone puts `onTouched` back.
+    await act(async () => {
+      phone.focus();
+      phone.blur();
+    });
+
+    expect(document.querySelector('[data-qa="form-error-message-phone"]')).toBeNull();
+    expect(phone.getAttribute('aria-invalid')).not.toBe('true');
   });
 
   it('clears the inline phone error once the number becomes valid', async () => {
@@ -235,18 +259,16 @@ describe('SettingsPage - profile', () => {
     const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;
 
     await act(async () => {
-      phone.focus();
       setNativeValue(phone, '9876');
     });
-    await act(async () => {
-      phone.blur();
-    });
+    await submitProfileForm(phone);
     expect(document.querySelector('[data-qa="form-error-message-phone"]')).not.toBeNull();
 
     await act(async () => {
       setNativeValue(phone, '9876543201');
     });
-    // reValidateMode is onChange by default: a valid value drops the message.
+    // reValidateMode is onChange by default: after the failed attempt, a valid
+    // value drops the message without another submit.
     expect(document.querySelector('[data-qa="form-error-message-phone"]')).toBeNull();
     expect(phone.getAttribute('aria-invalid')).not.toBe('true');
   });
@@ -256,9 +278,17 @@ describe('SettingsPage - profile', () => {
     const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;
     await act(async () => {
       setNativeValue(phone, '');
-      phone.blur();
     });
+    await submitProfileForm(phone);
+
     expect(document.querySelector('[data-qa="form-error-message-phone"]')).toBeNull();
+    // Blank is valid and does reach the API, with `null` as the value that
+    // erases the number. Without this the test would pass on a form that
+    // simply never submits.
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: null }),
+      expect.anything(),
+    );
   });
 
   it('prefills the name and shows the email + user id read-only', async () => {

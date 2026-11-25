@@ -81,11 +81,11 @@ export default function NewLeadPage() {
       teamId: NO_TEAM_OVERRIDE,
       assignedOwnerId: NO_OWNER_OVERRIDE,
     },
-    // `onTouched` so the phone rule reports inline while the user is still in
-    // the field. Safe now that the schema no longer transforms the value -
-    // with the old `PhoneSchema` this mode would have rewritten the input
-    // from 10 digits to 12 mid-typing.
-    mode: 'onTouched',
+    // `onSubmit`, the house rule (AGENTS.md, Forms): the phone rule reports on
+    // the first Save, and reValidateMode ('onChange', the default) clears it as
+    // soon as the number parses. Now that the schema no longer transforms the
+    // value, nothing rewrites the input mid-typing either.
+    mode: 'onSubmit',
   });
 
   function onSubmit(values: CreateLeadSchema) {

@@ -32,6 +32,18 @@ TELECALLER`. Never hand-roll role strings.
   consent) happen inside the SAME transaction as the action
   (`prisma.$transaction` + `tx`), per plan A2/G-1.
 
+## Forms (web)
+
+- `useForm` uses `mode: 'onSubmit'`. Never `onTouched`: validating on blur paints
+  a field red while someone is still typing halfway through a number, and the
+  owner's rule is that a form reports on Save. Leave `reValidateMode` at its
+  default (`onChange`) so that after the first attempt a field clears itself as
+  soon as it is fixed.
+- A test that proves a message appears submits the form
+  (`form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))`
+  inside `act`), it does not blur a field. A test that proves nothing appears
+  early types a bad value, blurs it, and asserts silence.
+
 ## Tests
 
 - Co-locate unit tests as `*.test.ts` beside the code, or in the package

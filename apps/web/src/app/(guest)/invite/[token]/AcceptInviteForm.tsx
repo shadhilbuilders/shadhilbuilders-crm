@@ -57,8 +57,8 @@ export function AcceptInviteForm({ token, preview }: Props) {
       password: '',
       confirmPassword: '',
     },
-    // Validate on blur, matching the admin forms.
-    mode: 'onTouched',
+    // Validate on submit, matching the admin forms.
+    mode: 'onSubmit',
   });
 
   async function onSubmit(values: AcceptInviteFormValues) {
