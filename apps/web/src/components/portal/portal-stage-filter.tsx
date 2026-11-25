@@ -80,12 +80,18 @@ export function PortalStageFilter({ counts, value, onChange }: PortalStageFilter
           // tappable; the checked one inverts to ink on paper, which is the only
           // difference that has to survive a glance on a phone in daylight.
           //
+          // THE STATE UTILITIES CARRY `!` ON PURPOSE (measured): this widget
+          // reports its checked state as `aria-pressed`, and the library's own
+          // pressed styles beat a plain utility of equal specificity. Without
+          // the bang the checked chip rendered transparent - it looked like an
+          // empty gap at the start of the row, which is exactly how the strip
+          // read as having no selection at all.
+          //
           // The gap is a margin on each item, not `gap` on the group: the group
           // root takes its spacing from a `--gap` var set by its own `spacing`
-          // prop, so a class here cannot add one. Measured at 0px before this,
-          // which is what made six chips read as one segmented table.
+          // prop, so a class here cannot add one.
           className:
-            'mr-1.5 h-auto! min-h-10 min-w-0! shrink-0! rounded-none! border border-[var(--portal-ink-2)]/35 bg-[var(--portal-tint)] px-3! py-2! text-[0.6875rem] font-medium tracking-[0.06em] whitespace-nowrap text-[var(--portal-navy)] uppercase shadow-none! transition-none last:mr-0 hover:border-[var(--portal-ink)] hover:bg-[var(--portal-tint)] data-[state=on]:border-[var(--portal-ink)] data-[state=on]:bg-[var(--portal-ink)] data-[state=on]:text-[var(--portal-paper)] aria-pressed:border-[var(--portal-ink)] aria-pressed:bg-[var(--portal-ink)] aria-pressed:text-[var(--portal-paper)]',
+            'mr-1.5 h-auto! min-h-10 min-w-0! shrink-0! rounded-none! border border-[var(--portal-ink-2)]/35 bg-[var(--portal-tint)] px-3! py-2! text-[0.6875rem] font-medium tracking-[0.06em] whitespace-nowrap text-[var(--portal-navy)] uppercase shadow-none! transition-none last:mr-0 hover:border-[var(--portal-ink)] hover:bg-[var(--portal-tint)] aria-pressed:border-[var(--portal-ink)]! aria-pressed:bg-[var(--portal-ink)]! aria-pressed:text-[var(--portal-paper)]! aria-pressed:[&_span]:text-[var(--portal-paper)]!',
         }))}
       />
     </div>
