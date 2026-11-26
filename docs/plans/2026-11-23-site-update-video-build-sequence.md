@@ -369,6 +369,14 @@ Public clips, WebM capture, transcoding, codec probing beyond the container, mor
 
 Each row needs an artefact and a named owner. A row without an artefact did not pass.
 
+Status 2026-11-26: rows 1, 2 and 5 were run in an emulated browser and the numbers are in
+`docs/plans/2026-11-26-device-gate-run.md` and `docs/plans/artefacts/device-gate-results.json`.
+Row 1 passes every bar. Row 2 passes record start and upload and MISSES playback, twice: 6.46s
+and 9.50s against a 3s bar, with the CPU throttled 4x. Rows 3 and 4 did not run at all: WebKit will
+not launch on this host and iOS Safari cannot be emulated. Row 5's player was proved under a
+WhatsApp user agent but not the buyer's session. No row is signed off, because none of them was
+taken on a phone.
+
 ## The five things most likely to go wrong
 
 1. **The recorder produces a container the pipeline or Meta refuses.** Chrome may ignore the MP4 hint and record WebM, or honour MP4 but emit H.264 High with B-frames, which Android WhatsApp cannot play. `isTypeSupported` answering yes is not proof; ffprobe the actual file on the mid-range Android in step 7.

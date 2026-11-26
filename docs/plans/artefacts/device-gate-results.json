@@ -1,0 +1,61 @@
+{
+  "takenAt": "2026-11-26T11:35:38.751Z",
+  "rows": [
+    {
+      "row": "android-13-midrange (emulated Chromium, Pixel-class viewport, fake camera)",
+      "emulation": {
+        "ua": "Android 13",
+        "uploadProfile": "fast3g 1.6Mbps/750kbps/150ms",
+        "codecs": {
+          "recordMp4": true,
+          "aac": false,
+          "canPlayH264": "probably"
+        }
+      },
+      "metrics": {
+        "recordStartMs": 314,
+        "uploadMs": 43954,
+        "playbackMs": 1869,
+        "clipBytes": 921009,
+        "seekLanded": true,
+        "clipSeconds": 20
+      },
+      "notes": []
+    },
+    {
+      "row": "android-11-lowend (emulated Chromium, 4x CPU throttle, fake camera)",
+      "emulation": {
+        "cpuThrottle": 4,
+        "uploadProfile": "slow3g 400kbps/400kbps/400ms",
+        "notes": "backgrounding mid-upload cannot be emulated in headless Chromium"
+      },
+      "metrics": {
+        "recordStartMs": 524,
+        "uploadMs": 44580,
+        "playbackMs": 9500,
+        "clipBytes": 1343569,
+        "seekLanded": true,
+        "clipSeconds": 20
+      },
+      "notes": []
+    },
+    {
+      "row": "whatsapp-inapp (WhatsApp UA on desktop Chromium, not the real webview)",
+      "emulation": {
+        "ua": "SM-A536B Android 13 WhatsApp/2.24.25.79"
+      },
+      "metrics": {
+        "recordStartMs": 328,
+        "uploadMs": 494,
+        "playbackMs": 778,
+        "clipBytes": 305090,
+        "seekLanded": true,
+        "playsInline": true,
+        "playbackAdvanced": true
+      },
+      "notes": [
+        "portal authentication as a buyer was not exercised: no OTP device in this environment"
+      ]
+    }
+  ]
+}
