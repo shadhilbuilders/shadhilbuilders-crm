@@ -185,6 +185,11 @@ export const auth: any = betterAuth({
     // talks to :3000 (BFF and SSE are proxied server-side), so one entry is
     // enough. Without it better-auth rejects sign-in with 403 INVALID_ORIGIN.
     'http://100.81.0.50:3000', // WSL tailnet IP (mobile testing)
+    // Same dev server behind `tailscale serve`, which is the only way a phone
+    // gets a secure context without a tunnel: the camera needs HTTPS, and a
+    // tailnet IP over plain http is not one. The hostname only resolves inside
+    // this tailnet, so it is no more reachable than the line above.
+    'https://laptop-3pl765iv-2.taild43b86.ts.net',
     'https://crm.shadhilbuilders.in', // user-facing app
     'https://api.crm.shadhilbuilders.in', // backend API
   ],

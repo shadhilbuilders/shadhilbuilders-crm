@@ -7,32 +7,36 @@ stop at the first failure and note it.
 ## Before you start
 
 The camera needs a secure context. A phone cannot open `http://localhost:3000`, and a plain
-`http://192.168.x.x:3000` will not do either: Chrome and Safari only hand over the camera on
-`https://` or on localhost. So the stack has to be reachable over HTTPS from the phone. Two ways:
+`http://<lan-ip>:3000` will not do either: browsers only hand over the camera on `https://` or on
+localhost. So the stack has to be reachable over HTTPS from the phone.
 
-1. **Tunnel.** `cloudflared tunnel --url http://localhost:3000 --no-autoupdate` and open the
-   `https://something.trycloudflare.com` address it prints. Next only accepts the unfamiliar Host
-   if `allowedDevOrigins` lists it, which it now does for the common tunnel domains.
+**Route A, Tailscale over HTTPS.** The tailnet is already on this box (100.81.0.50) and the iPhone
+is enrolled as `iphone182`, last seen 19 days ago. Do this once, and type your password when asked:
 
-   This returned 404 from the edge on this machine on 2026-11-26 without ever reaching Next: the
-   tunnel registered, the requests never appeared in the dev log. So do not assume it works, test
-   with `curl -I https://<tunnel>/login` first, and fall back to option 2 if it 404s.
+    sudo tailscale set --operator=$USER
+    tailscale serve --bg --https=443 http://127.0.0.1:3000
+    tailscale serve status
 
-2. **Same Wi-Fi, with a local certificate.** Run the web app with `next dev --experimental-https`,
-   forward the port from Windows so the phone can reach WSL:
+Then on the phone, with the Tailscale toggle on, open the address serve prints, which is
+`https://laptop-3pl765iv-2.taild43b86.ts.net`. It carries a real certificate, it works on mobile
+data, and it needs no port forwarding. `https://laptop-3pl765iv-2.taild43b86.ts.net` is now in
+`trustedOrigins`, without which better-auth answers every sign-in with 403 INVALID_ORIGIN.
 
-       netsh interface portproxy add v4tov4 listenport=3000 listenaddress=0.0.0.0 connectport=3000 connectaddress=<WSL IP>
+**Route B, a quick tunnel.** `cloudflared tunnel --url http://localhost:3000 --no-autoupdate`,
+then the `https://something.trycloudflare.com` address it prints. Test with
+`curl -I https://<tunnel>/login` first; from this machine on 2026-11-26 it returned 404 at the edge
+for three fresh tunnels without a single request reaching Next, so treat this as the fallback.
 
-   in an admin PowerShell, then open `https://<windows LAN ip>:3000` on the phone and accept the
-   certificate warning. It is self-signed, so the browser complains once; the context is still
-   HTTPS and the camera works. Remove the rule afterwards with `netsh interface portproxy delete`.
+Do not go the Windows-LAN route. It needs an elevated prompt, it breaks when the Wi-Fi network
+changes, and guest networks isolate clients so the phone cannot see the host at all.
 
 Both servers must run with the feature on:
 
     SITE_VIDEO_CAPTURE=true MEDIA_STORAGE=local \
     SITE_VIDEO_ORG_CAP_BYTES=5368709120 SITE_VIDEO_PROJECT_CAP_BYTES=536870912 pnpm run dev
 
-Sign in as `engineer@shadhilbuilders.in`. Open a villa, then the video target in the capture sheet.
+Sign in as `engineer@shadhilbuilders.in` with `engineer_placeholder_pw`. Open a villa, then the
+video target in the capture sheet.
 
 ## 1. Low-end Android, the backgrounding half (row 2)
 
