@@ -6,7 +6,17 @@ const SECURITY_HEADERS = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+  // `camera=(self)` and `microphone=(self)`, NOT `camera=()`: the empty allowlist
+  // denies the feature to every origin INCLUDING this one, and the site recorder
+  // calls getUserMedia from this origin. Chromium does not enforce the empty
+  // allowlist on a top-level document, which is why recording worked in the
+  // device gate while the header said it could not; Safari and Firefox do
+  // enforce it, so an iPhone would have got a permission error from our own
+  // header. `self` is still no cross-origin use.
+  {
+    key: 'Permissions-Policy',
+    value: 'camera=(self), microphone=(self), geolocation=()',
+  },
   { key: 'X-DNS-Prefetch-Control', value: 'on' },
 ];
 
@@ -44,6 +54,11 @@ function mediaCdnPattern(): NonNullable<NonNullable<NextConfig['images']>['remot
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // A phone cannot reach localhost, and the camera needs a secure context, so a
+  // device check runs against a quick tunnel. Next refuses dev requests whose
+  // Host it does not recognise, which answers every route with 404 and looks
+  // exactly like a routing bug. Dev only; production builds ignore it.
+  allowedDevOrigins: ['*.trycloudflare.com', '*.ngrok-free.app', '*.loca.lt'],
   // REQUIRED by apps/web/Dockerfile: the runner stage copies
   // .next/standalone (self-contained server.js + traced node_modules) and
   // runs `node server.js`. With this commented out the image build dies at
