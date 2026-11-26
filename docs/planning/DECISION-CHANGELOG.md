@@ -1881,3 +1881,55 @@ type-checks and both lints clean.
 
 **Not claimed.** No device run: whether a resend actually reaches a phone depends on the WhatsApp
 Cloud leg, which has never been exercised end to end from this machine.
+
+## Round 67 - 2026-11-26, 12:20 IST - users.service.ts becomes a facade
+
+**The problem.** One class held 2,658 lines against an 800-line ceiling, and mixed six concerns:
+login lookup, user writes, the self profile, reporting lines, three directory reads, and the P2002
+unique-index mapping. The entry in TODOS named the real cost, which was not length: the reporting
+line rule was duplicated at three points inside the file, so nothing forced those points to agree.
+
+**The decision that made this safe.** The concern classes take their dependencies through a shared
+`UsersBase`, which supplies `client`, `logger`, `storage` and the four lookups that more than one
+concern needs (`accountIdentities`, `resolveDisplayTeamId`, `resolveReportingLines`, `avatarUrl`,
+plus the avatar checks). That is what allowed a mechanical move: every method body was copied out
+verbatim, and the only new code is the class wrapper, per-file imports, and one-line delegations.
+All 19 bodies were then checked by string comparison against the pre-split file, and all 19 match
+byte for byte. This was the requirement the TODO set: mechanical extraction, never bundled with a
+behaviour change.
+
+**Why the concerns are built, not injected.** `UsersService` constructs them in its constructor
+from one `UsersDeps`. A Nest provider per concern would have meant touching the module, and every
+unit test that does `new UsersService(prisma)` would have had to start supplying seven more
+arguments. The facade keeps its constructor signature, so the 3,000 lines of tests that drive the
+real code did not change by one line, and that is the evidence the split is behaviour-preserving.
+
+**The file layout, one file per question a caller has:**
+
+    users.login-lookup.ts        resolveLoginIdentifier, credentialHash
+    users.writes.ts              create, changeRole, update, remove
+    users.profile.ts             updateSelf, changePassword
+    users.manager.ts             assignManager
+    users.directory.detail.ts    getUser
+    users.directory.list.ts      list
+    users.directory.scoped.ts    projectSalesExecs, teamMembers
+    users.support.ts             types, the uniqueness mapping, UsersBase
+
+Largest file is 526 lines. The facade is 186.
+
+**What moved by necessity, and one loosening.** The six shared helpers were `private`; a subclass
+cannot call a `private` base member, so they are `protected`. That is the only edit to any body.
+`violatedUserIndex` and `rethrowAsUserUniquenessConflict` became exports because a concern that is
+not support now imports them.
+
+**A pitfall worth keeping.** The first import scan missed every constant used in a spread
+(`...PROJECT_ACTIVE`), because the regex excluded an identifier preceded by a dot to avoid property
+access, and a spread is a dot. Type-check caught it; a scan that cannot see spread syntax will
+always miss exactly the constants a Prisma `where` clause is built from.
+
+**Verified.** Backend type-check clean, lint clean at `--max-warnings 0`, 197 tests across
+`src/users/`, the five DB-backed users specs (143 tests, including 32 in the RLS suite that raise
+genuine constraint violations), and the full backend suite. No behaviour change was attempted.
+
+**Not claimed.** No review of the moved code's logic, and no re-dating of its comments: the
+comments that explain past bugs are where they were, saying what they said.

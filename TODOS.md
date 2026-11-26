@@ -28,35 +28,6 @@ MANAGER/ADMIN detail view.
 row ids), so paging 50 users still costs the same round trips as before. Soft-deleted
 teams are excluded (they grant no access, so they are not a line to advertise).
 
-### users.service.ts is 1,730 lines and mixes six concerns
-
-**What:** Split `apps/backend/src/users/users.service.ts` along concern
-boundaries (list/get, create/changeRole, assignManager, password, profile).
-
-**Why:** The file is more than double the 800-line ceiling in
-`~/.cursor/rules/common-coding-style.mdc`. The reporting-line rule was missed
-partly because it is duplicated at three separate points inside this one file
-(lines 730, 810, 1323) with no shared helper, so nothing forced them to agree.
-
-**Context:** The reporting-line fix extracts `reportsToTeamManager(role)` and
-uses it at those sites, which removes the duplication but not the size. This
-entry is specifically about file structure. Note that `assignManager` carries
-subtle semantics (scoped delete, post-condition assertion, single-transaction
-audit) with long inline comments explaining past bugs - moving it needs those
-comments preserved verbatim and its tests (`users.service.assignManager.test.ts`,
-`users.service.rls.test.ts`) kept green. Do NOT combine this with behavioural
-changes; mechanical extraction only.
-
-**Effort:** L
-**Priority:** P3
-**Depends on:** None — but land it separately from any behaviour change.
-
-**Decision 2026-11-07:** deferred. The duplication that motivated this entry is already
-gone — the exhaustive `reportingTargetFor` map replaced the three copy-pasted role
-unions, and `resolveReportingLines` is now the single resolver behind both read paths.
-What remains is structural size (~1,900 lines), not a correctness hazard, so it is not
-worth making a five-file breaking-change diff unreviewable by bundling it.
-
 ### ~~Team resolution order diverges between "display" and "lead creation default"~~ — RESOLVED 2026-11-07
 
 **Decision (product):** NEWEST wins in both places.
@@ -155,7 +126,7 @@ migration plus a backfill for a problem two indexed lookups solve.
 
 ## Test health
 
-### Shared-tenant test fixtures: five specs collide under concurrency
+### ~~Shared-tenant test fixtures: five specs collide under concurrency~~ — FIXED 2026-11-23, re-verified 2026-11-26
 
 **What:** DB-backed specs seed into the SAME demo organization. Rows that are per-ORG therefore
 belong to every suite at once, and vitest runs files in parallel against one database. Three
@@ -183,6 +154,9 @@ deletes the org and lets the cascades take users, projects, leads, ledgers and n
 **Converted and verified (2026-11-23):** all five that collided. Each runs green alone, in the
 full suite (121 files / 2176 tests), and three copies of all five run CONCURRENTLY: 3/3 green,
 30 tests each. The same configuration failed 8, 11 and 6 tests before.
+
+**Re-verified 2026-11-26** on the tree that carries Round 67: three concurrent copies again,
+3/3 green, 33 tests each. The suite has grown, so the count differs from 30; the claim has not.
 
     site-video-ledger.db.test.ts
     overdue-alerts.processor.test.ts
@@ -224,6 +198,36 @@ touch their own project-scoped rows. Convert any that start counting org-wide ro
 cron, with `createTestTenant` + `holdCronLockForFile`.
 
 ## Completed
+
+### users.service.ts split into its six concerns - DONE 2026-11-26 (Round 67)
+
+2,658 lines in one class, against an 800-line ceiling, and the reporting-line rule had to be
+re-checked by hand because three points in that file could disagree about it.
+
+It is now a 186-line facade plus one file per question a caller has:
+
+    users.login-lookup.ts        resolveLoginIdentifier        (public path, no JWT)
+    users.writes.ts              create, changeRole, update, remove
+    users.profile.ts             updateSelf, changePassword
+    users.manager.ts             assignManager
+    users.directory.detail.ts    getUser
+    users.directory.list.ts      list
+    users.directory.scoped.ts    projectSalesExecs, teamMembers
+    users.support.ts             types, the P2002 mapping, and UsersBase
+
+`UsersBase` supplies `client`, `logger`, `storage` and the four shared lookups, which is what made
+the move mechanical: all 19 method bodies are byte-identical to the lines they replaced (checked by
+string comparison against the pre-split file), so the split cannot have changed behaviour. The
+concerns are constructed inside the facade rather than injected, so the Nest module, the
+controller and every `new UsersService(prisma)` in the unit tests are untouched.
+
+**The constraint this entry existed for still applies to future edits:** `assignManager` carries
+scoped-delete, post-condition assertion and single-transaction audit semantics with long comments
+explaining past bugs. Those comments moved verbatim; do not paraphrase them.
+
+**Verified:** backend type-check and lint clean, 197 tests across `src/users/`, plus the five
+DB-backed users specs (143 tests) and the full backend suite. No behaviour change was attempted or
+made.
 
 ### A skipped site-update delivery can be sent again - DONE 2026-11-26 (Round 66)
 
