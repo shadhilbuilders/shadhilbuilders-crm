@@ -41,7 +41,7 @@ export function timingsRequested(
   try {
     asked = new URLSearchParams(search).get(TIMINGS_PARAM) === '1';
   } catch {
-    asked = false;
+    // A query string that will not parse is not an ask; `asked` stays false.
   }
   if (asked) {
     // Sticky, because the flag was being lost the moment the recorder was opened
