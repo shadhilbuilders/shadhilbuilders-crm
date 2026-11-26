@@ -1840,3 +1840,44 @@ the function beside `customer_lead_id()`, since that file is the source of truth
 **Not claimed:** nothing here renders in production until someone signs in as a buyer and looks.
 The backend and the hero are unit-proven; the wiring from the `me` payload to the page is covered
 by type-check and one prop, not by an end-to-end run against the portal.
+
+## Round 66 - 2026-11-26, 11:34 IST - A skipped site update can be tried again
+
+**The defect.** Every non-sent delivery outcome was a terminal record. `SKIPPED_NO_CONSENT` is now
+the ordinary one, because Meta approved the site-update template as MARKETING: a buyer who has not
+opted in is skipped, correctly, and the staff member looking at that row had nothing to press once
+they had the opt-in. The row said "not sent" and that was the end of the story.
+
+**The route taken.** `POST /api/customer-progress/site-updates/:deliveryId/resend` reuses the SAME
+`SiteUpdateDelivery` row and calls `enqueue()`, so every gate re-evaluates: the kill switch, the
+buyer, the approved template, the consent, the window. Nothing about the second attempt is a
+shortcut around the first one's decision. `@@unique(organizationId, batchId)` means a batch has one
+row for its whole life anyway, and that row is what the staff member is looking at.
+
+**A refusal is an outcome, not an error.** The endpoint answers 200 with `{ status, message }`, and
+the sentence comes from `resendMessage()` in the delivery service, so the API and the staff row
+cannot disagree about why nothing went out. Turning "the buyer has not opted in" into a red toast
+would teach people to ignore red.
+
+**Where the guard lives.** `SENT`, `DELIVERED` and `READ` are refused in the service, not in the UI,
+because a second send is a duplicate message to a real person. `PENDING` is left to the worker, which
+owns the row. The client sends one id and nothing else: the message input is re-derived from the
+batch's newest row and from the unit itself, so nobody can restate a caption or a villa number into
+a buyer's message.
+
+**What the window does that is easy to get wrong.** Inside the 24-hour service window the send is a
+freeform reply, which is not marketing, so `planDelivery` does not consult consent at all; the
+consent gate belongs to the template path, which only runs when a template exists and the window is
+closed. The first version of the refusal test passed for the wrong reason until it forced
+`lastInbound: null` and a configured template. Both are pinned, with the reason, in the test file.
+
+**Tests.** 7 new cases in `site-update-delivery.service.test.ts`, 34 total: refusal without consent,
+send once consent is on the ledger, no duplicate to a buyer who already has it, in-flight row left
+alone, another tenant's row answered as not found rather than forbidden, a FAILED row retried
+through the same gates, and a sentence for every outcome. 6 cases in `ResendDeliveryButton.test.tsx`
+for the control itself. Removing the duplicate guard from the service turned the "already has it"
+case red; restored. Backend customer-progress 259 passing, web site components 136 passing, both
+type-checks and both lints clean.
+
+**Not claimed.** No device run: whether a resend actually reaches a phone depends on the WhatsApp
+Cloud leg, which has never been exercised end to end from this machine.

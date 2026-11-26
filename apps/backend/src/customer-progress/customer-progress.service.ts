@@ -16,6 +16,7 @@ import {
   Logger,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
   forwardRef,
 } from '@nestjs/common';
 import { ConstructionStageSchema } from '@shadhil/api-types';
@@ -592,6 +593,100 @@ export class CustomerProgressService {
     if (photo === null) throw new NotFoundException('Photo not found.');
     const { unit, ...rest } = photo;
     return { ...rest, projectId: unit.phase.projectId };
+  }
+
+  /**
+   * Send a site update again (2026-11-26).
+   *
+   * WHY THIS EXISTS: every non-sent outcome was a terminal row - a record of
+   * something that did not happen, with no way to act on it. The common one is
+   * `SKIPPED_NO_CONSENT`, because the site-update templates are approved as
+   * MARKETING, so a buyer who has not opted in is skipped and the staff member
+   * looking at the row has nothing to press.
+   *
+   * The resend re-derives the message input from the rows rather than from
+   * anything the caller sends: the newest photo of the batch, the unit's own
+   * label, the note the engineer actually wrote. A client cannot restate a
+   * caption or a villa number into a message to a buyer.
+   *
+   * Every gate is re-evaluated by the same code that made the first decision.
+   * If the buyer still has not opted in, the answer is the same skip and a
+   * sentence that says so - never a send that bypasses the gate that protected
+   * them.
+   */
+  async resendSiteUpdate(
+    actor: JwtPayload,
+    deliveryId: string,
+  ): Promise<{ status: string; message: string }> {
+    // Narrowed OUTSIDE the transaction: the optional dependency check has to
+    // hold for the whole closure, and TypeScript cannot carry it in there.
+    const deliverer = this.siteUpdateDelivery;
+    if (deliverer === undefined) {
+      throw new ServiceUnavailableException('The WhatsApp delivery leg is not configured.');
+    }
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const delivery = (await tx.siteUpdateDelivery.findUnique({
+        where: { id: deliveryId },
+        select: { id: true, batchId: true, unitId: true, organizationId: true },
+      })) as {
+        id: string;
+        batchId: string;
+        unitId: string;
+        organizationId: string;
+      } | null;
+      if (delivery === null) throw new NotFoundException('That site update was not found.');
+
+      // The newest row of the batch, in the caller's own context: the same rows
+      // the staff screen is showing, so a member cannot resend something they
+      // cannot see.
+      const photo = (await tx.progressPhoto.findFirst({
+        where: { unitId: delivery.unitId, batchId: delivery.batchId },
+        orderBy: [{ takenAt: 'desc' }, { createdAt: 'desc' }],
+        select: {
+          id: true,
+          kind: true,
+          takenAt: true,
+          stage: true,
+          caption: true,
+          phase: { select: { name: true } },
+          unit: { select: { unitNumber: true, plotNumber: true } },
+        },
+      })) as {
+        id: string;
+        kind: 'PHOTO' | 'VIDEO';
+        takenAt: Date;
+        stage: string | null;
+        caption: string;
+        phase: { name: string | null } | null;
+        unit: { unitNumber: string; plotNumber: number | null };
+      } | null;
+      if (photo === null) {
+        throw new NotFoundException('That site update has no rows left to send.');
+      }
+
+      // The generated placeholder caption is not the engineer's words, so the
+      // template must not present it as a note. Recomputing it is exact:
+      // buildCaption is the only thing that ever produced it.
+      const generated = buildCaption(photo.phase?.name ?? null, photo.takenAt);
+      const hasNote = photo.caption.trim().length > 0 && photo.caption !== generated;
+
+      return deliverer.resend(
+        {
+          organizationId: actor.organizationId,
+          unitId: delivery.unitId,
+          unitLabel: villaLabel(photo.unit.unitNumber, photo.unit.plotNumber),
+          batchId: delivery.batchId,
+          rowId: photo.id,
+          kind: photo.kind,
+          takenAt: photo.takenAt.toISOString(),
+          stage: photo.stage,
+          caption: photo.caption,
+          hasNote,
+          tx: tx as unknown as RlsClient,
+        },
+        delivery.id,
+      );
+    });
   }
 
   async updatePhoto(

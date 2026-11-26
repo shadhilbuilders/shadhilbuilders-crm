@@ -63,6 +63,12 @@ export type TimelinePhoto = {
   whatsappReadAt?: string | null;
   /** When it reached the phone (staff only, ISO). Pairs with whatsappReadAt. */
   whatsappDeliveredAt?: string | null;
+  /**
+   * The delivery row this status came from (staff only, 2026-11-26). "Send
+   * again" posts to it; null wherever whatsappStatus is null, and for any row
+   * saved before delivery tracking existed.
+   */
+  whatsappDeliveryId?: string | null;
 };
 
 export type TimelineResponse = {
@@ -135,6 +141,37 @@ export function useUploadUnitPhoto(unitId: string) {
     onSuccess: () => {
       // Refresh every page of this unit's timeline + the first page the tab
       // reads back with after success.
+      void qc.invalidateQueries({ queryKey: PHOTOS_KEY });
+      invalidateUnitRows(qc, unitId);
+    },
+  });
+}
+
+/** What POST /customer-progress/site-updates/:deliveryId/resend answers. */
+export type ResendSiteUpdateResult = {
+  /** The delivery row's status AFTER the attempt. */
+  status: string;
+  /** The staff-facing sentence; a refusal arrives here too, not as an error. */
+  message: string;
+};
+
+/**
+ * Try a skipped or failed site update again (2026-11-26).
+ *
+ * One request, no body: the server re-derives the message from the rows and
+ * re-evaluates every gate (kill switch, buyer, template, consent). A refusal is
+ * a 200 with the reason, so nothing about this mutation is a failure path except
+ * an actual transport or auth error.
+ */
+export function useResendSiteUpdate(unitId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (deliveryId: string) =>
+      api<ResendSiteUpdateResult>(`/customer-progress/site-updates/${deliveryId}/resend`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      // The status the row shows is exactly what this request changed.
       void qc.invalidateQueries({ queryKey: PHOTOS_KEY });
       invalidateUnitRows(qc, unitId);
     },

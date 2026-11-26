@@ -13,10 +13,11 @@ import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import {
   SiteUpdateDeliveryService as DeliveryCore,
   type DeliveryInput,
+  type ResendOutcome,
 } from './site-update-delivery.service';
 
 @Injectable()
-export class SiteUpdateDelivery implements Pick<DeliveryCore, 'recordAndSend'> {
+export class SiteUpdateDelivery implements Pick<DeliveryCore, 'recordAndSend' | 'resend'> {
   private readonly logger = new Logger(SiteUpdateDelivery.name);
   private readonly core: DeliveryCore;
 
@@ -38,5 +39,9 @@ export class SiteUpdateDelivery implements Pick<DeliveryCore, 'recordAndSend'> {
 
   recordAndSend(input: DeliveryInput): Promise<void> {
     return this.core.recordAndSend(input);
+  }
+
+  resend(input: DeliveryInput, deliveryId: string): Promise<ResendOutcome> {
+    return this.core.resend(input, deliveryId);
   }
 }

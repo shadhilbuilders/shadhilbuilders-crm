@@ -20,6 +20,7 @@ import { LuRefreshCw } from '@paalstack/react-icons/lu';
 
 import type { ReactNode } from 'react';
 
+import { ResendDeliveryButton, isRetryableDelivery } from './ResendDeliveryButton';
 import { VideoBadge } from './VideoBadge';
 
 import { groupByMonth } from '@/components/portal/portal-format';
@@ -146,6 +147,8 @@ function UploadingCard({
 function deliveryNoteOf(
   row: {
     whatsappStatus?: keyof typeof DELIVERY_WORDS | null;
+    /** The delivery row behind the status; "Send again" posts to it. */
+    whatsappDeliveryId?: string | null;
     whatsappReadAt?: string | null;
     whatsappDeliveredAt?: string | null;
   },
@@ -304,6 +307,21 @@ function PhotoCard({
                   <span data-qa="progress-whatsapp" data-status={photo.whatsappStatus}>
                     {deliveryNote}
                   </span>
+                  {/* A row that did not send is the one worth acting on: the
+                      gates re-run on the server, so pressing this after the
+                      buyer opts in is the whole point of the control. */}
+                  {isRetryableDelivery(photo.whatsappStatus) &&
+                  photo.whatsappDeliveryId !== null &&
+                  photo.whatsappDeliveryId !== undefined ? (
+                    <>
+                      {' · '}
+                      <ResendDeliveryButton
+                        unitId={photo.unitId}
+                        deliveryId={photo.whatsappDeliveryId}
+                        className="h-7 px-2 text-xs"
+                      />
+                    </>
+                  ) : null}
                 </>
               ) : null}
             </span>

@@ -75,48 +75,6 @@ evaluated once per transaction, so a bulk membership insert can share a timestam
 
 ## Customer progress (photos)
 
-### A skipped site-update delivery cannot be re-sent
-
-**What:** Every non-sent outcome is recorded on `SiteUpdateDelivery`
-(`SKIPPED_DISABLED`, `SKIPPED_NO_BUYER`, `SKIPPED_NO_TEMPLATE`, `SKIPPED_NO_CONSENT`,
-`SKIPPED_WINDOW`, and a final `FAILED`), and none of them can be acted on. The row is a
-record, not a queue: nothing retries, and no operator action exists.
-
-**Why it matters:** `SKIPPED_NO_CONSENT` is about to be the normal answer for every
-buyer until the opt-in capture paths exist, and `SKIPPED_DISABLED` exists so a bad day
-can be switched off without losing updates. Both are only worth having if the skipped
-batches can go out later. Today the engineer sees "Not sent: buyer has not opted in",
-records the opt-in on the lead page, and the update is gone.
-
-**The two cases are not equally hard, and should not be one feature:**
-
-1. A final `FAILED` has a live `OutboundMessage` row. Re-sending is a reset:
-   `status = PENDING, attempts = 0, claimedAt = null, lastAttemptAt = null`. Cheap, and
-   it reuses the whole existing retry path. Needs a guarded endpoint (staff, org-scoped)
-   and a button on the staff row.
-2. A `SKIPPED_*` row has NO outbox row at all: the skip happens before `message.create`.
-   Re-sending has to rebuild the message, which means rebuilding the inputs - the media
-   row, the note, `hasNote`, the villa label. None of that is on the delivery row today;
-   only `batchId`, `unitId` and `organizationId` are. For a photo batch the batch id is
-   `photo-<ISO takenAt>`, which is recoverable, but relying on parsing an id string to
-   find the media is exactly the kind of thing that breaks silently. The honest fix is
-   to store `rowId` and the caption inputs on the delivery row at write time, then have
-   a re-send call `recordAndSend` again with the same batch id (the unique
-   `(organizationId, batchId)` would refuse, so it needs to update the existing row
-   rather than insert).
-
-**Context:** found 2026-11-23 while fixing the PENDING-never-advances defect
-(`b5b798d`). The switch commit (`4b2ca69`) and the plan handoff both claimed the row
-"keeps the batch visible for a re-send"; the row is visible, the re-send does not
-exist. The handoff now says so.
-
-**Effort:** S for the `FAILED` reset, M for the `SKIPPED_*` rebuild (one migration to
-carry the media reference and caption inputs).
-**Priority:** P3 (nothing is being sent to buyers yet: no approved consent rows and a
-test sender), rising to P2 the day the templates go live.
-**Depends on:** Nothing, but land the `FAILED` reset first; it proves the endpoint and
-the UI affordance before the harder half.
-
 ### ~~The photo-lead grant has no route to use it~~ — FIXED 2026-11-07
 
 **Shipped:** `PATCH /api/customer-progress/photos/:photoId` (caption only) and
@@ -266,6 +224,17 @@ touch their own project-scoped rows. Convert any that start counting org-wide ro
 cron, with `createTestTenant` + `holdCronLockForFile`.
 
 ## Completed
+
+### A skipped site-update delivery can be sent again - DONE 2026-11-26 (Round 66)
+
+`POST /api/customer-progress/site-updates/:deliveryId/resend` retries the SAME delivery row through
+`enqueue()`, so every gate re-runs: the kill switch, the buyer, the template, the consent. A refusal
+is a 200 with the server's own sentence (`resendMessage`), not an error, because "the buyer has not
+opted in" is a fact about the buyer rather than a fault. The staff row gains a "Send again" control
+only for outcomes that did not reach the buyer; SENT/DELIVERED/READ are refused in the service, not
+in the UI, because a second send is a duplicate message to a real person. The message input is
+re-derived from the batch's newest row and the unit, so a client cannot restate a caption or a villa
+number into a buyer message.
 
 ### Customer-facing phone display in the portal - DONE 2026-11-26 (Round 65)
 

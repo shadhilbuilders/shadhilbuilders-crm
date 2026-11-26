@@ -21,9 +21,10 @@
 // shared batchId (step 1), so a per-row send would fire six templates at a buyer
 // for one site visit. The row's unique (organizationId, batchId) makes that a
 // database guarantee, not a convention.
-import { Logger } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
 
 import { isServiceWindowOpen } from '@shadhil/api-types';
+import type { SiteUpdateDeliveryStatus } from '@shadhil/database';
 
 import type { OutboundService } from '../whatsapp/outbound.service';
 
@@ -82,6 +83,51 @@ export function siteUpdateWhatsAppEnabled(
   return !(raw === 'off' || raw === 'false' || raw === '0');
 }
 
+/**
+ * What "Send again" answered (2026-11-26).
+ *
+ * `status` is the delivery row's state AFTER the attempt, so the caller never
+ * has to guess, and `message` is the sentence a staff member reads. A refusal is
+ * an outcome, not an error: the row is left exactly as it was and the message
+ * says why, which is the difference between "try again later" and "the buyer
+ * never opted in, go and ask them".
+ */
+export interface ResendOutcome {
+  status: SiteUpdateDeliveryStatus;
+  message: string;
+}
+
+/**
+ * The staff-facing sentence for a resend outcome.
+ *
+ * One function so the words live in one place: the API returns them, the staff
+ * row shows them, and neither invents a second phrasing for the same fact.
+ */
+export function resendMessage(status: SiteUpdateDeliveryStatus): string {
+  switch (status) {
+    case 'PENDING':
+      return 'Queued again. The buyer will receive it shortly.';
+    case 'SENT':
+    case 'DELIVERED':
+    case 'READ':
+      return 'This update has already reached the buyer.';
+    case 'SKIPPED_NO_CONSENT':
+      return 'Not sent: the buyer has not opted in to marketing messages. Record their opt-in first, then send again.';
+    case 'SKIPPED_NO_BUYER':
+      return 'Not sent: this villa has no buyer with a phone number on file.';
+    case 'SKIPPED_DISABLED':
+      return 'Not sent: the WhatsApp leg is switched off on this deployment.';
+    case 'SKIPPED_NO_TEMPLATE':
+      return 'Not sent: no approved WhatsApp template exists for this media type yet.';
+    case 'SKIPPED_WINDOW':
+      return 'Not sent: the 24-hour reply window has closed and this update needs an approved template.';
+    case 'FAILED':
+      return 'Still failing. The reason is on the delivery row.';
+    default:
+      return 'Not sent.';
+  }
+}
+
 export interface DeliveryInput {
   organizationId: string;
   unitId: string;
@@ -131,6 +177,9 @@ export type RlsClient = {
     create(a: unknown): Promise<unknown>;
     update(a: unknown): Promise<unknown>;
     findMany?(a: unknown): Promise<unknown[]>;
+    // The resend path reads the row before deciding (2026-11-26); the three
+    // delegates above were all the write path ever needed.
+    findUnique(a: unknown): Promise<unknown>;
   };
   progressPhoto: { findUnique(a: unknown): Promise<unknown> };
   booking: { findFirst(a: unknown): Promise<unknown> };
@@ -306,6 +355,49 @@ export class SiteUpdateDeliveryService {
         }`,
       );
     }
+  }
+
+  /**
+   * Try the SAME delivery row again (2026-11-26).
+   *
+   * The row is reused rather than replaced: `@@unique(organizationId, batchId)`
+   * means a batch has one row for its whole life, and that row is the record a
+   * staff member is looking at when they press the button. `enqueue` already
+   * re-evaluates every gate - the kill switch, the buyer, the template, the
+   * consent - so a resend cannot send what the first attempt was right to
+   * refuse; it can only send once the reason is gone.
+   *
+   * A terminal-success row is refused here rather than in the UI, because the
+   * UI is not the authority and a second send would be a duplicate message to a
+   * real buyer.
+   */
+  async resend(input: DeliveryInput, deliveryId: string): Promise<ResendOutcome> {
+    const row = (await input.tx.siteUpdateDelivery.findUnique({
+      where: { id: deliveryId },
+      select: { id: true, status: true, organizationId: true },
+    })) as { id: string; status: SiteUpdateDeliveryStatus; organizationId: string } | null;
+    if (row === null || row.organizationId !== input.organizationId) {
+      // Not this tenant's row: the caller's RLS context already hid it, and a
+      // different-looking error would confirm a row they cannot see.
+      throw new NotFoundException('That site update was not found.');
+    }
+    if (row.status === 'SENT' || row.status === 'DELIVERED' || row.status === 'READ') {
+      return { status: row.status, message: resendMessage(row.status) };
+    }
+    if (row.status === 'PENDING') {
+      // In flight: the worker owns it, and a second enqueue would duplicate the
+      // message. Nothing is wrong, so this is not an error either.
+      return { status: row.status, message: resendMessage(row.status) };
+    }
+
+    await this.enqueue(input, deliveryId);
+
+    const after = (await input.tx.siteUpdateDelivery.findUnique({
+      where: { id: deliveryId },
+      select: { status: true },
+    })) as { status: SiteUpdateDeliveryStatus } | null;
+    const status = after?.status ?? 'FAILED';
+    return { status, message: resendMessage(status) };
   }
 
   /**

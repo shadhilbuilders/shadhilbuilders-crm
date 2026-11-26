@@ -118,6 +118,13 @@ export interface TimelinePhotoDto {
    */
   whatsappStatus?: SiteUpdateDeliveryStatus | null;
   /**
+   * The delivery row's id for this batch (2026-11-26), so the staff row can act
+   * on the outcome it is showing: "Send again" is a POST to this id. Null
+   * wherever whatsappStatus is null, and for the buyer's own timeline, which
+   * never sees delivery bookkeeping.
+   */
+  whatsappDeliveryId?: string | null;
+  /**
    * When the buyer opened it, staff only, ISO. Sent alongside the status rather
    * than folded into the label so the client decides the wording of the time
    * (it already renders capture times in the viewer's day terms). Null when the
@@ -422,7 +429,7 @@ export async function readTimelinePage(
   // own timeline omits it: it is our bookkeeping, not their record.
   const deliveryByBatch = new Map<
     string,
-    { status: SiteUpdateDeliveryStatus; readAt: Date | null; deliveredAt: Date | null }
+    { id: string; status: SiteUpdateDeliveryStatus; readAt: Date | null; deliveredAt: Date | null }
   >();
   if (args.scope.viewer !== null) {
     const batches = [...new Set(page.map((r) => r.batchId).filter((b): b is string => b !== null))];
@@ -436,6 +443,7 @@ export async function readTimelinePage(
           siteUpdateDelivery?: {
             findMany(a: unknown): Promise<
               Array<{
+                id: string;
                 batchId: string;
                 status: SiteUpdateDeliveryStatus;
                 readAt: Date | null;
@@ -450,10 +458,17 @@ export async function readTimelinePage(
           ? []
           : await delegate.findMany({
               where: { organizationId: args.organizationId, batchId: { in: batches } },
-              select: { batchId: true, status: true, readAt: true, deliveredAt: true },
+              select: {
+                id: true,
+                batchId: true,
+                status: true,
+                readAt: true,
+                deliveredAt: true,
+              },
             });
       for (const d of deliveries) {
         deliveryByBatch.set(d.batchId, {
+          id: d.id,
           status: d.status,
           readAt: d.readAt,
           deliveredAt: d.deliveredAt,
@@ -476,6 +491,10 @@ export async function readTimelinePage(
       args.scope.viewer === null || r.batchId === null
         ? null
         : (deliveryByBatch.get(r.batchId)?.deliveredAt?.toISOString() ?? null),
+    whatsappDeliveryId:
+      args.scope.viewer === null || r.batchId === null
+        ? null
+        : (deliveryByBatch.get(r.batchId)?.id ?? null),
   }));
   const last = page[page.length - 1];
   return {

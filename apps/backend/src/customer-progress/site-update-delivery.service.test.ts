@@ -8,11 +8,12 @@
 // fails_when= six photos in one note produce six sends, a closed window with no
 // template produces a doomed Meta call, a WebM is sent as a video, or a delivery
 // failure surfaces to the engineer who saved the update.
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   deliveryCaption,
   planDelivery,
+  resendMessage,
   SITE_UPDATE_WHATSAPP_ENV,
   SiteUpdateDeliveryService,
   siteUpdateWhatsAppEnabled,
@@ -131,12 +132,24 @@ function harness(
     lastInbound?: Date | null;
     /** The newest MARKETING consent row, or null/undefined for none. */
     consent?: { granted: boolean } | null;
+    /** The delivery row's status as the resend finds it (2026-11-26). */
+    deliveryStatus?: string;
+    /** The delivery row's org, for the foreign-tenant case. */
+    deliveryOrg?: string;
   } = {},
 ) {
   const created: unknown[] = [];
+  // The row LIVES across the resend: settle() writes the new status through
+  // `update`, and the resend reads it back. A static mock would let a refused
+  // resend look like a sent one.
+  const deliveryRow = {
+    id: 'sud-1',
+    status: over.deliveryStatus ?? 'SKIPPED_NO_CONSENT',
+    organizationId: over.deliveryOrg ?? 'org-1',
+  };
   const client = {
     siteUpdateDelivery: {
-      findUnique: vi.fn(async () => null),
+      findUnique: vi.fn(async () => ({ ...deliveryRow })),
       // Emulates the unique (organizationId, batchId) the DB enforces: a second
       // insert for the same batch is a P2002, which is the "already recorded"
       // answer the service relies on.
@@ -153,7 +166,10 @@ function harness(
         // the outbox row back to this delivery.
         return { id: `sud-${created.length}` };
       }),
-      update: vi.fn(async () => ({})),
+      update: vi.fn(async (args: { data?: { status?: string } }) => {
+        if (args.data?.status !== undefined) deliveryRow.status = args.data.status;
+        return {};
+      }),
     },
     progressPhoto: {
       findUnique: vi.fn(async () =>
@@ -497,5 +513,116 @@ describe('SiteUpdateDeliveryService', () => {
       expect.objectContaining({ siteUpdateDeliveryId: 'sud-1' }),
       h.tx,
     );
+  });
+});
+
+// ── resend (2026-11-26) ──────────────────────────────────────────────────────
+// The item: every non-sent outcome was a dead record. A staff member looking at
+// SKIPPED_NO_CONSENT - the common one, because the templates are MARKETING - had
+// nothing to press.
+describe('resend', () => {
+  // The template path is the one that consults consent, and it only runs when a
+  // template is approved AND the window is closed. Both are env-driven, so the
+  // two consent cases pin them explicitly and put the env back after.
+  const TEMPLATE_ENV = 'WA_TEMPLATE_SITE_UPDATE_VIDEO';
+  let templateBefore: string | undefined;
+  beforeEach(() => {
+    templateBefore = process.env[TEMPLATE_ENV];
+    process.env[TEMPLATE_ENV] = 'site_update_video_v1';
+  });
+  afterEach(() => {
+    if (templateBefore === undefined) delete process.env[TEMPLATE_ENV];
+    else process.env[TEMPLATE_ENV] = templateBefore;
+  });
+
+  it('refuses while the buyer has still not opted in, and says why', async () => {
+    // `lastInbound: null` is load-bearing: INSIDE the 24-hour window the send is
+    // a freeform reply, which is not marketing, so consent is not consulted at
+    // all (site-update-consent.ts). The consent gate belongs to the template
+    // path, which is the one a closed window forces.
+    const h = harness({
+      deliveryStatus: 'SKIPPED_NO_CONSENT',
+      consent: { granted: false },
+      lastInbound: null,
+    });
+
+    const out = await h.service.resend({ ...input, tx: h.tx }, 'sud-1');
+
+    // Nothing was queued: the gate that protected the buyer the first time is
+    // the gate that answers the second time.
+    expect(h.enqueue).not.toHaveBeenCalled();
+    expect(h.client.message.create).not.toHaveBeenCalled();
+    expect(out.status).toBe('SKIPPED_NO_CONSENT');
+    expect(out.message).toContain('opted in');
+  });
+
+  it('sends again once the consent is on the ledger', async () => {
+    const h = harness({
+      deliveryStatus: 'SKIPPED_NO_CONSENT',
+      consent: { granted: true },
+      lastInbound: null,
+    });
+
+    const out = await h.service.resend({ ...input, tx: h.tx }, 'sud-1');
+
+    expect(h.enqueue).toHaveBeenCalledTimes(1);
+    expect(out.status).toBe('PENDING');
+    expect(out.message).toContain('Queued again');
+  });
+
+  it('never duplicates a message the buyer already has', async () => {
+    const h = harness({ deliveryStatus: 'READ' });
+
+    const out = await h.service.resend({ ...input, tx: h.tx }, 'sud-1');
+
+    expect(h.enqueue).not.toHaveBeenCalled();
+    expect(out.status).toBe('READ');
+    expect(out.message).toContain('already reached');
+  });
+
+  it('leaves a delivery that is still in flight to the worker', async () => {
+    const h = harness({ deliveryStatus: 'PENDING' });
+
+    const out = await h.service.resend({ ...input, tx: h.tx }, 'sud-1');
+
+    expect(h.enqueue).not.toHaveBeenCalled();
+    expect(out.status).toBe('PENDING');
+  });
+
+  it('refuses a row from another tenant as not found, not as forbidden', async () => {
+    const h = harness({ deliveryOrg: 'org-2' });
+
+    await expect(h.service.resend({ ...input, tx: h.tx }, 'sud-1')).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(h.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('re-sends a FAILED row through the same gates, not around them', async () => {
+    const h = harness({ deliveryStatus: 'FAILED', consent: { granted: true } });
+
+    const out = await h.service.resend({ ...input, tx: h.tx }, 'sud-1');
+
+    expect(h.enqueue).toHaveBeenCalledTimes(1);
+    expect(out.status).toBe('PENDING');
+  });
+});
+
+describe('resendMessage', () => {
+  it('gives a sentence for every outcome, never an empty one', () => {
+    for (const status of [
+      'PENDING',
+      'SENT',
+      'DELIVERED',
+      'READ',
+      'SKIPPED_NO_BUYER',
+      'SKIPPED_NO_CONSENT',
+      'SKIPPED_DISABLED',
+      'SKIPPED_NO_TEMPLATE',
+      'SKIPPED_WINDOW',
+      'FAILED',
+    ] as const) {
+      expect(resendMessage(status).length).toBeGreaterThan(10);
+    }
   });
 });

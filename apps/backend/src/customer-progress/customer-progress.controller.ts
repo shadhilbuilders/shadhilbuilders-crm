@@ -123,6 +123,27 @@ export class CustomerProgressController {
     return this.service.updatePhoto(req.user!, photoId, parsed.data);
   }
 
+  // ── Send a site update again (2026-11-26) ─────────────────────────────────
+  // A skipped or failed delivery used to be a dead record. The common case is
+  // SKIPPED_NO_CONSENT (the templates are MARKETING), which is exactly the row a
+  // staff member needs to act on once the buyer opts in.
+  //
+  // 200 with an outcome, not an error: "not sent, and here is why" is a real
+  // answer, and the row is unchanged by it. Authorization is RLS plus the
+  // service's own read: a caller who cannot see the delivery gets 404 from the
+  // service, never a 403 that confirms it exists.
+  @Post('site-updates/:deliveryId/resend')
+  @ApiOperation({
+    summary:
+      'Send a skipped or failed site update again (every gate re-evaluated; refuses without consent).',
+  })
+  async resendSiteUpdate(
+    @Req() req: AuthedRequest,
+    @Param('deliveryId') deliveryId: string,
+  ): Promise<{ status: string; message: string }> {
+    return this.service.resendSiteUpdate(req.user!, deliveryId);
+  }
+
   @Delete('photos/:photoId')
   @ApiOperation({
     summary:
