@@ -2,7 +2,12 @@
 
 # Site updates: record and upload video next to photos
 
-Status: approved by the autoplan gate (CEO, design, DX, eng) on 2026-11-23. Nothing is built yet; the ten known gaps at the end still stand, and gaps 1 to 4 block step 5. Author: PaalStack. Date: 2026-11-23.
+Status: approved by the autoplan gate (CEO, design, DX, eng) on 2026-11-23. BUILT since then: the
+site recorder (with camera zoom), the upload and its ledger, portal playback, and the per-batch
+WhatsApp delivery row all ship; docs/planning/DECISION-CHANGELOG.md carries the rounds. The ten
+known gaps below are the audit written BEFORE any of that existed, kept for their reasoning rather
+than as a status report; check them against the code before quoting one as open. Author: PaalStack.
+Date: 2026-11-23 (status line corrected 2026-11-26).
 
 Scope: staff capture video on the Site updates page (a villa's progress feed), the customer
 portal plays it in the same timeline as photos, and the same update is delivered to the buyer over
