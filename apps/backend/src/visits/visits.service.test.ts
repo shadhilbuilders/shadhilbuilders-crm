@@ -1500,20 +1500,28 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - the check-in stamp', () 
       visitId,
       outcome: 'COMPLETED',
     });
+    const after = Date.now();
 
     expect(returned.checkinDueAt).toBeTruthy();
     // The slot is the quiet-hours rule's own answer, and that rule has its own
-    // tests in checkin-schedule.test.ts. This line used to assume "inside the
-    // window the slot is now", which passed all afternoon and failed after 20:00
-    // IST: the run at 23:16 IST got 08:00 the next morning and the assertion
-    // called a correct answer wrong. Compare against the rule for the instant on
-    // either side of the call, so a run that straddles 20:00 cannot flake either.
+    // tests in checkin-schedule.test.ts. Comparing this response against a list
+    // of the rule's answers looked safe and was not: INSIDE 08:00-20:00 IST the
+    // rule returns the instant it was asked, so two separate reads produce two
+    // raw timestamps and a third instant - the service's own - can never be one
+    // of them. That assertion passed all night and failed the moment the suite
+    // ran at midday.
+    //
+    // So: either the rule snapped to a slot (both reads agree, and the answer
+    // must be that slot exactly), or the rule answered "now" (the answer must
+    // lie inside the call). A run that straddles the window boundary lands in
+    // the second branch with a slot answer, which is why the first branch checks
+    // both rule answers rather than only "before".
     const dueAt = new Date(returned.checkinDueAt as string).getTime();
-    const allowed = [
-      nextCheckinSlot(new Date(before)).getTime(),
-      nextCheckinSlot(new Date()).getTime(),
-    ];
-    expect(allowed).toContain(dueAt);
+    const ruleBefore = nextCheckinSlot(new Date(before)).getTime();
+    const ruleAfter = nextCheckinSlot(new Date(after)).getTime();
+    const insideCall = dueAt >= before && dueAt <= after;
+    expect(insideCall || dueAt === ruleBefore || dueAt === ruleAfter).toBe(true);
+    if (ruleBefore === ruleAfter) expect(dueAt).toBe(ruleBefore);
     expect(returned.checkinQueuedAt).toBeNull();
   });
 });
