@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RECORDER_MIME, RECORDER_MIME_WITH_AUDIO } from './constants';
 import {
   buildConstraints,
+  cameraPermissionState,
   classifyCameraError,
   defaultZoom,
   pickRecorderMime,
@@ -117,6 +118,29 @@ describe('readZoomCapability', () => {
       },
     };
     expect(readZoomCapability(throwing)).toBeNull();
+  });
+});
+
+describe('cameraPermissionState', () => {
+  const withState = (state: PermissionState) =>
+    ({ query: async () => ({ state }) as PermissionStatus }) as unknown as Permissions;
+
+  it('reports what the browser already allows, without asking', async () => {
+    expect(await cameraPermissionState(withState('granted'))).toBe('granted');
+    expect(await cameraPermissionState(withState('denied'))).toBe('denied');
+    // "prompt" is not a decision yet, so the sheet may warm up and let the
+    // dialog appear at the moment the person opens the recorder.
+    expect(await cameraPermissionState(withState('prompt'))).toBe('unknown');
+  });
+
+  it('says unknown where the browser cannot answer, as on iOS Safari', async () => {
+    const throws = {
+      query: async () => {
+        throw new TypeError('camera is not a supported permission name');
+      },
+    } as unknown as Permissions;
+    expect(await cameraPermissionState(throws)).toBe('unknown');
+    expect(await cameraPermissionState(undefined)).toBe('unknown');
   });
 });
 

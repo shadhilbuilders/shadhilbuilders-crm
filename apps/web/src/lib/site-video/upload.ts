@@ -49,12 +49,22 @@ export interface UploadSession {
   posterKey: string | null;
 }
 
+export interface TakeTimingsWire {
+  recordStartMs: number | null;
+  uploadMs: number | null;
+  playbackMs: number | null;
+  clipMs: number | null;
+  clipBytes: number | null;
+}
+
 export interface TakeMeta {
   unitId: string;
   phaseId: string;
   takenAt: string;
   caption?: string;
   stage?: string;
+  /** Only when the recorder was opened with ?timings=1 (device gate). */
+  timings?: TakeTimingsWire;
 }
 
 export interface UploadDeps {
@@ -207,6 +217,7 @@ export async function uploadTake(args: UploadArgs): Promise<TimelinePhoto> {
       takenAt: meta.takenAt,
       ...(meta.caption !== undefined ? { caption: meta.caption } : {}),
       ...(meta.stage !== undefined ? { stage: meta.stage } : {}),
+      ...(meta.timings !== undefined ? { timings: meta.timings } : {}),
     },
   });
 }

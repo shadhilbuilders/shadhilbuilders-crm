@@ -35,6 +35,19 @@ export const RecordVideoSchema = z.object({
     .refine((s) => /(?:Z|[+-]\d{2}:?\d{2})$/.test(s.trim()), 'takenAt must carry a UTC offset'),
   caption: z.string().trim().min(1).max(200).optional(),
   stage: ConstructionStageSchema.optional(),
+  // The device gate's own numbers (2026-11-26). Optional, bounded, and only sent
+  // when the recorder was opened with ?timings=1, so a real customer's upload is
+  // byte-for-byte what it was before.
+  timings: z
+    .object({
+      recordStartMs: z.number().int().min(0).max(600_000).nullable(),
+      uploadMs: z.number().int().min(0).max(600_000).nullable(),
+      playbackMs: z.number().int().min(0).max(600_000).nullable(),
+      clipMs: z.number().int().min(0).max(600_000).nullable(),
+      clipBytes: z.number().int().min(0).max(1_000_000_000).nullable(),
+    })
+    .strict()
+    .optional(),
 });
 export type RecordVideoDto = z.infer<typeof RecordVideoSchema>;
 

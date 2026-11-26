@@ -1,5 +1,5 @@
 {
-  "takenAt": "2026-11-26T11:35:38.751Z",
+  "takenAt": "2026-11-26T22:56:00.000Z",
   "rows": [
     {
       "row": "android-13-midrange (emulated Chromium, Pixel-class viewport, fake camera)",
@@ -55,6 +55,28 @@
       },
       "notes": [
         "portal authentication as a buyer was not exercised: no OTP device in this environment"
+      ]
+    },
+    {
+      "row": "iphone-safari (physical handset, LAN HTTPS, camera and mic on)",
+      "emulation": {
+        "emulated": false,
+        "route": "https://192.168.0.107:8443 through the Windows HTTPS proxy",
+        "camera": "warm: the sheet calls getUserMedia when it opens, so the tap does not pay camera start"
+      },
+      "metrics": {
+        "recordStartMs": 3,
+        "uploadMs": 1900,
+        "playbackMs": 76,
+        "clipBytes": 6359104,
+        "seekLanded": null,
+        "clipSeconds": 29.9
+      },
+      "notes": [
+        "recordStartMs is the recorder's own measure: tap to MediaRecorder started. The same tap cost 3300 ms twice before the camera was warmed at sheet open.",
+        "playbackMs times the review panel opening the fresh clip (mount to loadeddata), not the feed lightbox the emulated rows time, so it is not like-for-like.",
+        "Numbers arrived from the device screen with ?timings=1 on and agree with the stored row: ProgressPhoto 2026-11-26 22:52:27Z, durationMs 29935, sizeBytes 6359104, hasAudio true, aac 48 kHz beside h264 720x1280.",
+        "Seek on the phone was not exercised; left null rather than guessed."
       ]
     }
   ]

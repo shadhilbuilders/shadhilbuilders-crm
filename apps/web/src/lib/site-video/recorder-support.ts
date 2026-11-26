@@ -134,6 +134,31 @@ function onStep(value: number, cap: ZoomCapability): number {
 }
 
 /**
+ * What the browser already thinks of the camera, without asking the person.
+ *
+ * iOS Safari answers "unknown" for camera, so unknown is treated as "ask when it
+ * is needed" rather than "refuse to warm up": a sheet the person opened in order
+ * to film something may show the permission dialog straight away, and that is
+ * the one place where it is expected.
+ */
+export async function cameraPermissionState(
+  permissions: Permissions | undefined = typeof navigator === 'undefined'
+    ? undefined
+    : navigator.permissions,
+): Promise<'granted' | 'denied' | 'unknown'> {
+  const query = permissions?.query;
+  if (typeof query !== 'function') return 'unknown';
+  try {
+    const status = await query.call(permissions, { name: 'camera' as PermissionName });
+    if (status.state === 'granted') return 'granted';
+    if (status.state === 'denied') return 'denied';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
  * The stop the capture bar opens on: 1x, clamped into the device's range and
  * snapped to its grid. 1x is the lens a person expects, so it is selected by
  * default even when the camera can go wider; the widest stop is one tap away.

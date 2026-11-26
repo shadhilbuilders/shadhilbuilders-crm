@@ -13,6 +13,7 @@ import {
   Delete,
   HttpCode,
   Inject,
+  Logger,
   Param,
   Post,
   Req,
@@ -37,6 +38,8 @@ function parseBody<T>(schema: ZodType<T>, body: unknown): T {
 @ApiBearerAuth('jwt')
 @Controller('customer-progress/units/:unitId/videos')
 export class SiteVideoController {
+  private readonly logger = new Logger(SiteVideoController.name);
+
   constructor(@Inject(SiteVideoService) private readonly service: SiteVideoService) {}
 
   @Post('upload-auth')
@@ -74,7 +77,14 @@ export class SiteVideoController {
     @Param('unitId') unitId: string,
     @Body() body: unknown,
   ): Promise<unknown> {
-    const result = await this.service.record(req.user!, unitId, parseBody(RecordVideoSchema, body));
+    const dto = parseBody(RecordVideoSchema, body);
+    // A phone cannot show a log, and a screenshot is a poor measuring device
+    // (2026-11-26). When the recorder carries ?timings=1 it sends its own numbers
+    // with the take; they land here, where the gate can read them afterwards.
+    if (dto.timings !== undefined) {
+      this.logger.log(`[site-video-timings] unit=${unitId} ${JSON.stringify(dto.timings)}`);
+    }
+    const result = await this.service.record(req.user!, unitId, dto);
     // 201 for a new row, 200 when this exact take was already saved.
     res.status(result.replayed ? 200 : 201);
     return result.photo;

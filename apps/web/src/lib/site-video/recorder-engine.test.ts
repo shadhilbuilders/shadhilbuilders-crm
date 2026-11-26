@@ -147,6 +147,46 @@ async function started(s: ReturnType<typeof setup>, audio = false) {
   await p;
 }
 
+describe('prepare', () => {
+  it('opens the camera once, so the next tap only starts the recorder', async () => {
+    // Measured on an iPhone 2026-11-26: tapping Record cost 3.3 seconds, every
+    // take, because it opened the camera and negotiated 720x1280 first. Warming
+    // the sheet moves that off the tap.
+    const s = setup();
+    const prepared = s.engine.prepare(false);
+    await Promise.resolve();
+    s.grant();
+    await expect(prepared).resolves.toBe(true);
+
+    expect(s.getUserMedia).toHaveBeenCalledTimes(1);
+    // Warming is silent: nothing is recording yet, so the sheet is told nothing.
+    expect(s.handlers.onGranted).not.toHaveBeenCalled();
+
+    await started(s);
+    expect(s.getUserMedia).toHaveBeenCalledTimes(1);
+    // A warm take still reports the camera, or the sheet never leaves `requesting`.
+    expect(s.handlers.onGranted).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a new stream when the audio choice changes, and stops the old one', async () => {
+    const s = setup();
+    const first = s.engine.prepare(false);
+    await Promise.resolve();
+    s.grant();
+    await first;
+
+    const second = s.engine.prepare(true);
+    await Promise.resolve();
+    s.grant();
+    await second;
+
+    expect(s.getUserMedia).toHaveBeenCalledTimes(2);
+    // The old camera is stopped before the new one is opened, so two live
+    // cameras never sit behind the same sheet.
+    expect(s.tracks[0]?.stop).toHaveBeenCalled();
+  });
+});
+
 describe('start', () => {
   it('records MP4 and reports granted', async () => {
     const s = setup();

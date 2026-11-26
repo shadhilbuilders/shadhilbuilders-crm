@@ -66,6 +66,8 @@ export class RecorderEngine {
   private chunks: Blob[] = [];
   private startedAt = 0;
   private hasAudio = false;
+  /** The audio choice the warm stream was opened with; null when cold. */
+  private preparedAudio: boolean | null = null;
   private limitTimer: number | null = null;
   private tickTimer: number | null = null;
   private released = false;
@@ -80,13 +82,29 @@ export class RecorderEngine {
     return elapsedMs >= MAX_VIDEO_MS - COUNTDOWN_MS;
   }
 
-  async start(audio: boolean): Promise<void> {
+  /**
+   * Open the camera before anyone taps Record (2026-11-26).
+   *
+   * A tap used to cost 3.3 seconds on an iPhone: `getUserMedia` has to power the
+   * camera and the microphone, negotiate 720x1280, and only then can the
+   * recorder start. None of that work is about the take, so it belongs at the
+   * moment the sheet opens, where the live preview hides it. After this, `start`
+   * finds a warm stream and only starts the recorder.
+   *
+   * Returns whether a stream is ready. A denied camera is reported once, through
+   * the handlers, and start() will report it again rather than lie.
+   */
+  async prepare(audio: boolean): Promise<boolean> {
     this.released = false;
-    const mimeType = pickRecorderMime(this.env.MediaRecorder);
-    if (mimeType === null || this.env.MediaRecorder === undefined) {
-      this.handlers.onUnsupported();
-      return;
-    }
+    if (this.stream !== null && this.preparedAudio === audio) return true;
+    // The audio choice is fixed to the stream, so a different choice needs a new one.
+    if (this.stream !== null) this.stopTracks();
+    const stream = await this.acquire(audio);
+    return stream !== null;
+  }
+
+  /** Camera on, zoom settled, tracks live. Null when it was refused or released. */
+  private async acquire(audio: boolean): Promise<MediaStream | null> {
     let stream: MediaStream;
     try {
       stream = await this.env.getUserMedia(buildConstraints(audio));
@@ -95,12 +113,12 @@ export class RecorderEngine {
       const failure = classifyCameraError(err, permission);
       if (failure === 'unsupported') this.handlers.onUnsupported();
       else this.handlers.onDenied(failure === 'denied-permanent');
-      return;
+      return null;
     }
     // Closed while the permission prompt was open: do not leave a live camera behind.
     if (this.released) {
       stream.getTracks().forEach((t) => t.stop());
-      return;
+      return null;
     }
     this.stream = stream;
     // ZOOM IS THE CAMERA'S OWN (2026-11-26, "route A"). The device crops, so
@@ -128,12 +146,29 @@ export class RecorderEngine {
       // Closed while that await was pending: do not leave a live camera behind.
       if (this.released) {
         stream.getTracks().forEach((t) => t.stop());
-        return;
+        return null;
       }
     } else {
       this.zoomValue = null;
     }
     this.hasAudio = audio && stream.getAudioTracks().length > 0;
+    this.preparedAudio = audio;
+    return stream;
+  }
+
+  async start(audio: boolean): Promise<void> {
+    this.released = false;
+    const mimeType = pickRecorderMime(this.env.MediaRecorder);
+    if (mimeType === null || this.env.MediaRecorder === undefined) {
+      this.handlers.onUnsupported();
+      return;
+    }
+    // A warm stream from prepare() costs a tap nothing; a cold one pays the camera here.
+    const stream =
+      this.stream !== null && this.preparedAudio === audio
+        ? this.stream
+        : await this.acquire(audio);
+    if (stream === null) return;
     this.chunks = [];
     const recorder = new this.env.MediaRecorder(stream, recorderOptions(mimeType, audio));
     recorder.ondataavailable = (e) => {
@@ -142,6 +177,9 @@ export class RecorderEngine {
     recorder.onstop = () => this.finish(mimeType);
     recorder.onerror = () => this.fail();
     this.recorder = recorder;
+    // Announced HERE, never in acquire(): a warmed stream has to hand the sheet
+    // its stream and its zoom all the same, or the sheet stays in `requesting`
+    // with a live picture and no Record (2026-11-26).
     this.handlers.onGranted(stream);
     this.startedAt = this.env.now();
     recorder.start();
@@ -150,6 +188,11 @@ export class RecorderEngine {
       () => this.handlers.onTick(this.env.now() - this.startedAt),
       TICK_MS,
     );
+  }
+
+  /** The live stream, warm or recording. Null before the camera opens. */
+  currentStream(): MediaStream | null {
+    return this.stream;
   }
 
   /**
@@ -229,6 +272,7 @@ export class RecorderEngine {
   private stopTracks(): void {
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
+    this.preparedAudio = null;
     this.videoTrack = null;
     this.zoomCap = null;
     this.zoomValue = null;

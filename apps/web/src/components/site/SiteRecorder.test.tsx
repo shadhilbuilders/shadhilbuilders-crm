@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
   stop: vi.fn(),
   start: vi.fn(),
+  prepare: vi.fn(async (): Promise<boolean> => true),
   save: vi.fn(),
   cancel: vi.fn(async () => undefined),
   toastSuccess: vi.fn(),
@@ -39,6 +40,8 @@ vi.mock('@/lib/site-video/recorder-engine', () => ({
       mocks.handlers = handlers;
     }
     start = mocks.start;
+    prepare = mocks.prepare;
+    currentStream = () => null;
     stop = mocks.stop;
     release = mocks.release;
     zoomState = () => mocks.zoom;
@@ -119,6 +122,10 @@ beforeEach(() => {
   root = createRoot(container);
 });
 afterEach(async () => {
+  window.history.replaceState({}, '', '/');
+  // The ?timings=1 flag is remembered in sessionStorage, so one test that turned
+  // it on would light the bar up in the next.
+  sessionStorage.clear();
   await act(async () => root?.unmount());
   root = null;
   container.remove();
@@ -126,6 +133,69 @@ afterEach(async () => {
 });
 
 describe('SiteRecorder', () => {
+  it('measures the gate numbers on screen only when ?timings=1 is in the URL', async () => {
+    // The device gate needs four numbers per handset. A stopwatch is a guess, so
+    // the recorder takes them itself: tap to running, tap to saved, clip opened,
+    // and what the browser produced. Real customers never see it.
+    mocks.save.mockResolvedValue({ id: 'vid-1' });
+    window.history.replaceState({}, '', '/?timings=1');
+    await mount();
+
+    await click('recorder-start');
+    await fire('onGranted', { getTracks: () => [] });
+    expect(q('recorder-timings')?.textContent).toContain('record start');
+
+    await click('recorder-stop');
+    await fire('onStopped', TAKE);
+    const preview = q('video-preview');
+    await act(async () => {
+      preview?.dispatchEvent(new Event('loadeddata'));
+    });
+    expect(q('recorder-timings')?.textContent).toContain('open');
+
+    await click('video-save');
+    const readout = q('recorder-timings')?.textContent ?? '';
+    expect(readout).toMatch(/save \d/);
+    expect(readout).toContain('clip 12.0 s');
+
+    // The numbers ride with the take too, so nobody has to read them off a phone
+    // screen. They were silently left out once, because the save callback closed
+    // over an older render in which the flag was still off (2026-11-26).
+    const sent = mocks.save.mock.calls.at(-1)?.[0] as {
+      timings?: { recordStartMs: number | null; clipBytes: number | null };
+    };
+    expect(sent.timings).toBeDefined();
+    expect(typeof sent.timings?.recordStartMs).toBe('number');
+    expect(sent.timings?.clipBytes).toBe(TAKE.blob.size);
+  });
+
+  it('warms the camera when the sheet opens, so Record is a tap and not a wait', async () => {
+    // 3.3 seconds of camera negotiation sat inside the Record tap on an iPhone
+    // (2026-11-26). The sheet opens on a live preview now, and only the recorder
+    // is left for the tap.
+    await mount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mocks.prepare).toHaveBeenCalled();
+    // Warming does not record: the stop control is still absent.
+    expect(q('recorder-stop')).toBeNull();
+  });
+
+  it('shows no readout on an ordinary URL', async () => {
+    window.history.replaceState({}, '', '/');
+    await mount();
+    await click('recorder-start');
+    await fire('onGranted', { getTracks: () => [] });
+    expect(q('recorder-timings')).toBeNull();
+    await click('recorder-stop');
+    await fire('onStopped', TAKE);
+    await click('video-save');
+    // A customer's upload stays exactly what it was: no timings field at all.
+    const sent = mocks.save.mock.calls.at(-1)?.[0] as { timings?: unknown };
+    expect(sent.timings).toBeUndefined();
+  });
+
   it('opens ready, not recording, so audio is chosen before the first frame', async () => {
     // A MediaRecorder's tracks are fixed when it starts: an audio switch on the
     // recording screen could only change the NEXT take while looking like it
