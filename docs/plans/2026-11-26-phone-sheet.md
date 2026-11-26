@@ -20,7 +20,10 @@ is enrolled as `iphone182`, last seen 19 days ago. Do this once, and type your p
 Then on the phone, with the Tailscale toggle on, open the address serve prints, which is
 `https://laptop-3pl765iv-2.taild43b86.ts.net`. It carries a real certificate, it works on mobile
 data, and it needs no port forwarding. `https://laptop-3pl765iv-2.taild43b86.ts.net` is now in
-`trustedOrigins`, without which better-auth answers every sign-in with 403 INVALID_ORIGIN.
+`trustedOrigins`, without which better-auth answers every sign-in with 403 INVALID_ORIGIN, and the
+host is in `allowedDevOrigins` in `apps/web/next.config.ts`, without which the page arrives
+unhydrated: the form renders, nothing is clickable, and no request is ever made. Both were needed
+and both are in. If the tailnet name ever changes, those two lines change with it.
 
 **Route B, a quick tunnel.** `cloudflared tunnel --url http://localhost:3000 --no-autoupdate`,
 then the `https://something.trycloudflare.com` address it prints. Test with

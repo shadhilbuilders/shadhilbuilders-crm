@@ -58,7 +58,18 @@ const nextConfig: NextConfig = {
   // device check runs against a quick tunnel. Next refuses dev requests whose
   // Host it does not recognise, which answers every route with 404 and looks
   // exactly like a routing bug. Dev only; production builds ignore it.
-  allowedDevOrigins: ['*.trycloudflare.com', '*.ngrok-free.app', '*.loca.lt'],
+  allowedDevOrigins: [
+    '*.trycloudflare.com',
+    '*.ngrok-free.app',
+    '*.loca.lt',
+    // The phone reaches the dev server through `tailscale serve` (https, real
+    // certificate, so getUserMedia works) or straight over the tailnet. Both are
+    // dev-only hosts that exist inside this tailnet. Without them Next 16 answers
+    // the client's dev requests in a way that leaves the page UNHYDRATED: the
+    // login form renders, nothing is clickable, and no request is ever made.
+    'laptop-3pl765iv-2.taild43b86.ts.net',
+    '100.81.0.50',
+  ],
   // REQUIRED by apps/web/Dockerfile: the runner stage copies
   // .next/standalone (self-contained server.js + traced node_modules) and
   // runs `node server.js`. With this commented out the image build dies at
