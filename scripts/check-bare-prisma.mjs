@@ -38,6 +38,8 @@ const ALLOWLIST = {
     'System cron (CRON_SERVICE) is a sanctioned bare-client path (AGENTS.md)',
   'apps/backend/src/prisma/prisma.module.ts':
     'Provider module - constructs and exposes PrismaService.$client for the whole app; performs no business queries itself',
+  'apps/backend/src/users/users.service.ts':
+    'Facade (Round 67): resolves $client once in its constructor and hands it to the seven concern classes, each of which wraps every query in withRlsContext. The facade itself runs no query - re-check this entry if one is ever added to it',
 };
 
 const SKIP_TEST_FILE = /(^|\.)(test|spec)\.tsx?$/;
