@@ -700,3 +700,50 @@ Found by auditing the approved plan against the code after the gate closed. They
 | 8   | The server trusts the client's `durationMs`. Fix: accept and record it, or read `mvhd` on the first range read.                                                                                                                    | 5    |
 | 9   | A server-read flag makes the capture route dynamic; if it is cached today the flag bakes at build time. Fix: confirm the caching mode.                                                                                             | 7    |
 | 10  | No test proves the capture screen reverts when the flag is off. Fix: one e2e case asserting the Video target is absent.                                                                                                            | 7    |
+
+### Audit of the ten, 2026-11-26
+
+Nine closed, one restated as a risk that never existed. Each verdict names the code that answers it, so a
+later reader can check the claim instead of trusting this line.
+
+1. **Closed.** `apps/web/src/lib/site-video/poster.ts` seeks about a second, draws to a canvas capped at
+   `MAX_EDGE`, and encodes JPEG at 0.8, then 0.6, then 0.4 (line 8). `frameFrom` falls back from the seek
+   frame to the first decodable frame, and `makePoster` returns the placeholder for any drawing or decode
+   failure (lines 81 to 93). The one case that still rejects is a browser that cannot encode JPEG at all,
+   which surfaces as a failed save with the poster copy rather than a clip saved with no poster. That is a
+   deliberate difference from the fix as written, and it is the safer side of it.
+2. **Closed.** Upload auth is a private direct grant, one ticket per object
+   (`apps/backend/src/storage/imagekit.storage.test.ts:407`). Both slots are forced into the same signed
+   folder and must be distinct (`site-video.service.ts:292`), the grant row must still carry exactly those
+   two keys (`:321`), and the poster object is verified after the write (`:344`).
+3. **Closed.** `progress-photo.mapper.ts:247` resolves `mediaUrl` from `posterKey` on a VIDEO row;
+   `progress-photo.mapper.test.ts:132` pins that, and `:158` pins the harder case: a clip whose poster
+   failed has an empty `mediaUrl` and still carries its `videoUrl`.
+4. **Closed.** The ceiling is named: `MAX_VIDEO_BYTES = 14_680_064` in
+   `apps/backend/src/storage/storage.limits.ts:12`, returned by both the grant and the inline path
+   (`site-video.service.ts:137`, `:139`, `:156`) and enforced on the bytes (`:174`). The 8MB historical
+   ceiling is gone.
+5. **Closed by a different mechanism than the fix proposed.** `ThrottlerModule` was never added.
+   `SiteVideoRateLimiter.consume` runs when the grant is issued (`site-video.service.ts:114`), with the
+   ledger headroom checked in the same call (`:120`). Inline uploads authorise off that grant, so the
+   pressure point is the grant, which is where abuse would have to start.
+6. **Restated: the risk never existed.** The deep link is a fixed same-origin path with two ids,
+   `<origin>/portal?unit=<unitId>&photo=<rowId>` (`site-update-link.ts:44` to `:52`). Nothing in the flow
+   accepts a return or next parameter, so there is nothing to allowlist. If one is ever added it must
+   start from an allowlist, not from a check on the value.
+7. **Closed for the copy; the device gate is still unrun.** `apps/web/src/lib/site-video/errors.ts:13`
+   says "iPhone videos are HEVC. Record it in the app, or export it as MP4 first." on both the client and
+   the server copy.
+8. **Closed as an accepted decision.** `durationMs` is schema-bounded (`site-video.schemas.ts:28`) and
+   trusted after the ceiling check, with the reason recorded where the trust happens
+   (`site-video.service.ts:198`): it is display metadata, and the file itself is verified separately.
+9. **Closed.** `apps/web/src/app/[orgSlug]/projects/[projectSlug]/site/[unitId]/page.tsx:9` is
+   `force-dynamic`, so the server-read flag is resolved per request and cannot bake at build time.
+10. **Closed.** `apps/web/src/test/e2e/site-video-flag-off.spec.ts` runs the server with the flag unset and
+    asserts the photo-only screen, that the wrapper passed `videoEnabled` explicitly as false, and that
+    the video targets are absent.
+
+Still open, and not one of the ten: **the device gate**. No real phone has recorded a clip through this
+path. No Safari, no Android Chrome, no throttled connection, no WhatsApp in-app browser, and no real MP4
+carrying the moov box where Meta wants it. Every row of that table is unproven, and no amount of reading
+the code changes it.
