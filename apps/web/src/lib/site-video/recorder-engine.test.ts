@@ -56,8 +56,15 @@ function setup(
     audioTrack?: boolean;
     /** The range the fake camera reports; null means "no zoom on this platform". */
     zoom?: { min: number; max: number; step: number } | null;
+    /**
+     * The zoom the fake camera opens at, as `getSettings()` would report it.
+     * Defaults to null, i.e. a platform that hides the value.
+     */
+    startsAt?: number;
     /** True when the device refuses an applyConstraints. */
     refusesZoom?: boolean;
+    /** True when the device accepts the constraint and does not move. */
+    ignoresZoom?: boolean;
   } = {},
 ) {
   FakeRecorder.types = new Set(opts.webmOnly ? ['video/webm'] : [RECORDER_MIME]);
@@ -73,8 +80,15 @@ function setup(
         else resolveMedia = resolve;
       }),
   );
-  const applyZoom = vi.fn(async () => {
+  // The lens state the fake device reports back, updated by applyZoom so a real
+  // read-back behaves like a real camera: apply 0.5, read 0.5.
+  const lens: { value: number | null } = { value: opts.startsAt ?? null };
+  const applyZoom = vi.fn(async (_track: MediaStreamTrack, zoom: number) => {
     if (opts.refusesZoom) throw new Error('ConstraintNotSatisfiedError');
+    // A camera that accepts the constraint but does not move, which is how the
+    // iPhone behaved: asked for 0.5x, stayed at 1x.
+    if (opts.ignoresZoom) return;
+    lens.value = zoom;
   });
   const env: RecorderEnv = {
     getUserMedia,
@@ -83,6 +97,7 @@ function setup(
       ? { query: vi.fn(async () => ({ state: opts.permission }) as PermissionStatus) }
       : undefined,
     zoomCapability: () => opts.zoom ?? null,
+    zoomValue: () => lens.value,
     applyZoom,
     now: () => clock.t,
     setTimeout: (fn, ms) => {
@@ -117,6 +132,7 @@ function setup(
     handlers,
     getUserMedia,
     applyZoom,
+    lens,
     clock,
     timers,
     tracks: fs.tracks,
@@ -262,6 +278,36 @@ describe('zoom (route A: the camera crops itself)', () => {
     expect(s.engine.zoomState()).toEqual({ capability: { min: 1, max: 4, step: 0.1 }, value: 1 });
     s.engine.release();
     expect(s.engine.zoomState()).toBeNull();
+  });
+
+  it('opens on 1x even though the lens can go wider', async () => {
+    // The iPhone: a range that starts at 0.5x, opening at 1x. The old code
+    // claimed the minimum, so the 0.5x chip looked selected while the picture
+    // was 1x. Now 1x is asked for and 1x is what the bar shows.
+    const s = setup({ zoom: { min: 0.5, max: 3, step: 0.1 }, startsAt: 0.5 });
+    await started(s);
+
+    expect(s.applyZoom).toHaveBeenCalledWith(s.tracks[0], 1);
+    expect(s.lens.value).toBe(1);
+    expect(s.engine.zoomState()?.value).toBe(1);
+  });
+
+  it('shows the lens, not the request, when the camera ignores 1x', async () => {
+    const s = setup({ zoom: { min: 0.5, max: 3, step: 0.1 }, startsAt: 0.5, ignoresZoom: true });
+    await started(s);
+
+    // Asked for 1x, stayed at 0.5x: the chip must say 0.5x rather than lie.
+    expect(s.applyZoom).toHaveBeenCalledWith(s.tracks[0], 1);
+    expect(s.engine.zoomState()?.value).toBe(0.5);
+  });
+
+  it('switches to the wider stop when the person asks for it', async () => {
+    const s = setup({ zoom: { min: 0.5, max: 3, step: 0.1 }, startsAt: 1 });
+    await started(s);
+
+    await expect(s.engine.setZoom(0.5)).resolves.toBe(true);
+    expect(s.lens.value).toBe(0.5);
+    expect(s.engine.zoomState()?.value).toBe(0.5);
   });
 
   it('offers nothing on a platform that reports no range', async () => {

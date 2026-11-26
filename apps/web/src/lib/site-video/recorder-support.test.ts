@@ -9,6 +9,7 @@ import { RECORDER_MIME, RECORDER_MIME_WITH_AUDIO } from './constants';
 import {
   buildConstraints,
   classifyCameraError,
+  defaultZoom,
   pickRecorderMime,
   queryCameraPermission,
   readZoomCapability,
@@ -116,6 +117,23 @@ describe('readZoomCapability', () => {
       },
     };
     expect(readZoomCapability(throwing)).toBeNull();
+  });
+});
+
+describe('defaultZoom', () => {
+  it('opens on 1x on a camera that can go wider', () => {
+    expect(defaultZoom({ min: 0.5, max: 3, step: 0.1 })).toBe(1);
+  });
+
+  it('never asks for a value outside the range', () => {
+    expect(defaultZoom({ min: 2, max: 8, step: 0.1 })).toBe(2);
+    expect(defaultZoom({ min: 0.2, max: 0.8, step: 0.1 })).toBe(0.8);
+  });
+
+  it('snaps to the device grid, rounding down so it never opens tighter than 1x', () => {
+    // A grid of 0.3 from 0.5 cannot express 1 exactly: 0.8 is under it, 1.1 is
+    // over, and the default must be the one that is not a zoom-in.
+    expect(defaultZoom({ min: 0.5, max: 3, step: 0.3 })).toBe(0.8);
   });
 });
 

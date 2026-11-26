@@ -69,6 +69,15 @@ interface ZoomCapabilitiesLike {
   zoom?: { min?: unknown; max?: unknown; step?: unknown } | null;
 }
 
+interface ZoomSettingsLike {
+  /** Also `unknown` on purpose, for the same reason as the capabilities probe. */
+  getSettings(): unknown;
+}
+
+interface ZoomSettingsResult {
+  zoom?: unknown;
+}
+
 /**
  * The camera's zoom range, or null when there is nothing honest to offer.
  *
@@ -95,9 +104,45 @@ export function readZoomCapability(track: ZoomTrackLike | null): ZoomCapability 
   return { min, max, step: resolvedStep };
 }
 
-/** Snap a value onto the device's own grid, counted from its own minimum. */
+/**
+ * The zoom the track is AT, in the same units as the capability, or null where
+ * the platform does not report it. Chrome answers this from `getSettings()`.
+ *
+ * Read before trusting the minimum: a phone whose range starts at 0.5x still
+ * opens its camera at 1x, so claiming the minimum lights up the wrong chip and
+ * the preview disagrees with the control the whole time (found on the iPhone,
+ * 2026-11-26).
+ */
+export function readZoomValue(track: ZoomSettingsLike | null): number | null {
+  if (track === null) return null;
+  let settings: unknown;
+  try {
+    settings = track.getSettings();
+  } catch {
+    return null;
+  }
+  const zoom = (settings as ZoomSettingsResult | null | undefined)?.zoom;
+  return typeof zoom === 'number' && Number.isFinite(zoom) ? zoom : null;
+}
+
+/**
+ * Snap a value onto the device's own grid, counted from its own minimum.
+ */
 function onStep(value: number, cap: ZoomCapability): number {
   const steps = Math.round((value - cap.min) / cap.step);
+  return Math.round((cap.min + steps * cap.step) * 100) / 100;
+}
+
+/**
+ * The stop the capture bar opens on: 1x, clamped into the device's range and
+ * snapped to its grid. 1x is the lens a person expects, so it is selected by
+ * default even when the camera can go wider; the widest stop is one tap away.
+ */
+export function defaultZoom(cap: ZoomCapability): number {
+  const clamped = Math.min(cap.max, Math.max(cap.min, 1));
+  // Round DOWN onto the grid, never up: 0.1 under 1x is still the normal lens,
+  // while a step over it would open the camera tighter than the person expects.
+  const steps = Math.floor((clamped - cap.min) / cap.step + 1e-9);
   return Math.round((cap.min + steps * cap.step) * 100) / 100;
 }
 

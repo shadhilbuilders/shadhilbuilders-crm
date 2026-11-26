@@ -8,9 +8,11 @@ import { COUNTDOWN_MS, MAX_VIDEO_MS, MIN_VIDEO_MS } from './constants';
 import {
   buildConstraints,
   classifyCameraError,
+  defaultZoom,
   pickRecorderMime,
   queryCameraPermission,
   readZoomCapability,
+  readZoomValue,
   recorderOptions,
   type ZoomCapability,
 } from './recorder-support';
@@ -26,6 +28,8 @@ export interface RecorderEnv {
   permissions: Pick<Permissions, 'query'> | undefined;
   /** The device's zoom range on this track, or null where the platform has none. */
   zoomCapability(track: MediaStreamTrack): ZoomCapability | null;
+  /** The zoom the track is actually at, or null where the platform hides it. */
+  zoomValue(track: MediaStreamTrack): number | null;
   /** Ask the camera to crop. Rejects when the device or the platform refuses. */
   applyZoom(track: MediaStreamTrack, zoom: number): Promise<void>;
   now(): number;
@@ -106,7 +110,29 @@ export class RecorderEngine {
     // bar renders no control at all rather than a dead one.
     this.videoTrack = stream.getVideoTracks()[0] ?? null;
     this.zoomCap = this.videoTrack === null ? null : this.env.zoomCapability(this.videoTrack);
-    this.zoomValue = this.zoomCap === null ? null : this.zoomCap.min;
+    // 1x IS THE DEFAULT (2026-11-26). The old code claimed the bottom of the
+    // range, so a phone that can do 0.5x lit that chip up while the lens sat at
+    // 1x. Ask the camera for 1x instead, and when it answers with something
+    // else, show what the lens says rather than what we asked for.
+    const cap = this.zoomCap;
+    if (cap !== null && this.videoTrack !== null) {
+      const track = this.videoTrack;
+      const wanted = defaultZoom(cap);
+      this.zoomValue = wanted;
+      try {
+        await this.env.applyZoom(track, wanted);
+      } catch {
+        // The camera refused the constraint; the read-back below still decides.
+      }
+      this.zoomValue = this.env.zoomValue(track) ?? wanted;
+      // Closed while that await was pending: do not leave a live camera behind.
+      if (this.released) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+    } else {
+      this.zoomValue = null;
+    }
     this.hasAudio = audio && stream.getAudioTracks().length > 0;
     this.chunks = [];
     const recorder = new this.env.MediaRecorder(stream, recorderOptions(mimeType, audio));
@@ -147,7 +173,8 @@ export class RecorderEngine {
     const next = Math.min(cap.max, Math.max(cap.min, value));
     try {
       await this.env.applyZoom(track, next);
-      this.zoomValue = next;
+      // Some devices snap or ignore the request; the read-back is the truth.
+      this.zoomValue = this.env.zoomValue(track) ?? next;
       return true;
     } catch {
       return false;
@@ -221,6 +248,7 @@ export function browserRecorderEnv(): RecorderEnv {
     MediaRecorder: typeof MediaRecorder === 'undefined' ? undefined : MediaRecorder,
     permissions: typeof navigator.permissions === 'undefined' ? undefined : navigator.permissions,
     zoomCapability: (track) => readZoomCapability(track),
+    zoomValue: (track) => readZoomValue(track),
     applyZoom: async (track, zoom) => {
       // `zoom` is an Image Capture constraint and is not in the DOM lib yet, so
       // the set is cast rather than invented. It rejects on a platform that

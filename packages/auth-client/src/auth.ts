@@ -190,6 +190,11 @@ export const auth: any = betterAuth({
     // tailnet IP over plain http is not one. The hostname only resolves inside
     // this tailnet, so it is no more reachable than the line above.
     'https://laptop-3pl765iv-2.taild43b86.ts.net',
+    // The LAN route: a self-signed HTTPS proxy on the Windows host forwards to
+    // this app. It exists because the phone could not reach the tailnet at all,
+    // while the plain LAN hop worked. Same reason as the entries above: without
+    // it better-auth answers every sign-in with 403 INVALID_ORIGIN.
+    'https://192.168.0.107:8443', // Windows LAN address, HTTPS proxy to :3000
     'https://crm.shadhilbuilders.in', // user-facing app
     'https://api.crm.shadhilbuilders.in', // backend API
   ],
