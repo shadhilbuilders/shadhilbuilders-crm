@@ -110,6 +110,7 @@ import {
 } from '@shadhil/api-types';
 
 import { AttachmentImage } from './AttachmentImage';
+import { ChatWindowCountdown } from './ChatWindowCountdown';
 
 export type Direction = 'IN' | 'OUT';
 export type Channel = 'WHATSAPP' | 'IN_APP';
@@ -612,7 +613,8 @@ export function LeadChatPane({
   const sendWelcome = useSendWelcomeMessage(leadId ?? '');
   // `undefined` while the state is still loading. Treated as CLOSED below, so a
   // slow request can never briefly enable a composer that the API will refuse.
-  const windowOpen = isServiceWindowOpen(threadStateQuery.data?.lastInboundAt ?? null);
+  const lastInboundAt = threadStateQuery.data?.lastInboundAt ?? null;
+  const windowOpen = isServiceWindowOpen(lastInboundAt);
   // Was the welcome template already sent on this thread? Drives the CLOSED
   // notice's copy only - the Welcome BUTTON lives in the empty state and is
   // gated on `rows.length === 0`, so it needs no flag and does not wait on this
@@ -931,109 +933,115 @@ export function LeadChatPane({
               </div>
             </div>
           ) : (
-            <InputGroup className="h-10 items-center gap-1">
-              <div className="relative min-w-0 flex-1">
-                <InputGroupTextarea
-                  ref={textareaRef}
-                  value={draft}
-                  onChange={(event) => {
-                    setDraft(event.currentTarget.value);
-                    // Open the mention picker when the user types `@` in the
-                    // Internal composer. `currentMentionQuery` returns the
-                    // text after the last `@` ('' for bare `@`) or null when
-                    // there's no active mention. Closing on a space lets the
-                    // picker filter as they keep typing.
-                    if (isInternal) {
-                      const q = currentMentionQuery(event.currentTarget.value);
-                      setMentionQuery(q === null ? null : q.toLowerCase());
+            <>
+              {/* The window is a clock, not a state: staff had to work out the
+                  remaining time from a timestamp, and the composer simply
+                  disappearing at the end was the first they knew of it. */}
+              {!isInternal ? <ChatWindowCountdown lastInboundAt={lastInboundAt} /> : null}
+              <InputGroup className="h-10 items-center gap-1">
+                <div className="relative min-w-0 flex-1">
+                  <InputGroupTextarea
+                    ref={textareaRef}
+                    value={draft}
+                    onChange={(event) => {
+                      setDraft(event.currentTarget.value);
+                      // Open the mention picker when the user types `@` in the
+                      // Internal composer. `currentMentionQuery` returns the
+                      // text after the last `@` ('' for bare `@`) or null when
+                      // there's no active mention. Closing on a space lets the
+                      // picker filter as they keep typing.
+                      if (isInternal) {
+                        const q = currentMentionQuery(event.currentTarget.value);
+                        setMentionQuery(q === null ? null : q.toLowerCase());
+                      }
+                    }}
+                    onInput={onInput}
+                    onKeyDown={onKeyDown}
+                    rows={1}
+                    placeholder={
+                      leadId !== null && user !== null
+                        ? isInternal
+                          ? 'Internal note... @ to mention a teammate'
+                          : 'Type a message... (Enter to send)'
+                        : 'Sign in to send a message'
                     }
-                  }}
-                  onInput={onInput}
-                  onKeyDown={onKeyDown}
-                  rows={1}
-                  placeholder={
-                    leadId !== null && user !== null
-                      ? isInternal
-                        ? 'Internal note... @ to mention a teammate'
-                        : 'Type a message... (Enter to send)'
-                      : 'Sign in to send a message'
-                  }
-                  disabled={!canSend}
-                  className="max-h-10 min-h-10 w-full resize-none [scrollbar-width:none] py-2.5 text-sm wrap-anywhere [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-                  aria-label="Message body"
-                  data-qa="chat-input"
-                />
-                {isInternal && mentionQuery !== null && filteredTeamMembers.length > 0 ? (
-                  <div className="border-border bg-popover absolute right-0 bottom-full left-0 z-50 mb-2 rounded-lg border shadow-lg">
-                    <div className="max-h-56 overflow-y-auto p-1">
-                      <div className="text-muted-foreground px-2 py-1 text-xs font-semibold uppercase">
-                        Mention a teammate
-                        {mentionQuery && mentionQuery.length > 0 ? ` (${mentionQuery})` : ''}
-                      </div>
-                      {filteredTeamMembers.map((member) => (
-                        <button
-                          key={member.id}
-                          type="button"
-                          onClick={() => insertMention(member.name, member.id)}
-                          className="hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-                          data-qa="mention-option"
-                        >
-                          <AvatarRoot className="h-6 w-6 shrink-0 rounded-full">
-                            <AvatarFallback className="rounded-full text-[10px]">
-                              {initials(member.name)}
-                            </AvatarFallback>
-                          </AvatarRoot>
-                          <span className="min-w-0 flex-1 truncate">{member.name}</span>
-                          <span className="text-muted-foreground text-[10px] uppercase">
-                            {member.role}
-                          </span>
-                        </button>
-                      ))}
-                      {filteredTeamMembers.length === 0 ? (
-                        <div className="text-muted-foreground px-2 py-3 text-center text-xs">
-                          No matches
+                    disabled={!canSend}
+                    className="max-h-10 min-h-10 w-full resize-none [scrollbar-width:none] py-2.5 text-sm wrap-anywhere [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                    aria-label="Message body"
+                    data-qa="chat-input"
+                  />
+                  {isInternal && mentionQuery !== null && filteredTeamMembers.length > 0 ? (
+                    <div className="border-border bg-popover absolute right-0 bottom-full left-0 z-50 mb-2 rounded-lg border shadow-lg">
+                      <div className="max-h-56 overflow-y-auto p-1">
+                        <div className="text-muted-foreground px-2 py-1 text-xs font-semibold uppercase">
+                          Mention a teammate
+                          {mentionQuery && mentionQuery.length > 0 ? ` (${mentionQuery})` : ''}
                         </div>
-                      ) : null}
+                        {filteredTeamMembers.map((member) => (
+                          <button
+                            key={member.id}
+                            type="button"
+                            onClick={() => insertMention(member.name, member.id)}
+                            className="hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
+                            data-qa="mention-option"
+                          >
+                            <AvatarRoot className="h-6 w-6 shrink-0 rounded-full">
+                              <AvatarFallback className="rounded-full text-[10px]">
+                                {initials(member.name)}
+                              </AvatarFallback>
+                            </AvatarRoot>
+                            <span className="min-w-0 flex-1 truncate">{member.name}</span>
+                            <span className="text-muted-foreground text-[10px] uppercase">
+                              {member.role}
+                            </span>
+                          </button>
+                        ))}
+                        {filteredTeamMembers.length === 0 ? (
+                          <div className="text-muted-foreground px-2 py-3 text-center text-xs">
+                            No matches
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                ) : null}
-              </div>
-              <InputGroupAddon align="inline-end" className="p-2">
-                {/* MEDIA (2026-09-17): paperclip opens the file picker for both
+                  ) : null}
+                </div>
+                <InputGroupAddon align="inline-end" className="p-2">
+                  {/* MEDIA (2026-09-17): paperclip opens the file picker for both
                   CUSTOMER and INTERNAL threads. */}
-                <InputGroupButton
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={!canSend}
-                  aria-label="Attach a file"
-                  data-qa="chat-attach-button"
-                >
-                  <LuPaperclip className="size-4" />
-                </InputGroupButton>
-                <InputGroupButton
-                  type="submit"
-                  variant="default"
-                  size="icon-sm"
-                  disabled={
-                    !canSend ||
-                    (draft.trim().length === 0 && pendingAttachment === null) ||
-                    sendMessage.isPending ||
-                    attachmentUploading
-                  }
-                  data-qa="chat-send-button"
-                  aria-label="Send message"
-                >
-                  {sendMessage.isPending || attachmentUploading ? (
-                    <LuRefreshCw className="size-4 animate-spin" />
-                  ) : (
-                    <LuArrowUp />
-                  )}
-                  <span className="sr-only">Send</span>
-                </InputGroupButton>
-              </InputGroupAddon>
-            </InputGroup>
+                  <InputGroupButton
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!canSend}
+                    aria-label="Attach a file"
+                    data-qa="chat-attach-button"
+                  >
+                    <LuPaperclip className="size-4" />
+                  </InputGroupButton>
+                  <InputGroupButton
+                    type="submit"
+                    variant="default"
+                    size="icon-sm"
+                    disabled={
+                      !canSend ||
+                      (draft.trim().length === 0 && pendingAttachment === null) ||
+                      sendMessage.isPending ||
+                      attachmentUploading
+                    }
+                    data-qa="chat-send-button"
+                    aria-label="Send message"
+                  >
+                    {sendMessage.isPending || attachmentUploading ? (
+                      <LuRefreshCw className="size-4 animate-spin" />
+                    ) : (
+                      <LuArrowUp />
+                    )}
+                    <span className="sr-only">Send</span>
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
+            </>
           )}
         </form>
       </CardFooter>
