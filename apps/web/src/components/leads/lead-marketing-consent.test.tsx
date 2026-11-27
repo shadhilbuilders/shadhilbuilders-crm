@@ -94,6 +94,49 @@ describe('LeadMarketingConsent', () => {
     expect(html).toContain('Asked us to stop on');
     expect(html).toContain('the newest answer is the one that counts');
   });
+
+  it('names how the answer was given and quotes what the buyer said', () => {
+    // The record is only useful if the rep can read it back: "denied on 27 Nov"
+    // does not tell them the words, and the words are why they typed anything.
+    const html = renderToStaticMarkup(
+      <LeadMarketingConsent
+        lead={lead({
+          marketingConsent: 'denied',
+          marketingConsentAt: '2026-11-27T12:09:40.000Z',
+          marketingConsentSource: 'call_verbal',
+          marketingConsentNote: 'Asked us to stop calling about offers',
+        })}
+      />,
+    );
+
+    expect(html).toContain('Asked us to stop on');
+    expect(html).toContain('Recorded as During a call');
+    expect(html).toContain('They said:');
+    expect(html).toContain('Asked us to stop calling about offers');
+  });
+
+  it('does not invent a source or a quote when the record has neither', () => {
+    const html = renderToStaticMarkup(
+      <LeadMarketingConsent
+        lead={lead({
+          marketingConsent: 'granted',
+          marketingConsentAt: '2026-11-27T12:09:40.000Z',
+          marketingConsentSource: 'whatsapp_button',
+          marketingConsentNote: null,
+        })}
+      />,
+    );
+
+    expect(html).toContain('Recorded as WhatsApp reply');
+    expect(html).not.toContain('They said');
+  });
+
+  it('shows no record line at all for a lead nobody has asked', () => {
+    const html = renderToStaticMarkup(<LeadMarketingConsent lead={lead()} />);
+
+    expect(html).not.toContain('Recorded as');
+    expect(html).not.toContain('They said');
+  });
 });
 
 describe('LeadConsentForm', () => {
@@ -110,7 +153,16 @@ describe('LeadConsentForm', () => {
 
   it('offers both answers and all four sources', () => {
     const html = renderToStaticMarkup(
-      <LeadConsentForm initialAnswer="granted" pending={false} onSubmit={vi.fn()} />,
+      <LeadConsentForm
+        answer="granted"
+        note=""
+        source="call_verbal"
+        pending={false}
+        onAnswerChange={vi.fn()}
+        onNoteChange={vi.fn()}
+        onSourceChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
     );
 
     expect(html).toContain('Yes, they agreed to site updates');
@@ -129,7 +181,18 @@ describe('LeadConsentForm', () => {
     root = createRoot(container);
 
     act(() => {
-      root?.render(<LeadConsentForm initialAnswer="granted" pending={false} onSubmit={onSubmit} />);
+      root?.render(
+        <LeadConsentForm
+          answer="granted"
+          note=""
+          source="call_verbal"
+          pending={false}
+          onAnswerChange={vi.fn()}
+          onNoteChange={vi.fn()}
+          onSourceChange={vi.fn()}
+          onSubmit={onSubmit}
+        />,
+      );
     });
 
     const form = container.querySelector('#lead-consent-form') as HTMLFormElement | null;
@@ -142,6 +205,48 @@ describe('LeadConsentForm', () => {
     expect(onSubmit).toHaveBeenCalledWith({ granted: true, source: 'call_verbal' });
   });
 
+  it('opens with the recorded note already in the box', async () => {
+    // The bug this protects: the textarea always started empty, so a rep who
+    // saved a note reopened the dialog to a blank box and could not tell
+    // whether their words had been stored. Rendered through the real dialog
+    // (not the form alone) because the seeding happens in LeadMarketingConsent.
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <LeadMarketingConsent
+          lead={lead({
+            marketingConsent: 'denied',
+            marketingConsentAt: '2026-11-27T12:09:40.000Z',
+            marketingConsentSource: 'call_verbal',
+            marketingConsentNote: 'Asked for no offers, updates are fine',
+          })}
+        />,
+      );
+    });
+
+    const open = document.body.querySelector(
+      '[data-qa="lead-consent-record-button"]',
+    ) as HTMLElement | null;
+    await act(async () => {
+      open?.click();
+    });
+
+    const box = document.body.querySelector(
+      'textarea[data-qa="lead-consent-note"], [data-qa="lead-consent-note"] textarea',
+    ) as HTMLTextAreaElement | null;
+    expect(box).not.toBeNull();
+    expect(box?.value).toBe('Asked for no offers, updates are fine');
+
+    // Same answer and same words is a submit that writes nothing, so Save must
+    // not offer it. Typing one word makes it a new statement.
+    const save = document.body.querySelector('[data-qa="lead-consent-save"]') as HTMLElement | null;
+    expect(save).not.toBeNull();
+    expect(save?.hasAttribute('disabled')).toBe(true);
+  });
+
   it('submits "denied" when the operator picked the refusal', () => {
     const onSubmit = vi.fn();
     container = document.createElement('div');
@@ -149,7 +254,18 @@ describe('LeadConsentForm', () => {
     root = createRoot(container);
 
     act(() => {
-      root?.render(<LeadConsentForm initialAnswer="denied" pending={false} onSubmit={onSubmit} />);
+      root?.render(
+        <LeadConsentForm
+          answer="denied"
+          note=""
+          source="call_verbal"
+          pending={false}
+          onAnswerChange={vi.fn()}
+          onNoteChange={vi.fn()}
+          onSourceChange={vi.fn()}
+          onSubmit={onSubmit}
+        />,
+      );
     });
 
     const form = container.querySelector('#lead-consent-form') as HTMLFormElement | null;

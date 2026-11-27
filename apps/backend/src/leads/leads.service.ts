@@ -581,6 +581,8 @@ export class LeadsService {
         updatedAt: row.updatedAt.toISOString(),
         marketingConsent: consent === null ? 'never-asked' : consent.granted ? 'granted' : 'denied',
         marketingConsentAt: consent?.grantedAt.toISOString() ?? null,
+        marketingConsentSource: consent?.source ?? null,
+        marketingConsentNote: consent?.note ?? null,
         // Evidence, not a check: the Cloud API cannot answer "is this number
         // on WhatsApp" before a send, so this says what we actually know.
         whatsapp: await deriveWhatsAppReachability(tx as unknown as PrismaClient, leadId),

@@ -12,8 +12,14 @@ import { marketingConsent, newestMarketingConsentRow } from './site-update-conse
 
 const AT = new Date('2026-11-23T10:00:00.000Z');
 
+// The full row, because the ledger reader now carries the provenance the panel
+// shows and the dialog prefills; the answer tests only care about `granted`.
 const txWith = (row: { granted: boolean } | null) => ({
-  consent: { findFirst: vi.fn(async () => (row === null ? null : { ...row, grantedAt: AT })) },
+  consent: {
+    findFirst: vi.fn(async () =>
+      row === null ? null : { ...row, grantedAt: AT, source: 'call_verbal', note: null },
+    ),
+  },
 });
 
 describe('marketingConsent', () => {
@@ -49,7 +55,16 @@ describe('newestMarketingConsentRow', () => {
     expect(await newestMarketingConsentRow(tx, 'lead-1')).toEqual({
       granted: true,
       grantedAt: AT,
+      source: 'call_verbal',
+      note: null,
     });
+    // Provenance rides along: the panel names the source and the dialog
+    // prefills the note, so neither can be left out of the select.
+    expect(tx.consent.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: { granted: true, grantedAt: true, source: true, note: true },
+      }),
+    );
     expect(tx.consent.findFirst).toHaveBeenCalledTimes(1);
   });
 

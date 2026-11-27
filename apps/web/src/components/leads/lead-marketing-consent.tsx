@@ -36,7 +36,12 @@ import {
 
 import { useRecordLeadConsent } from '@/hooks/queries/crm';
 import { dateIntl } from '@/lib/format';
-import type { LeadConsentSource, LeadDetail, RecordLeadConsentDto } from '@shadhil/api-types';
+import type {
+  LeadConsentAnswer,
+  LeadConsentSource,
+  LeadDetail,
+  RecordLeadConsentDto,
+} from '@shadhil/api-types';
 
 const FORM_ID = 'lead-consent-form';
 
@@ -62,14 +67,28 @@ function radioRow<T extends string>(
   };
 }
 
-/** How the opt-in was obtained, in the operator's words. */
+/**
+ * How the opt-in was obtained, in the operator's words. One map for both the
+ * radio list and the "Recorded as ..." line, so the dialog and the card cannot
+ * drift into naming the same source two ways.
+ */
+export const SOURCE_LABELS: Record<LeadConsentSource, string> = {
+  call_verbal: 'During a call',
+  in_person: 'In person',
+  whatsapp_button: 'WhatsApp reply',
+  booking_form: 'Booking form',
+};
+
 const SOURCE_OPTIONS: Array<{ value: LeadConsentSource; label: string; labelContent: ReactNode }> =
-  [
-    radioRow<LeadConsentSource>('call_verbal', 'During a call'),
-    radioRow<LeadConsentSource>('in_person', 'In person'),
-    radioRow<LeadConsentSource>('whatsapp_button', 'WhatsApp reply'),
-    radioRow<LeadConsentSource>('booking_form', 'Booking form'),
-  ];
+  (Object.keys(SOURCE_LABELS) as LeadConsentSource[]).map((value) =>
+    radioRow<LeadConsentSource>(value, SOURCE_LABELS[value]),
+  );
+
+/** A source the map does not know about still has to render as itself. */
+function sourceLabel(source: string | null | undefined): string | null {
+  if (source === null || source === undefined || source.length === 0) return null;
+  return SOURCE_LABELS[source as LeadConsentSource] ?? source;
+}
 
 const ANSWER_OPTIONS: Array<{ value: string; label: string; labelContent: ReactNode }> = [
   radioRow('granted', 'Yes, they agreed to site updates'),
@@ -110,17 +129,28 @@ function statusCopy(lead: LeadDetail): { headline: string; detail: string } {
  * reaches this form through `form={FORM_ID}`.
  */
 export function LeadConsentForm({
-  initialAnswer,
+  answer,
+  note,
+  source,
   pending,
+  onAnswerChange,
+  onNoteChange,
+  onSourceChange,
   onSubmit,
 }: {
-  initialAnswer: 'granted' | 'denied';
+  answer: LeadConsentAnswer;
+  note: string;
+  source: LeadConsentSource;
   pending: boolean;
+  onAnswerChange: (answer: LeadConsentAnswer) => void;
+  onNoteChange: (note: string) => void;
+  onSourceChange: (source: LeadConsentSource) => void;
   onSubmit: (dto: RecordLeadConsentDto) => void;
 }) {
-  const [answer, setAnswer] = useState<string>(initialAnswer);
-  const [source, setSource] = useState<string>('call_verbal');
-  const [note, setNote] = useState('');
+  // Answer, note and source all live in the dialog: the Save button is in the
+  // Dialog footer and has to know whether this submit would change anything,
+  // and the source is seeded from the record so a reopen cannot silently
+  // restamp a refusal as "During a call" when it was given in person.
 
   return (
     <form
@@ -131,7 +161,7 @@ export function LeadConsentForm({
         const trimmed = note.trim();
         onSubmit({
           granted: answer === 'granted',
-          source: source as LeadConsentSource,
+          source,
           ...(trimmed.length > 0 ? { note: trimmed } : {}),
         });
       }}
@@ -140,7 +170,7 @@ export function LeadConsentForm({
         aria-label="Did the buyer agree to site-update messages?"
         label="Their answer"
         value={answer}
-        onValueChange={(value) => setAnswer(value ?? 'granted')}
+        onValueChange={(value) => onAnswerChange(value === 'denied' ? 'denied' : 'granted')}
         options={ANSWER_OPTIONS}
         data-qa="lead-consent-answer"
       />
@@ -149,7 +179,7 @@ export function LeadConsentForm({
         aria-label="How did they tell you?"
         label="How did they tell you?"
         value={source}
-        onValueChange={(value) => setSource(value ?? 'call_verbal')}
+        onValueChange={(value) => onSourceChange((value ?? 'call_verbal') as LeadConsentSource)}
         options={SOURCE_OPTIONS}
         data-qa="lead-consent-source"
       />
@@ -161,7 +191,7 @@ export function LeadConsentForm({
           rows={2}
           maxLength={500}
           value={note}
-          onValueChange={setNote}
+          onValueChange={onNoteChange}
           placeholder="Asked to be sent photos every fortnight"
           data-qa="lead-consent-note"
         />
@@ -181,6 +211,28 @@ export function LeadMarketingConsent({ lead }: { lead: LeadDetail }) {
   const record = useRecordLeadConsent(lead.id);
   const copy = statusCopy(lead);
 
+  // The dialog starts from what is already on the record, including the note.
+  // Without the note here a rep reopens the dialog and the words they recorded a
+  // minute ago are gone from the box, which reads as "nothing was saved".
+  const recordedAnswer: LeadConsentAnswer =
+    lead.marketingConsent === 'denied' ? 'denied' : 'granted';
+  const recordedNote = lead.marketingConsentNote ?? '';
+  // Seeded from the record too: a reopen that silently restamped a refusal given
+  // in person as "During a call" would corrupt the provenance of the answer.
+  const recordedSourceValue: LeadConsentSource =
+    (lead.marketingConsentSource as LeadConsentSource | null | undefined) ?? 'call_verbal';
+  const [answer, setAnswer] = useState<LeadConsentAnswer>(recordedAnswer);
+  const [note, setNote] = useState(recordedNote);
+  const [source, setSource] = useState<LeadConsentSource>(recordedSourceValue);
+
+  // A submit that would write nothing: same answer, same words, same source.
+  // The server treats it as a no-op, so the button should not offer it.
+  const noop =
+    answer === recordedAnswer &&
+    note.trim() === recordedNote.trim() &&
+    source === recordedSourceValue;
+  const recordedSource = sourceLabel(lead.marketingConsentSource);
+
   return (
     <Card data-qa="lead-consent-card">
       <CardHeader>
@@ -191,11 +243,28 @@ export function LeadMarketingConsent({ lead }: { lead: LeadDetail }) {
           {copy.headline}
         </p>
         <p className="text-muted-foreground text-sm">{copy.detail}</p>
+        {recordedSource === null ? null : (
+          <p className="text-muted-foreground text-xs" data-qa="lead-consent-record">
+            Recorded as {recordedSource}
+          </p>
+        )}
+        {lead.marketingConsentNote ? (
+          <p className="text-sm italic" data-qa="lead-consent-quote">
+            They said: {lead.marketingConsentNote}
+          </p>
+        ) : null}
         <div>
           <Button
             type="button"
             variant="outline"
-            onClick={() => setOpen(true)}
+            onClick={() => {
+              // Re-seed from the record on every open, so a save followed by a
+              // reopen shows what was just stored rather than the last edit.
+              setAnswer(recordedAnswer);
+              setNote(recordedNote);
+              setSource(recordedSourceValue);
+              setOpen(true);
+            }}
             data-qa="lead-consent-record-button"
           >
             Record their answer
@@ -228,7 +297,7 @@ export function LeadMarketingConsent({ lead }: { lead: LeadDetail }) {
             <Button
               type="submit"
               form={FORM_ID}
-              disabled={record.isPending}
+              disabled={record.isPending || noop}
               data-qa="lead-consent-save"
             >
               {record.isPending ? 'Saving...' : 'Save'}
@@ -237,8 +306,13 @@ export function LeadMarketingConsent({ lead }: { lead: LeadDetail }) {
         }
       >
         <LeadConsentForm
-          initialAnswer={lead.marketingConsent === 'denied' ? 'denied' : 'granted'}
+          answer={answer}
+          note={note}
+          source={source}
           pending={record.isPending}
+          onAnswerChange={setAnswer}
+          onNoteChange={setNote}
+          onSourceChange={setSource}
           onSubmit={(dto) => {
             record.mutate(dto, {
               onSuccess: (result) => {
@@ -248,7 +322,9 @@ export function LeadMarketingConsent({ lead }: { lead: LeadDetail }) {
                     ? result.answer === 'granted'
                       ? 'Opt-in recorded'
                       : 'Opt-out recorded'
-                    : 'That answer was already on record',
+                    : // Only reachable when somebody else got there first: the
+                      // button is disabled while this submit would be a no-op.
+                      'Somebody else recorded that answer first',
                 );
               },
               onError: (error) => {

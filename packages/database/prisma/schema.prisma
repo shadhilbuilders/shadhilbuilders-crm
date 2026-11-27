@@ -1573,6 +1573,12 @@ model Consent {
   grantedAt      DateTime
   ipAddress      String?
   source         String // "web_form", "call_verbal", "whatsapp_button", etc.
+  // The buyer's own words, as the operator recorded them. Nullable because a
+  // click-through opt-in (whatsapp_button, web_form) has nothing to quote, and
+  // because every row written before 2026-11-27 predates this column. The same
+  // text is copied to AuditLog.reason on the row's audit entry: that is the
+  // immutable trail, this is what the panel reads back.
+  note           String?
   createdAt      DateTime    @default(now())
 
   lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)

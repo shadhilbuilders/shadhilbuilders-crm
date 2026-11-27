@@ -1,0 +1,12 @@
+-- The buyer's words belong on the consent row, not only in AuditLog.reason.
+-- The audit trail is append-only evidence that no screen reads; this column is
+-- what the panel shows back, including as the prefilled note next time a rep
+-- opens the dialog.
+--
+-- Nullable on purpose: a click-through opt-in (whatsapp_button, web_form) has
+-- nothing to quote, and every row written before 2026-11-27 predates the column.
+--
+-- Not backfilled. The only staff-recorded row in production was written with an
+-- empty reason, so there is nothing to move; older notes, if any exist, stay in
+-- AuditLog.reason where they were written.
+ALTER TABLE "Consent" ADD COLUMN IF NOT EXISTS "note" TEXT;

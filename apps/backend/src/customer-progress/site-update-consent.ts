@@ -19,10 +19,20 @@
 // not a marketing template, so no opt-in is required.
 import type { ConsentType } from '@shadhil/database';
 
+/** One row of the ledger, as every reader of it needs it. */
+export interface NewestConsentRow {
+  granted: boolean;
+  grantedAt: Date;
+  /** How it was obtained; the panel names it, the sender ignores it. */
+  source: string;
+  /** The buyer's words, if the operator recorded any. */
+  note: string | null;
+}
+
 /** The slice of the caller's RLS transaction this check needs. */
 export interface ConsentReader {
   consent: {
-    findFirst(args: unknown): Promise<{ granted: boolean; grantedAt: Date } | null>;
+    findFirst(args: unknown): Promise<NewestConsentRow | null>;
   };
 }
 
@@ -40,12 +50,15 @@ export type MarketingConsent = 'granted' | 'denied' | 'never-asked';
 export async function newestMarketingConsentRow(
   tx: ConsentReader,
   leadId: string,
-): Promise<{ granted: boolean; grantedAt: Date } | null> {
+): Promise<NewestConsentRow | null> {
   const type: ConsentType = 'MARKETING';
   return tx.consent.findFirst({
     where: { leadId, consentType: type },
     orderBy: [{ grantedAt: 'desc' }, { createdAt: 'desc' }],
-    select: { granted: true, grantedAt: true },
+    // Source and note ride along because the panel shows them and the dialog
+    // prefills the note from here: without them a rep reopens the dialog and
+    // the words they just recorded are gone from the box (2026-11-27).
+    select: { granted: true, grantedAt: true, source: true, note: true },
   });
 }
 

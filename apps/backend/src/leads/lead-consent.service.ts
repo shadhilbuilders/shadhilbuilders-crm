@@ -14,9 +14,13 @@
 //      an earlier opt-in, and it can only do that if both rows survive. So the
 //      newest row (`grantedAt`, then `createdAt`) is the answer, which is the
 //      same ordering site-update-consent.ts reads.
-//   2. NO CHANGE, NO ROW. Re-recording the answer already on top would add a
-//      row that means nothing and push an earlier genuine moment out of the
-//      "when did they agree" answer. Idempotent on purpose: reps double-click.
+//   2. NO CHANGE, NO ROW - unless there are words. Re-recording the answer
+//      already on top would add a row that means nothing and push an earlier
+//      genuine moment out of the "when did they agree" answer, so a bare repeat
+//      is a no-op: idempotent on purpose, because reps double-click. A repeat
+//      that carries a note is a different thing ("they said it again, at the
+//      site office") and gets its own row, since the alternative is discarding
+//      what the buyer just said.
 //   3. THE ROW AND ITS AUDIT LIVE IN ONE TRANSACTION. A consent row with no
 //      audit entry is a compliance answer nobody can reconstruct, and an audit
 //      entry with no row claims something the send decision cannot see.
@@ -71,15 +75,21 @@ export class LeadConsentService {
         throw new NotFoundException(`Lead ${leadId} not found`);
       }
 
+      const note = dto.note !== undefined && dto.note.length > 0 ? dto.note : null;
       const current = await marketingConsent(tx, leadId);
-      if (current === target) {
-        // Rule 2. The answer is already the newest row; report it and write
-        // nothing, including no audit row - "recorded again" is not an event.
+
+      // Rule 2, narrowed 2026-11-27. A submit that carries the answer already on
+      // top writes nothing UNLESS the operator typed what the buyer said: words
+      // are a new statement about a new moment, and dropping them is exactly the
+      // "I typed it and nothing saved" bug. The send decision reads the newest
+      // row either way, so a repeated answer changes no behaviour.
+      if (current === target && note === null) {
         const latest = await newestMarketingConsentRow(tx, leadId);
         return {
           changed: false,
           answer: current,
           recordedAt: latest?.grantedAt.toISOString() ?? null,
+          noteSaved: false,
         };
       }
 
@@ -94,6 +104,8 @@ export class LeadConsentService {
           // How it was obtained, not who typed it: `source` is the provenance
           // of the customer's agreement. The actor is on the audit row.
           source: dto.source,
+          // On the row so the panel can show it and the dialog can prefill it.
+          note,
           // Staff-recorded consent has no browser request behind it worth
           // citing, and a made-up IP would be worse than none.
           ipAddress: null,
@@ -109,12 +121,17 @@ export class LeadConsentService {
           entityId: leadId,
           before: { marketingConsent: current },
           after: { marketingConsent: target, source: dto.source },
-          // Empty string after trimming means "no note", not a blank reason.
-          reason: dto.note !== undefined && dto.note.length > 0 ? dto.note : null,
+          // Same text as the row: the immutable copy lives here.
+          reason: note,
         },
       });
 
-      return { changed: true, answer: target, recordedAt: now.toISOString() };
+      return {
+        changed: true,
+        answer: target,
+        recordedAt: now.toISOString(),
+        noteSaved: note !== null,
+      };
     });
   }
 }

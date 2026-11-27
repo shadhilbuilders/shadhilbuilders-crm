@@ -274,14 +274,20 @@ export const RecordLeadConsentDtoSchema = z.object({
 export type RecordLeadConsentDto = z.infer<typeof RecordLeadConsentDtoSchema>;
 
 /**
- * What the endpoint answers. `changed` is false when the newest row already
- * says this - a rep clicking twice must not append a second row to a ledger
- * whose whole point is that each row is a moment in time.
+ * What the endpoint answers.
+ *
+ * `changed` is false when the newest row already says this and no note came with
+ * the submit - a rep clicking twice must not append a second row to a ledger
+ * whose whole point is that each row is a moment in time. A repeated answer that
+ * DOES carry a note is a new statement and gets its own row, because the
+ * alternative is swallowing what the buyer just said.
  */
 export const RecordLeadConsentResultSchema = z.object({
   changed: z.boolean(),
   answer: LeadConsentAnswerSchema,
   recordedAt: z.string().nullable(),
+  /** Whether the buyer's words were stored, so the caller can say so. */
+  noteSaved: z.boolean(),
 });
 export type RecordLeadConsentResult = z.infer<typeof RecordLeadConsentResultSchema>;
 
@@ -293,6 +299,10 @@ export type LeadDetail = z.infer<typeof LeadDetailSchema> & {
    */
   marketingConsent?: LeadConsentAnswer;
   marketingConsentAt?: string | null;
+  /** How the newest answer was obtained ("call_verbal", "in_person", ...). */
+  marketingConsentSource?: string | null;
+  /** The buyer's own words, if the operator recorded any. */
+  marketingConsentNote?: string | null;
   /**
    * Whether this lead can actually receive a WhatsApp message. Derived from
    * evidence (an inbound message, or Meta's 131026), never guessed: the Cloud
