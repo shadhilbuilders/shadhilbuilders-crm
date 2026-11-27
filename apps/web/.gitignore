@@ -56,3 +56,8 @@ playwright-report/
 # them), which matched nothing at all and left a session credential tracked in
 # git. Keep them as separate lines.
 src/test/e2e/.auth/
+# Service worker emitted by `next build` (serwist swDest). Regenerated on every
+# production build, so it is not tracked.
+/public/sw.js
+/public/sw.js.map
+/public/swe-worker-*.js
