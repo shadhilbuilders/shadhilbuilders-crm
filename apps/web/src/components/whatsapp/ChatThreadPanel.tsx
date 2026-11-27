@@ -61,7 +61,10 @@ import {
   useSendContactMessage,
   useSendMessage,
 } from '@/hooks/queries/crm';
+import { serviceWindowExpiry } from '@shadhil/api-types';
+
 import { dateIntl } from '@/lib/format';
+import { ChatWindowCountdown } from '@/components/shared/ChatWindowCountdown';
 
 import {
   ChatMessage,
@@ -107,8 +110,6 @@ type WireMessage = {
 // The 24h WhatsApp reply window
 // ────────────────────────────────────────────────────────────────────────────
 
-const WINDOW_MS = 24 * 60 * 60 * 1000;
-
 /**
  * Meta only accepts a FREEFORM (plain text) reply within 24h of the customer's
  * last inbound message. Outside it, the send is rejected - and because the
@@ -122,10 +123,11 @@ export function replyWindowState(
   lastInboundAt: string | null,
   now: Date = new Date(),
 ): { open: boolean; expiresAt: Date | null } {
-  if (lastInboundAt === null) return { open: false, expiresAt: null };
-  const last = new Date(lastInboundAt);
-  if (Number.isNaN(last.getTime())) return { open: false, expiresAt: null };
-  const expiresAt = new Date(last.getTime() + WINDOW_MS);
+  // The arithmetic lives in @shadhil/api-types. It used to be a local WINDOW_MS
+  // addition here, which made the composer's gate and the countdown above it two
+  // independent opinions about the same twenty four hours.
+  const expiresAt = serviceWindowExpiry(lastInboundAt);
+  if (expiresAt === null) return { open: false, expiresAt: null };
   return { open: now.getTime() < expiresAt.getTime(), expiresAt };
 }
 
@@ -379,6 +381,10 @@ export function ChatThreadPanel({
             </button>
           </div>
         ) : null}
+
+        {/* Seconds matter here: an operator answering a customer is racing the
+            clock, and the composer disappears at the end without warning. */}
+        {windowState.open ? <ChatWindowCountdown lastInboundAt={liveLastInboundAt} /> : null}
 
         {/* The window warning replaces the composer entirely when closed:
             an input the user cannot submit is worse than a clear explanation. */}

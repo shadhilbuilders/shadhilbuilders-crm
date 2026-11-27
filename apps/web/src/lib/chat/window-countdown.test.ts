@@ -17,7 +17,7 @@ describe('windowRemaining', () => {
     const lastInbound = new Date(now.getTime() - 20 * HOUR - 48 * MINUTE);
     const remaining = windowRemaining(lastInbound, now);
     expect(remaining).not.toBeNull();
-    expect(remaining?.label).toBe('3h 12m');
+    expect(remaining?.label).toBe('3h 12m 0s');
     expect(remaining?.tone).toBe('calm');
     // 24h after the inbound message, which is 3h 12m from now.
     expect(remaining?.closesAt.toISOString()).toBe('2026-11-27T13:12:00.000Z');
@@ -49,15 +49,20 @@ describe('windowRemaining', () => {
 });
 
 describe('formatRemaining', () => {
-  it('rounds down, so the pane never promises time that has gone', () => {
-    expect(formatRemaining(3 * HOUR + 12 * MINUTE + 59_000)).toBe('3h 12m');
-    expect(formatRemaining(HOUR + 59_000)).toBe('1h');
-    expect(formatRemaining(59 * MINUTE + 59_000)).toBe('59m');
+  it('floors to the second, so the pane never promises time that has gone', () => {
+    expect(formatRemaining(3 * HOUR + 12 * MINUTE + 59_000)).toBe('3h 12m 59s');
+    expect(formatRemaining(HOUR + 59_000)).toBe('1h 0m 59s');
+    expect(formatRemaining(59 * MINUTE + 59_000)).toBe('59m 59s');
+    // The last second must read 0s and still be a countdown, not an empty label.
+    expect(formatRemaining(999)).toBe('0s');
   });
 
-  it('says under a minute instead of 0m', () => {
-    expect(formatRemaining(59_000)).toBe('<1m');
-    expect(formatRemaining(1)).toBe('<1m');
+  it('counts seconds, because the clock ticks once a second', () => {
+    const one = formatRemaining(5 * MINUTE + 3_000);
+    const two = formatRemaining(5 * MINUTE + 2_000);
+    expect(one).toBe('5m 3s');
+    expect(two).toBe('5m 2s');
+    expect(one).not.toBe(two);
   });
 });
 
@@ -75,6 +80,6 @@ describe('remainingSentence', () => {
     const remaining = windowRemaining(new Date(now.getTime() - 21 * HOUR), now);
     expect(remaining).not.toBeNull();
     if (remaining !== null)
-      expect(remainingSentence(remaining)).toBe('Freeform replies close in 3h');
+      expect(remainingSentence(remaining)).toBe('Freeform replies close in 3h 0m 0s');
   });
 });

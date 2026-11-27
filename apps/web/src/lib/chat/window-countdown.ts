@@ -40,16 +40,18 @@ export function windowRemaining(
 }
 
 /**
- * Hours and minutes, rounded DOWN so the pane never promises more time than is
- * left. Seconds are noise at this scale; under a minute says so instead of "0m".
+ * Hours, minutes and seconds, floored so the pane never promises more time than
+ * is left. Seconds are in the label because the clock ticks once a second and a
+ * number that only moves every minute reads as stuck.
  */
 export function formatRemaining(ms: number): string {
-  if (ms < 60_000) return '<1m';
-  const minutes = Math.floor(ms / 60_000);
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  if (hours === 0) return `${minutes}m`;
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+  const total = Math.floor(ms / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 export function toneFor(ms: number): WindowTone {

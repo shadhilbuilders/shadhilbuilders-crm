@@ -11,6 +11,8 @@
 // jsdom has no layout, so the assertion is on the merged class list that
 // renderToStaticMarkup produces. That string is what decides the height in the
 // browser. Uses renderToStaticMarkup per the standing rule.
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -60,5 +62,55 @@ describe('ChatThreadPanel composer height', () => {
 
   it('keeps growing with the draft', () => {
     expect(composerClass()).toContain('field-sizing-content');
+  });
+});
+
+// The freeform clock on the WhatsApp page (2026-11-27).
+//
+// protects= the countdown renders above the composer while the window is open and
+//           is absent once it shuts, so an operator sees the clock on this page
+//           and not only in the lead pane;
+// fails_when= the countdown is dropped from this pane, or it renders while the
+//           composer is replaced by the closed notice.
+// note=   mounted rather than string-rendered: the clock starts empty on the
+//         server on purpose (no hydration mismatch), so it only exists once the
+//         effect has run, and only a real mount runs effects.
+describe('the freeform countdown on the WhatsApp page', () => {
+  const mount = (selected: typeof thread) => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    act(() => root.render(<ChatThreadPanel thread={selected} />));
+    return {
+      container,
+      cleanup: () => {
+        act(() => root.unmount());
+        container.remove();
+      },
+    };
+  };
+
+  it('renders above the composer while the window is open', () => {
+    const view = mount(thread);
+    try {
+      expect(view.container.querySelector('[data-qa="chat-window-remaining"]')).not.toBeNull();
+      expect(view.container.textContent).toContain('Freeform replies close in');
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it('is absent once the window has closed', () => {
+    const stale = {
+      ...thread,
+      lastInboundAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    };
+    const view = mount(stale);
+    try {
+      expect(view.container.querySelector('[data-qa="reply-window-closed"]')).not.toBeNull();
+      expect(view.container.querySelector('[data-qa="chat-window-remaining"]')).toBeNull();
+    } finally {
+      view.cleanup();
+    }
   });
 });
