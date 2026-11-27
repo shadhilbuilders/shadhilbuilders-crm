@@ -19,18 +19,20 @@ import { useUser } from '@/hooks/queries/users';
 import { initials } from '@/lib/initials';
 import { useSessionUser } from '@/lib/session';
 
-/** The house shape for an account avatar: 32px, rounded square. */
+/** The house shape for an account avatar: 32px, a circle (see AvatarUpload). */
 export function SelfAvatar({ name }: { name: string }) {
   const { user } = useSessionUser();
   const selfQuery = useUser(user?.id);
   return (
     <Avatar
-      className="h-8 w-8 shrink-0 rounded-lg"
+      // 2026-11-27: every avatar in the shell is a circle. `rounded-lg` read as
+      // a square chip beside the round avatars elsewhere (AvatarUpload).
+      className="h-8 w-8 shrink-0 rounded-full"
       src={selfQuery.data?.imageUrl ?? undefined}
       alt=""
       fallback={initials(name)}
-      imageProps={{ className: 'rounded-lg' }}
-      fallbackProps={{ className: 'rounded-lg text-xs' }}
+      imageProps={{ className: 'rounded-full' }}
+      fallbackProps={{ className: 'rounded-full text-xs' }}
     />
   );
 }

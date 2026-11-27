@@ -509,7 +509,7 @@ export function useNavBadge(key: NavBadgeKey | undefined, projectId: string | nu
       useNotifications: (params: { unreadOnly?: boolean }) => {
         data: { rows: unknown[]; total: number; unread: number };
       };
-      useChatConversations: (params: { limit?: number; enabled?: boolean }) => {
+      useChatConversations: (params: { limit?: number; enabled?: boolean; poll?: boolean }) => {
         data: { totalUnread: number } | undefined;
       };
     };
@@ -523,7 +523,11 @@ export function useNavBadge(key: NavBadgeKey | undefined, projectId: string | nu
   // inbox (a site engineer). The request fired on every page the shell renders,
   // including /site, and a failed request in the console reads as a broken page.
   // Ask for it only when the page actually carries a chat badge.
-  const chats = useChatConversations({ limit: 1, enabled: key === 'unreadChats' });
+  //
+  // `poll: false` (2026-11-27): a badge count does not justify a 15s poll on
+  // every open tab. SSE invalidation of the chat-conversations key refreshes it,
+  // and the inbox page polls the list it is actually showing.
+  const chats = useChatConversations({ limit: 1, enabled: key === 'unreadChats', poll: false });
 
   if (key === undefined) return FALLBACK_BADGE;
   if (key === 'leadCount') {

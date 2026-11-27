@@ -892,6 +892,13 @@ export type ChatConversationFilter = {
    * console error that reads as a broken screen (2026-11-08).
    */
   enabled?: boolean;
+  /**
+   * Set false to keep the request but stop polling it (2026-11-27). The nav
+   * badge only needs a count, and the SSE invalidation already refreshes it, so
+   * a second 15s poll per open tab was pure load - the same endpoint was being
+   * called several times a minute for the same numbers.
+   */
+  poll?: boolean;
 };
 
 /** Inbox poll interval: backstop when no thread is open (no per-thread SSE). */
@@ -909,9 +916,9 @@ const CHAT_CONTACT_POLL_MS = 60_000;
 /** GET /api/chat/conversations - the inbox list (server-filtered). */
 export function useChatConversations(filter: ChatConversationFilter = {}) {
   return useQuery({
-    // `enabled` is not part of the request, so it must not fragment the cache
-    // key: an enabled and a disabled call are the same data.
-    queryKey: ['chat-conversations', { ...filter, enabled: undefined }] as const,
+    // `enabled` and `poll` are not part of the request, so they must not
+    // fragment the cache key: those calls are the same data.
+    queryKey: ['chat-conversations', { ...filter, enabled: undefined, poll: undefined }] as const,
     enabled: filter.enabled !== false,
     queryFn: ({ signal }) =>
       api<ChatConversationsResult>(
@@ -925,11 +932,16 @@ export function useChatConversations(filter: ChatConversationFilter = {}) {
         { signal },
       ),
     // Inbox freshness matters (a customer reply must appear without a manual
-    // refresh). SSE invalidates this key when a thread is open; a short poll
-    // is the backstop for the list alone, and staleTime:0 lets focus/reconnect
-    // refetch instead of being blocked by the app-wide 5-minute default.
-    staleTime: 0,
-    refetchInterval: CHAT_CONVERSATIONS_POLL_MS,
+    // refresh). SSE invalidates this key when a thread is open; the poll is the
+    // backstop for the list alone.
+    //
+    // staleTime is the POLL, not 0 (2026-11-27). At 0, every remount and every
+    // window focus re-fetched the endpoint on top of the interval, so the same
+    // list arrived several times a minute with nothing changed. Caching for one
+    // poll window keeps the freshness the interval already guarantees while
+    // collapsing the duplicates.
+    staleTime: CHAT_CONVERSATIONS_POLL_MS,
+    refetchInterval: filter.poll === false ? false : CHAT_CONVERSATIONS_POLL_MS,
     refetchOnWindowFocus: true,
   });
 }
