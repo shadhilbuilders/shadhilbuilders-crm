@@ -28,6 +28,7 @@ import type { TimelinePhoto } from '@/hooks/queries/customer-progress';
 import { constructionStageLabel } from '@/lib/labels';
 import { relativeCaptureTime } from '@/lib/site-photos';
 import { videoTileName } from '@/lib/site-video/format';
+import { markTileTap } from '@/lib/site-video/player-timings';
 
 /** The first two photos load eagerly (above the fold); the rest lazily. */
 const EAGER_IMAGES = 2;
@@ -407,7 +408,12 @@ export function SitePhotoFeed({
                   index={index}
                   unitLabel={unitLabel}
                   now={now}
-                  onOpen={() => onOpenPhoto(photo.id)}
+                  onOpen={() => {
+                    // Marked at the tap, so the lightbox can report the wait it
+                    // caused rather than the wait it can see.
+                    markTileTap();
+                    onOpenPhoto(photo.id);
+                  }}
                   actions={renderActions?.(photo)}
                 />
               );

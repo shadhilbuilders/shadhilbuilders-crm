@@ -67,15 +67,16 @@
       "metrics": {
         "recordStartMs": 3,
         "uploadMs": 1900,
-        "playbackMs": 76,
+        "playbackMs": 59,
         "clipBytes": 6359104,
         "seekLanded": null,
         "clipSeconds": 29.9
       },
       "notes": [
         "recordStartMs is the recorder's own measure: tap to MediaRecorder started. The same tap cost 3300 ms twice before the camera was warmed at sheet open.",
-        "playbackMs times the review panel opening the fresh clip (mount to loadeddata), not the feed lightbox the emulated rows time, so it is not like-for-like.",
-        "Numbers arrived from the device screen with ?timings=1 on and agree with the stored row: ProgressPhoto 2026-11-26 22:52:27Z, durationMs 29935, sizeBytes 6359104, hasAudio true, aac 48 kHz beside h264 720x1280.",
+        "playbackMs 59 is the feed lightbox: tap on a video tile to the player painted, measured on the handset by the viewer's own readout behind ?timings=1. The emulated rows time the same span (1869, 9500, 778 ms), so this cell is like-for-like.",
+        "The review panel inside the recorder measured 76 ms on the same handset, mount to loadeddata of the fresh clip. A different span, kept here only so the two are not confused.",
+        "Numbers agree with the stored row: ProgressPhoto 2026-11-26 22:52:27Z, durationMs 29935, sizeBytes 6359104, hasAudio true, aac 48 kHz beside h264 720x1280.",
         "Seek on the phone was not exercised; left null rather than guessed."
       ]
     }

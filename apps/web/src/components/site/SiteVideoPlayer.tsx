@@ -5,11 +5,13 @@
 // autoplay, and nothing downloaded until the user presses play (`preload="none"`;
 // the poster is what shows). If the browser cannot decode the clip it says so in
 // one sentence and offers the file, never a black box.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { LuDownload } from '@paalstack/react-icons/lu';
 
 import { videoTileName } from '@/lib/site-video/format';
+import { formatPlayerTimings, sinceTileTap } from '@/lib/site-video/player-timings';
+import { timingsRequested } from '@/lib/site-video/recorder-timings';
 
 export interface SiteVideoPlayerProps {
   src: string;
@@ -20,6 +22,20 @@ export interface SiteVideoPlayerProps {
 
 export function SiteVideoPlayer({ src, poster, durationMs, filename }: SiteVideoPlayerProps) {
   const [failed, setFailed] = useState(false);
+  const [openMs, setOpenMs] = useState<number | null>(null);
+
+  // One frame after mount is when the player is on screen, which is what the
+  // customer is waiting for. Nothing is fetched until they press play, so this
+  // number is the lightbox and the paint, not the network.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const ms = sinceTileTap();
+      if (ms !== null) setOpenMs(ms);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const showTimings = timingsRequested(typeof window === 'undefined' ? '' : window.location.search);
 
   if (failed) {
     return (
@@ -45,6 +61,14 @@ export function SiteVideoPlayer({ src, poster, durationMs, filename }: SiteVideo
       className="flex min-h-0 flex-1 items-center justify-center bg-black"
       data-qa="video-player-frame"
     >
+      {showTimings ? (
+        <div
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] bg-black/80 px-3 py-1 font-mono text-[11px] whitespace-nowrap text-white"
+          data-qa="player-timings"
+        >
+          {formatPlayerTimings(openMs)}
+        </div>
+      ) : null}
       <video
         src={src}
         poster={poster}
