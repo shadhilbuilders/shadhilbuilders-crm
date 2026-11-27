@@ -12,8 +12,10 @@ import {
   PHONE_ERRORS,
   formatPhone as formatStoredPhone,
   isCountryCode,
+  phoneErrorMessage,
   regionOf,
   telHref,
+  tryParsePhone,
   type CountryCode,
 } from '@shadhil/api-types/phone';
 import { z } from 'zod';
@@ -152,6 +154,108 @@ export const PhoneInputSchema = z
 
 /** The same rule for a phone field the UI treats as OPTIONAL. */
 export const OptionalPhoneInputSchema = PhoneInputSchema.optional();
+
+// ---------------------------------------------------------------------------
+// Country-aware validation (2026-11-27)
+// ---------------------------------------------------------------------------
+// WHY THIS EXISTS: the shape rule above answers "is this plausibly a phone
+// number at all?". It does not answer "is this a valid mobile number in the
+// country on the trigger", so `1234567890` on `+91` passed the resolver, went
+// to the API, and came back as a TOAST - far from the field, after a round
+// trip. The rule below runs the SAME parser the server runs (`parsePhone` via
+// `tryParsePhone`, one shared implementation in @shadhil/api-types/phone) and
+// reports the SAME sentence, so the inline message and the 400 can never drift
+// apart. Nothing here re-implements libphonenumber rules.
+
+/**
+ * The message for a phone value in a country, or null when it is acceptable.
+ *
+ * '' is always acceptable: whether a blank cell is allowed is the caller's
+ * decision (see `refinePhonePair`'s `required`).
+ */
+export function phoneNumberMessage(
+  value: string | null | undefined,
+  country: CountryCode | string | null | undefined,
+): string | null {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (raw === '') return null;
+  const shape = phoneInputIssue(raw);
+  if (shape !== null) return shape;
+  const resolved = asCountry(country);
+  const parsed = tryParsePhone({ source: 'typed', raw, country: resolved });
+  return parsed.ok ? null : phoneErrorMessage(parsed.reason, resolved);
+}
+
+/** A country arriving from a DTO that types it as a plain string. */
+function asCountry(country: CountryCode | string | null | undefined): CountryCode | null {
+  if (typeof country !== 'string') return null;
+  const upper = country.toUpperCase();
+  return isCountryCode(upper) ? upper : null;
+}
+
+/** The two form values a phone rule needs. Both are carried by every phone form. */
+export interface PhonePairValues {
+  phone?: string | null;
+  /** Typed loosely: the shared DTOs type this as a plain string. */
+  phoneCountry?: CountryCode | string | null;
+}
+
+/**
+ * The `superRefine` body every phone form shares.
+ *
+ * The error is added on `path: ['phone']` so react-ui's Form renders it in that
+ * field's own error slot - the same place a missing name appears - instead of a
+ * toast. Required-ness is opt-in because the same field is optional on a staff
+ * profile and required on a lead.
+ *
+ * Shape failures are left to `PhoneInputSchema` (which reports first with the
+ * generic sentence); this only adds the country rule, so one bad value never
+ * produces two messages.
+ */
+export function refinePhonePair(
+  values: PhonePairValues,
+  ctx: z.RefinementCtx,
+  options: { required?: boolean } = {},
+): void {
+  const raw = typeof values.phone === 'string' ? values.phone.trim() : '';
+  if (raw === '') {
+    if (options.required === true) {
+      ctx.addIssue({ code: 'custom', path: ['phone'], message: PHONE_ERRORS.EMPTY });
+    }
+    return;
+  }
+  if (phoneInputIssue(raw) !== null) return;
+  const message = phoneNumberMessage(raw, values.phoneCountry ?? null);
+  if (message !== null) ctx.addIssue({ code: 'custom', path: ['phone'], message });
+}
+
+/** Every sentence the parser can refuse a number with, for server matching. */
+const PHONE_SERVER_MESSAGES: readonly string[] = Object.values(PHONE_ERRORS);
+
+/** A duplicate number, from users, invites and leads alike. */
+const PHONE_DUPLICATE = /(phone number|Lead with phone)[^.]*(already|in use)/i;
+
+/**
+ * The phone field's message for a SERVER rejection, or null when the failure
+ * belongs somewhere else.
+ *
+ * The client refuses an invalid number before the request now, so what is left
+ * is what only the server knows: the number is already taken. That answer is
+ * about the field the operator just filled in, so it goes UNDER the field as
+ * well as into the toast. Matching is deliberately narrow - a stable `code`
+ * first, then the parser's own sentences and the duplicate wording - because a
+ * message pinned to the wrong field is worse than a toast alone.
+ */
+export function phoneFieldErrorFromServer(error: unknown): string | null {
+  if (!(error instanceof Error) || error.message.trim() === '') return null;
+  const message = error.message;
+  const code = (error as { code?: unknown }).code;
+  if (code === 'PHONE_ALREADY_EXISTS') return message;
+  if (PHONE_SERVER_MESSAGES.includes(message)) return message;
+  if (message.startsWith('That is not a valid mobile number for ')) return message;
+  if (PHONE_DUPLICATE.test(message)) return message;
+  return null;
+}
 
 /** The country a phone field starts on when the row does not say otherwise. */
 export const DEFAULT_PHONE_COUNTRY = DOMESTIC_COUNTRY;

@@ -16,8 +16,7 @@
 // Details that are deliberate:
 //   - every photo is an `Attachment` (see NoteAttachments.tsx): the media is the
 //     preview, the description carries the size and the upload state.
-//   - the textarea is `text-base` (16px). Anything smaller makes iOS Safari zoom
-//     the page on focus, which on a phone in the field looks broken.
+//   - the textarea is `text-sm` like every other input in the app (owner rule).
 //   - it is never autofocused. The keyboard covering the photo you are checking
 //     against is worse than one tap.
 //   - the quick notes are SUGGESTIONS under the note field, not a field of their

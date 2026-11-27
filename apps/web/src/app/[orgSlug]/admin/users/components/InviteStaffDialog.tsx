@@ -33,7 +33,14 @@ import { useCreateInvite } from '@/hooks/queries/invites';
 import type { Role } from '@/apis/client';
 import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
 import { labelFor } from '@/lib/labels';
-import { DEFAULT_PHONE_COUNTRY, PhoneCountrySchema, OptionalPhoneInputSchema } from '@/lib/phone';
+import {
+  DEFAULT_PHONE_COUNTRY,
+  PhoneCountrySchema,
+  OptionalPhoneInputSchema,
+  phoneFieldErrorFromServer,
+  refinePhonePair,
+} from '@/lib/phone';
+import { focusField } from '@/lib/form-focus';
 
 import { CopyableLink } from './CopyableLink';
 import { InviteSendActions } from './InviteSendActions';
@@ -79,9 +86,10 @@ const InviteStaffFormSchema = z
     teamId: z.string().optional(),
   })
   .superRefine((values, ctx) => {
-    if (values.phone === undefined || values.phone.trim().length === 0) {
-      ctx.addIssue({ code: 'custom', path: ['phone'], message: 'Phone number is required' });
-    }
+    // Required AND country-aware, through the shared rule: a blank invite has
+    // no delivery channel, and `1234567890` on +91 is not an Indian mobile. Both
+    // used to be answered by the API (the second as a toast).
+    refinePhonePair(values, ctx, { required: true });
     if (ROLES_REQUIRING_TEAM.includes(values.role as Role) && !values.teamId) {
       ctx.addIssue({ code: 'custom', path: ['teamId'], message: 'Select a team for this user' });
     }
@@ -204,8 +212,14 @@ function InviteStaffDialogBody({
       {
         onSuccess: (data) => setResult(data),
         onError: (error) => {
-          // Inline-safe message: the server's coded 409s (already pending /
-          // email taken) are the common case and their text is actionable.
+          // The server's coded 409s (already pending / email taken) are the
+          // common case and their text is actionable. When the refusal is about
+          // the phone, it also goes under that field, with focus moved there.
+          const phoneMessage = phoneFieldErrorFromServer(error);
+          if (phoneMessage !== null) {
+            form.setError('phone', { message: phoneMessage });
+            focusField('phone');
+          }
           toast.error(error instanceof Error ? error.message : 'Could not create the invite');
         },
       },
@@ -361,6 +375,13 @@ function InviteStaffDialogBody({
             form={form}
             id={formId}
             onSubmit={onSubmit}
+            // Refused submit: the phone is a custom item the Form cannot focus,
+            // so nudge it only when the phone is what failed. Reads the
+            // callback's `errors`; `form.formState.errors` is not committed yet
+            // here.
+            onSubmitError={(errors) => {
+              if (errors.phone) focusField('phone');
+            }}
             hideSubmitButton
             hideResetButton
             fields={fields}

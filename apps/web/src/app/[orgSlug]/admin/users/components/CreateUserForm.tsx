@@ -21,7 +21,14 @@ import type { Role } from '@/apis/client';
 import { PasswordInput } from '@/components/shared/PasswordInput';
 import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
 import { labelFor } from '@/lib/labels';
-import { DEFAULT_PHONE_COUNTRY, PhoneCountrySchema, OptionalPhoneInputSchema } from '@/lib/phone';
+import {
+  DEFAULT_PHONE_COUNTRY,
+  PhoneCountrySchema,
+  OptionalPhoneInputSchema,
+  phoneFieldErrorFromServer,
+  refinePhonePair,
+} from '@/lib/phone';
+import { focusField } from '@/lib/form-focus';
 import type { CountryCode } from '@shadhil/api-types/phone';
 import { CustomerLeadField } from './CustomerLeadField';
 
@@ -77,6 +84,10 @@ const CreateUserFormSchema = CreateUserDtoSchema.omit({ phone: true, phoneCountr
     phoneCountry: PhoneCountrySchema.optional(),
   })
   .superRefine((values, ctx) => {
+    // Country rule first: a number that is not a mobile in the selected country
+    // is refused HERE, with the server's own sentence, instead of coming back
+    // from the API as a toast. Optional: a staff account may have no number.
+    refinePhonePair(values, ctx);
     if (roleNeedsTeam(values.role) && !values.teamId) {
       ctx.addIssue({
         code: 'custom',
@@ -195,6 +206,13 @@ export function CreateUserForm({
         onDone();
       },
       onError: (error) => {
+        // A phone the SERVER refused (a duplicate in this org) goes under the
+        // field with focus moved there, and into the toast as well.
+        const phoneMessage = phoneFieldErrorFromServer(error);
+        if (phoneMessage !== null) {
+          form.setError('phone', { message: phoneMessage });
+          focusField('phone');
+        }
         toast.error(error instanceof Error ? error.message : 'Create failed');
       },
     });
@@ -333,6 +351,12 @@ export function CreateUserForm({
       id={formId}
       form={form}
       onSubmit={onSubmit}
+      // A refused submit moves the cursor to the first failing field, in the
+      // order the form reads (2026-11-27). Reads the callback's `errors`, since
+      // `form.formState.errors` is not committed yet at this point.
+      onSubmitError={(errors) => {
+        if (errors.phone) focusField('phone');
+      }}
       hideSubmitButton
       hideResetButton
       fields={fields}

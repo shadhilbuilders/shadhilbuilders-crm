@@ -4,17 +4,24 @@
 // Since 2026-11-22 these helpers are a THIN ADAPTER over
 // `@shadhil/api-types/phone`: parsing, canonicalisation and display live
 // there. What is pinned here is (a) the adapter's own contract - the shapes it
-// must keep working for the CRM's stored data, and (b) that the form rules are
-// shape-only, with no country knowledge left in the client.
+// must keep working for the CRM's stored data, and (b) the two form rules: the
+// SHAPE rule (`PhoneInputSchema`) and, since 2026-11-27, the COUNTRY rule
+// (`phoneNumberMessage` / `refinePhonePair`) that runs the server's parser
+// client-side so an invalid number reports under the field instead of as a
+// toast.
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import {
   OptionalPhoneInputSchema,
+  PhoneCountrySchema,
   PhoneInputSchema,
   countryOfStored,
   formatPhone,
   isValidPhoneInput,
   phoneFieldMessage,
+  phoneNumberMessage,
+  refinePhonePair,
   telUrl,
   toPhoneInputValue,
 } from './phone';
@@ -228,5 +235,87 @@ describe('OptionalPhoneInputSchema', () => {
         OptionalPhoneInputSchema.safeParse(value).success,
       );
     }
+  });
+});
+
+describe('phoneNumberMessage (the country rule)', () => {
+  it('accepts a valid mobile typed nationally', () => {
+    expect(phoneNumberMessage('9876543210', 'IN')).toBeNull();
+    // The field hands over formatted text, so spaces have to survive.
+    expect(phoneNumberMessage('98765 43210', 'IN')).toBeNull();
+    expect(phoneNumberMessage('919876543210', 'IN')).toBeNull();
+  });
+
+  it('accepts a number that carries its own country', () => {
+    // A US number pasted while India is on the trigger is the case the field
+    // exists to support; refusing it as "not Indian" would be wrong.
+    expect(phoneNumberMessage('+16505550123', 'IN')).toBeNull();
+  });
+
+  it('refuses digits that are not a mobile in the selected country', () => {
+    // `1234567890` passes the 7-15 digit shape rule, which is why it used to
+    // reach the API and come back as a toast. The sentence is the server's own.
+    expect(phoneNumberMessage('1234567890', 'IN')).toBe(
+      'That is not a valid mobile number for India (10 digits)',
+    );
+  });
+
+  it('keeps the shared shape sentence for something that is not a number', () => {
+    expect(phoneNumberMessage('9876', 'IN')).toBe(phoneFieldMessage);
+    expect(phoneNumberMessage('call me maybe', 'IN')).toBe(phoneFieldMessage);
+  });
+
+  it('treats blank as acceptable - required-ness is the caller decision', () => {
+    expect(phoneNumberMessage('', 'IN')).toBeNull();
+    expect(phoneNumberMessage(null, 'IN')).toBeNull();
+  });
+
+  it('reads a number in the country it is given, not the domestic one', () => {
+    // 10 national digits are a US mobile and NOT an Indian one (India needs
+    // 6-9 to start); the rule has to follow the trigger, not default to IN.
+    expect(phoneNumberMessage('4155550123', 'US')).toBeNull();
+  });
+});
+
+describe('refinePhonePair (the form-level rule)', () => {
+  function pairSchema(options: { required?: boolean } = {}) {
+    return z
+      .object({
+        phone: PhoneInputSchema.optional(),
+        phoneCountry: PhoneCountrySchema.optional(),
+      })
+      .superRefine((values, ctx) => refinePhonePair(values, ctx, options));
+  }
+
+  it('reports a wrong-country number ON the phone field', () => {
+    const result = pairSchema().safeParse({ phone: '1234567890', phoneCountry: 'IN' });
+    expect(result.success).toBe(false);
+    const issues = result.success ? [] : result.error.issues;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.path).toEqual(['phone']);
+    expect(issues[0]?.message).toBe('That is not a valid mobile number for India (10 digits)');
+  });
+
+  it('does not double-report a value the shape rule already refused', () => {
+    const result = pairSchema().safeParse({ phone: '9876', phoneCountry: 'IN' });
+    expect(result.success).toBe(false);
+    const issues = result.success ? [] : result.error.issues;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.message).toBe(phoneFieldMessage);
+  });
+
+  it('leaves a valid pair alone', () => {
+    expect(pairSchema().safeParse({ phone: '9876543210', phoneCountry: 'IN' }).success).toBe(true);
+  });
+
+  it('requires a number only when the caller asks for it', () => {
+    const optional = pairSchema().safeParse({ phone: '', phoneCountry: 'IN' });
+    expect(optional.success).toBe(true);
+
+    const required = pairSchema({ required: true }).safeParse({ phone: '', phoneCountry: 'IN' });
+    expect(required.success).toBe(false);
+    const issues = required.success ? [] : required.error.issues;
+    expect(issues[0]?.path).toEqual(['phone']);
+    expect(issues[0]?.message).toBe('Enter a phone number');
   });
 });

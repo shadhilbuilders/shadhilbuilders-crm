@@ -104,12 +104,11 @@ describe('IntlPhoneInput country picker', () => {
     expect(source).toMatch(/labelContent: \(/);
   });
 
-  it('keeps the list usable on a phone: 16px search, 36px rows', () => {
-    // iOS Safari zooms the page in on a focused field under 16px and never zooms
-    // back, which would leave the list magnified and half off-screen; 36px keeps
-    // a usable number of the 245 countries on screen at once. Both are props of
-    // the shared picker, not CSS we own.
-    expect(source).toContain('commandInputClassName="h-10 text-base"');
+  it('keeps the list usable on a phone: 14px search, 36px rows', () => {
+    // 36px keeps a usable number of the 245 countries on screen at once.
+    // Both are props of the shared picker, not CSS we own. The search input is
+    // `text-sm` like every other input in the app - never `text-base`.
+    expect(source).toContain('commandInputClassName="h-10 text-sm"');
     expect(source).toContain('commandItemClassName="min-h-9 py-2"');
   });
 

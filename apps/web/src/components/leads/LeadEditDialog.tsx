@@ -11,9 +11,11 @@
 // the repo's Dialog/jsdom rule (Base UI portals render empty under
 // renderToStaticMarkup, so tests target the body, not the portal).
 //
-// Form is the props-API Form (data-driven `fields`); validation is
-// server-side (UpdateLeadDto Zod) - the form only runs HTML `required`.
-// Phone uniqueness violations surface the server's 409 message verbatim.
+// Form is the props-API Form (data-driven `fields`); the resolver runs the
+// SAME phone rule the API does (shape + the country on the trigger) so a bad
+// number reports under the field instead of as a toast. A phone refusal the
+// SERVER alone can decide (a duplicate number) shows under the field too, with
+// focus moved there, and still toasts.
 //
 // Footer pattern (library canonical, mirrors WhatsappUnknownContactConvertModal
 // + ScheduleVisitDialog): the Cancel + Save actions live in the Dialog
@@ -24,8 +26,9 @@
 import { useEffect } from 'react';
 
 import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
+import type { FormFieldItemType } from '@paalstack/react-ui';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, type UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 
 import { useUpdateLead } from '@/hooks/queries/crm';
@@ -34,8 +37,11 @@ import {
   PhoneCountrySchema,
   PhoneInputSchema,
   countryOfStored,
+  phoneFieldErrorFromServer,
+  refinePhonePair,
   toPhoneInputValue,
 } from '@/lib/phone';
+import { focusField } from '@/lib/form-focus';
 import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
 import type { CountryCode } from '@shadhil/api-types/phone';
 
@@ -57,16 +63,22 @@ type LeadEditFormValues = {
  * `name` mirrors the create form's rule; `email` stays optional/loose here
  * because the dialog already lowercases and omits blanks on submit.
  */
-const LeadEditFormSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, 'Name is required')
-    .max(120, 'Name must be at most 120 characters'),
-  phone: PhoneInputSchema,
-  phoneCountry: PhoneCountrySchema.optional(),
-  email: z.string(),
-});
+const LeadEditFormSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Name is required')
+      .max(120, 'Name must be at most 120 characters'),
+    phone: PhoneInputSchema,
+    phoneCountry: PhoneCountrySchema.optional(),
+    email: z.string(),
+  })
+  // The country rule (2026-11-27): the shape rule above accepts
+  // `1234567890`, which is not an Indian mobile. That used to reach the API and
+  // come back as a toast; now it fails here, in the field, with the server's
+  // own sentence. Required, because a lead without a phone cannot be messaged.
+  .superRefine((values, ctx) => refinePhonePair(values, ctx, { required: true }));
 
 /** Minimal lead shape the dialog needs (from the inbox row). */
 export type LeadEditTarget = {
@@ -102,7 +114,12 @@ export function LeadEditFormBody({
   onSubmit,
 }: {
   lead: LeadEditTarget;
-  onSubmit: (values: LeadEditFormValues) => void;
+  /**
+   * Receives the form instance as well as the values: a server failure that
+   * belongs to the phone field has to be set on THIS form, and the dialog shell
+   * holds a separate instance (used for the row reset).
+   */
+  onSubmit: (values: LeadEditFormValues, form: UseFormReturn<LeadEditFormValues>) => void;
 }) {
   const form = useForm<LeadEditFormValues>({
     // ADDED 2026-11-19: this form had NO resolver, so a mistyped phone was
@@ -124,64 +141,74 @@ export function LeadEditFormBody({
     mode: 'onSubmit',
   });
 
+  const fields: FormFieldItemType<LeadEditFormValues>[] = [
+    {
+      type: 'input',
+      name: 'name',
+      label: 'Full name',
+      required: true,
+      placeholder: 'Enter full name',
+      inputProps: {
+        maxLength: 120,
+        'data-qa': 'lead-edit-name',
+        autoComplete: 'name',
+      },
+    },
+    {
+      type: 'custom',
+      name: 'phone',
+      label: 'Phone',
+      required: true,
+      render: ({ field, fieldState }) => (
+        <IntlPhoneInput
+          aria-invalid={fieldState.invalid}
+          id={field.name}
+          name={field.name}
+          value={field.value ?? ''}
+          onBlur={field.onBlur}
+          defaultCountry={DEFAULT_PHONE_COUNTRY}
+          onChange={(digits, country) => {
+            field.onChange(digits);
+            form.setValue('phoneCountry', country ?? DEFAULT_PHONE_COUNTRY);
+          }}
+          placeholder="Enter phone number"
+          data-qa="lead-edit-phone"
+        />
+      ),
+    },
+    {
+      type: 'input',
+      name: 'email',
+      label: 'Email',
+      inputType: 'email',
+      placeholder: 'Enter email address',
+      description: 'Optional. Used for booking confirmations.',
+      inputProps: {
+        'data-qa': 'lead-edit-email',
+        autoComplete: 'email',
+      },
+    },
+  ];
+
   return (
     <Form
       id={FORM_ID}
       form={form}
-      onSubmit={onSubmit}
+      // The body's own form travels with the values so a server phone
+      // rejection can be set on the field the operator is looking at.
+      onSubmit={(values) => onSubmit(values, form)}
+      // The phone is a custom item the Form cannot focus; nudge it only when
+      // the phone is what failed (2026-11-27). Reads the callback's `errors`;
+      // `form.formState.errors` is not committed yet here.
+      onSubmitError={(errors) => {
+        if (errors.phone) focusField('phone');
+      }}
       // The Save action lives in the Dialog footer (linked via
       // form={FORM_ID} + type="submit" on the footer button); hide the
       // Form's own action buttons so the submit isn't duplicated.
       hideSubmitButton
       hideResetButton
-      fields={[
-        {
-          type: 'input',
-          name: 'name',
-          label: 'Full name',
-          required: true,
-          placeholder: 'Enter full name',
-          inputProps: {
-            maxLength: 120,
-            'data-qa': 'lead-edit-name',
-            autoComplete: 'name',
-          },
-        },
-        {
-          type: 'custom',
-          name: 'phone',
-          label: 'Phone',
-          required: true,
-          render: ({ field, fieldState }) => (
-            <IntlPhoneInput
-              aria-invalid={fieldState.invalid}
-              id={field.name}
-              name={field.name}
-              value={field.value ?? ''}
-              onBlur={field.onBlur}
-              defaultCountry={DEFAULT_PHONE_COUNTRY}
-              onChange={(digits, country) => {
-                field.onChange(digits);
-                form.setValue('phoneCountry', country ?? DEFAULT_PHONE_COUNTRY);
-              }}
-              placeholder="Enter phone number"
-              data-qa="lead-edit-phone"
-            />
-          ),
-        },
-        {
-          type: 'input',
-          name: 'email',
-          label: 'Email',
-          inputType: 'email',
-          placeholder: 'Enter email address',
-          description: 'Optional. Used for booking confirmations.',
-          inputProps: {
-            'data-qa': 'lead-edit-email',
-            autoComplete: 'email',
-          },
-        },
-      ]}
+      fields={fields}
     />
   );
 }
@@ -224,7 +251,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
   if (lead === null) return null;
   const target = lead;
 
-  function handleSubmit(values: LeadEditFormValues) {
+  function handleSubmit(values: LeadEditFormValues, bodyForm: UseFormReturn<LeadEditFormValues>) {
     updateLead.mutate(
       {
         id: target.id,
@@ -242,9 +269,15 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
           onSaved?.();
         },
         onError: (error) => {
-          // Server validation + unique-violation messages come through
-          // verbatim (BFF forwards the Zod/409 message).
           const msg = error instanceof Error ? error.message : 'Update failed';
+          // A phone the server refused (a duplicate this org already holds) is
+          // shown under the field with focus moved there, AND as a toast: the
+          // inline copy is what survives long enough to act on.
+          const phoneMessage = phoneFieldErrorFromServer(error);
+          if (phoneMessage !== null) {
+            bodyForm.setError('phone', { message: phoneMessage });
+            focusField('phone');
+          }
           toast.error(msg);
         },
       },

@@ -328,11 +328,12 @@ export function IntlPhoneInput({
                   filterBy="all"
                   searchPlaceholder="Search country or code"
                   emptyOptionMessage="No country matches that"
-                  // 16px, not the component's 14px: iOS Safari zooms the whole
-                  // page in when a focused field is under 16px, and it never
-                  // zooms back out - the country list would be magnified and
-                  // half off-screen on both iPhones.
-                  commandInputClassName="h-10 text-base"
+                  // 14px, like every other input in the app (owner rule
+                  // 2026-11-27: inputs and textareas are `text-sm`, never
+                  // `text-base`). iOS Safari may zoom the page in on focus at
+                  // this size and does not zoom back out; that is accepted in
+                  // exchange for one consistent input size.
+                  commandInputClassName="h-10 text-sm"
                   // 36px rows, not 44px (2026-11-24). The list runs to 245
                   // countries, and the taller row pushed most of it below the
                   // fold on a phone. The row is full width, so the target stays

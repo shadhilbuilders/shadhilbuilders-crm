@@ -17,7 +17,12 @@
 import { z } from 'zod';
 
 import { LEAD_SOURCES } from '@/lib/labels';
-import { DEFAULT_PHONE_COUNTRY, PhoneCountrySchema, PhoneInputSchema } from '@/lib/phone';
+import {
+  DEFAULT_PHONE_COUNTRY,
+  PhoneCountrySchema,
+  PhoneInputSchema,
+  refinePhonePair,
+} from '@/lib/phone';
 
 /** "Let the backend pick the team" - an empty string is never a valid id. */
 export const NO_TEAM_OVERRIDE = '';
@@ -30,34 +35,40 @@ export const NO_OWNER_OVERRIDE = '';
  */
 const pickerValue = () => z.union([z.literal(''), z.string().min(1)]).optional();
 
-export const createLeadSchema = z.object({
-  // trim BEFORE min: with `min(1).trim()`, a name of three spaces cleared the
-  // length check and only the payload builder's own trim emptied it, so a
-  // whitespace-only name reached the wire.
-  name: z.string().trim().min(1, 'Name is required').max(120),
-  // VALIDATE-ONLY, NORMALIZE-ON-SUBMIT (2026-11-19). This used to be
-  // `PhoneSchema`, whose TRANSFORM rewrites the value to `91XXXXXXXXXX`.
-  // That is fine for a submit payload but wrong for a live-validated field:
-  // the resolver's transformed output is what RHF would feed back on
-  // revalidation, so the input could rewrite itself from 10 digits to 12
-  // while the user was still typing. `PhoneInputSchema` applies the identical
-  // rule with no transform, and the payload builder calls the same
-  // normalisation `PhoneSchema` used.
-  phone: PhoneInputSchema,
-  // The country the digits were typed in. It travels with the number: the
-  // server parses `phone` in `phoneCountry` (a bare national number is refused
-  // rather than guessed), so the two are always written together.
-  phoneCountry: PhoneCountrySchema.optional(),
-  // Email is optional. The form defaults it to '' - but `.optional()` only
-  // allows undefined/missing, not ''. So accept '' as "not provided".
-  email: z.union([z.literal(''), z.email().trim().toLowerCase().max(254)]).optional(),
-  source: z.enum(LEAD_SOURCES),
-  notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
-  // Only rendered for a MANAGER who leads more than one team.
-  teamId: pickerValue(),
-  // Only rendered for MANAGER/ADMIN/OWNER, and only when staff are assignable.
-  assignedOwnerId: pickerValue(),
-});
+export const createLeadSchema = z
+  .object({
+    // trim BEFORE min: with `min(1).trim()`, a name of three spaces cleared the
+    // length check and only the payload builder's own trim emptied it, so a
+    // whitespace-only name reached the wire.
+    name: z.string().trim().min(1, 'Name is required').max(120),
+    // VALIDATE-ONLY, NORMALIZE-ON-SUBMIT (2026-11-19). This used to be
+    // `PhoneSchema`, whose TRANSFORM rewrites the value to `91XXXXXXXXXX`.
+    // That is fine for a submit payload but wrong for a live-validated field:
+    // the resolver's transformed output is what RHF would feed back on
+    // revalidation, so the input could rewrite itself from 10 digits to 12
+    // while the user was still typing. `PhoneInputSchema` applies the identical
+    // rule with no transform, and the payload builder calls the same
+    // normalisation `PhoneSchema` used.
+    phone: PhoneInputSchema,
+    // The country the digits were typed in. It travels with the number: the
+    // server parses `phone` in `phoneCountry` (a bare national number is refused
+    // rather than guessed), so the two are always written together.
+    phoneCountry: PhoneCountrySchema.optional(),
+    // Email is optional. The form defaults it to '' - but `.optional()` only
+    // allows undefined/missing, not ''. So accept '' as "not provided".
+    email: z.union([z.literal(''), z.email().trim().toLowerCase().max(254)]).optional(),
+    source: z.enum(LEAD_SOURCES),
+    notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
+    // Only rendered for a MANAGER who leads more than one team.
+    teamId: pickerValue(),
+    // Only rendered for MANAGER/ADMIN/OWNER, and only when staff are assignable.
+    assignedOwnerId: pickerValue(),
+  })
+  // The country rule (2026-11-27): a lead cannot be created without a phone it
+  // can be messaged on, so the field is required AND checked against the
+  // country on the trigger. Both used to be the API's job, the second one as a
+  // toast; now they report under the field on the first Save.
+  .superRefine((values, ctx) => refinePhonePair(values, ctx, { required: true }));
 
 export type CreateLeadSchema = z.infer<typeof createLeadSchema>;
 

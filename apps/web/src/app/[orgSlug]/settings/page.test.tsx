@@ -235,6 +235,54 @@ describe('SettingsPage - profile', () => {
     expect(mocks.mutate).not.toHaveBeenCalled();
   });
 
+  it('refuses a number that is not a mobile in the selected country, INLINE', async () => {
+    await mount();
+    const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;
+
+    // Ten digits, so the SHAPE rule is happy - only the country rule can see
+    // that this is not an Indian mobile. Before 2026-11-27 it reached the API
+    // and the refusal came back as a toast.
+    await act(async () => {
+      setNativeValue(phone, '1234567890');
+    });
+    await submitProfileForm(phone);
+
+    const inlineError = document.querySelector('[data-qa="form-error-message-phone"]');
+    expect(inlineError?.textContent ?? '').toContain(
+      'That is not a valid mobile number for India (10 digits)',
+    );
+    expect(phone.getAttribute('aria-invalid')).toBe('true');
+    // The refused submit leaves the cursor on the field that has to be fixed.
+    expect(document.activeElement).toBe(phone);
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+
+  it('shows a SERVER phone refusal inline as well as in the toast', async () => {
+    // Duplicates are the one phone failure only the server can decide. It goes
+    // under the field (with focus) AND into the toast (2026-11-27).
+    mocks.mutate.mockImplementationOnce(
+      (_values: unknown, options: { onError?: (error: Error) => void } | undefined): void => {
+        options?.onError?.(
+          new Error(
+            'A user with this phone number already exists in your organization. Use a different number.',
+          ),
+        );
+      },
+    );
+    await mount();
+    const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;
+
+    await act(async () => {
+      setNativeValue(phone, '9876543210');
+    });
+    await submitProfileForm(phone);
+
+    expect(mocks.mutate).toHaveBeenCalledTimes(1);
+    const inlineError = document.querySelector('[data-qa="form-error-message-phone"]');
+    expect(inlineError?.textContent ?? '').toContain('already exists');
+    expect(document.activeElement).toBe(phone);
+  });
+
   it('paints nothing red before the first submit', async () => {
     await mount();
     const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;

@@ -192,6 +192,39 @@ describe('CreateUserForm team id validation (site-engineer dead button)', () => 
   });
 });
 
+describe('CreateUserForm phone validation (inline, country-aware)', () => {
+  // 2026-11-27: the shape rule alone accepted `1234567890` on +91 and the API
+  // said no, as a toast. The country rule now runs in the same resolver, so the
+  // message lands under the field.
+  it('rejects a number that is not a mobile in the selected country', () => {
+    const parsed = CreateUserFormSchema.safeParse({
+      name: 'Priya Sharma',
+      email: 'priya@example.com',
+      password: 'StrongPass-2026',
+      role: 'ADMIN',
+      phone: '1234567890',
+      phoneCountry: 'IN',
+    });
+    expect(parsed.success).toBe(false);
+    const issue = parsed.error?.issues.find((i) => i.path[0] === 'phone');
+    expect(issue?.message).toBe('That is not a valid mobile number for India (10 digits)');
+  });
+
+  it('accepts a valid mobile and a blank one', () => {
+    for (const phone of ['9876543210', '']) {
+      const parsed = CreateUserFormSchema.safeParse({
+        name: 'Priya Sharma',
+        email: 'priya@example.com',
+        password: 'StrongPass-2026',
+        role: 'ADMIN',
+        phone,
+        phoneCountry: 'IN',
+      });
+      expect(parsed.success).toBe(true);
+    }
+  });
+});
+
 describe('CreateUserForm team-required error renders INLINE (not a toast)', () => {
   // Requested 2026-11-01: "show inline error instead of toast error for not
   // selecting team when site engineer role was selected".

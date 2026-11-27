@@ -29,7 +29,8 @@ import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { useSessionUser } from '@/lib/session';
 import { LEAD_SOURCES, labelFor } from '@/lib/labels';
-import { DEFAULT_PHONE_COUNTRY } from '@/lib/phone';
+import { DEFAULT_PHONE_COUNTRY, phoneFieldErrorFromServer } from '@/lib/phone';
+import { focusField } from '@/lib/form-focus';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
@@ -114,6 +115,13 @@ export default function NewLeadPage() {
         // Server validation messages come through verbatim (400 from
         // the parseBody Zod wrapper in leads.controller.ts:31).
         const msg = error instanceof Error ? error.message : 'Create failed';
+        // A duplicate number is about the phone field: show it there too, with
+        // focus moved to it, and still toast.
+        const phoneMessage = phoneFieldErrorFromServer(error);
+        if (phoneMessage !== null) {
+          form.setError('phone', { message: phoneMessage });
+          focusField('phone');
+        }
         toast.error(msg);
       },
     });
@@ -266,6 +274,12 @@ export default function NewLeadPage() {
       <Form
         form={form}
         onSubmit={onSubmit}
+        // The phone is a custom item the Form cannot focus; nudge it only when
+        // the phone is what failed (2026-11-27). Reads the callback's `errors`;
+        // `form.formState.errors` is not committed yet here.
+        onSubmitError={(errors) => {
+          if (errors.phone) focusField('phone');
+        }}
         submitText={createLead.isPending ? 'Saving...' : 'Create lead'}
         submitButtonProps={{ disabled: createLead.isPending }}
         actionClassName="justify-end"

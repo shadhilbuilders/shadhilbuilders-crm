@@ -33,7 +33,23 @@ import { PasswordInput } from '@/components/shared/PasswordInput';
 import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
 import { authClient } from '@/lib/auth-client';
 import { isPlaceholderEmail } from '@shadhil/api-types';
-import { DEFAULT_PHONE_COUNTRY, countryOfStored, toPhoneInputValue } from '@/lib/phone';
+import {
+  DEFAULT_PHONE_COUNTRY,
+  countryOfStored,
+  refinePhonePair,
+  toPhoneInputValue,
+} from '@/lib/phone';
+import { focusField } from '@/lib/form-focus';
+
+/**
+ * The shared contract plus the country rule (2026-11-27): the prefill may be
+ * edited, and a number that is wrong for the trigger's country has to report
+ * under the field instead of as the generic 400 alert. Runs on the same
+ * parser the server uses.
+ */
+const AcceptInviteFormSchemaWithPhone = AcceptInviteFormSchema.superRefine((values, ctx) =>
+  refinePhonePair(values, ctx),
+);
 
 type Props = {
   token: string;
@@ -47,7 +63,7 @@ export function AcceptInviteForm({ token, preview }: Props) {
   const [failure, setFailure] = useState<SubmitError>(null);
 
   const form = useForm<AcceptInviteFormValues>({
-    resolver: zodResolver(AcceptInviteFormSchema) as never,
+    resolver: zodResolver(AcceptInviteFormSchemaWithPhone) as never,
     defaultValues: {
       name: preview.name,
       // Canonical digits - the field carries the country itself, so nothing is
@@ -94,6 +110,12 @@ export function AcceptInviteForm({ token, preview }: Props) {
 
     if (!response.ok) {
       const body: unknown = await response.json().catch(() => null);
+      // The one refusal this endpoint can pin on a field. Shown inline under
+      // the number, with focus moved there, beside the persistent alert.
+      if (codeOf(body) === 'PHONE_ALREADY_EXISTS') {
+        form.setError('phone', { message: 'That phone number is already in use' });
+        focusField('phone');
+      }
       setFailure(describeFailure(response.status, body));
       setPending(false);
       return;
@@ -234,6 +256,12 @@ export function AcceptInviteForm({ token, preview }: Props) {
         form={form}
         id="accept-invite-form"
         onSubmit={onSubmit}
+        // The phone is a custom item the Form cannot focus; nudge it only when
+        // the phone is what failed (2026-11-27). Reads the callback's `errors`;
+        // `form.formState.errors` is not committed yet here.
+        onSubmitError={(errors) => {
+          if (errors.phone) focusField('phone');
+        }}
         submitText="Create my account"
         hideResetButton
         className="space-y-4"
@@ -255,16 +283,22 @@ export function AcceptInviteForm({ token, preview }: Props) {
 }
 
 /**
+ * The backend's machine-readable code from a failure body, when it sent one.
+ */
+function codeOf(body: unknown): string | undefined {
+  if (body === null || typeof body !== 'object' || !('code' in body)) return undefined;
+  const code = (body as { code?: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
+}
+
+/**
  * Map a non-2xx accept response to something the invitee can act on.
  *
  * The backend's codes are the contract (see INVITE_* in @shadhil/api-types);
  * anything unrecognised still gets a generic message rather than a blank alert.
  */
 function describeFailure(status: number, body: unknown): { title: string; body: string } {
-  const code =
-    body !== null && typeof body === 'object' && 'code' in body
-      ? (body as { code?: unknown }).code
-      : undefined;
+  const code = codeOf(body);
 
   if (code === 'INVITE_EXPIRED') {
     return {

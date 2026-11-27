@@ -82,7 +82,10 @@ import {
   countryOfStored,
   toPhoneInputValue,
   OptionalPhoneInputSchema,
+  phoneFieldErrorFromServer,
+  refinePhonePair,
 } from '@/lib/phone';
+import { focusField } from '@/lib/form-focus';
 
 // ---------------------------------------------------------------------------
 // Profile (name) - the client-side contract, derived from the SAME rule the
@@ -90,28 +93,33 @@ import {
 // the server DTO is the wire contract, and this schema exists so the user gets
 // an inline message instead of a 400 round-trip.
 // ---------------------------------------------------------------------------
-const ProfileFormSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, 'Name is required')
-    .max(120, 'Name must be at most 120 characters'),
-  // Phone is reshaped from the wire DTO (which accepts `string | null`) for the
-  // same reason as the admin dialogs: a text input only produces strings.
-  // '' means CLEAR when submitted - see ProfileSection.onSubmit.
-  //
-  // Validated inline (2026-11-19): this schema used to be a bare
-  // `z.string().optional()`, so a half-typed or garbage number was accepted
-  // here and only rejected by the API - as a toast, far from the field.
-  // `PhoneInputSchema` applies the server's own normalizer without its
-  // transform, so the message lands under the input and the rules cannot
-  // drift from the endpoint's. OPTIONAL: the profile field may be absent
-  // (staff without a number), and blank still means "clear".
-  phone: OptionalPhoneInputSchema,
-  // The country the number was typed in - it travels with the digits so the
-  // server can read a national number instead of guessing one.
-  phoneCountry: PhoneCountrySchema.optional(),
-});
+const ProfileFormSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Name is required')
+      .max(120, 'Name must be at most 120 characters'),
+    // Phone is reshaped from the wire DTO (which accepts `string | null`) for the
+    // same reason as the admin dialogs: a text input only produces strings.
+    // '' means CLEAR when submitted - see ProfileSection.onSubmit.
+    //
+    // Validated inline (2026-11-19): this schema used to be a bare
+    // `z.string().optional()`, so a half-typed or garbage number was accepted
+    // here and only rejected by the API - as a toast, far from the field.
+    // `PhoneInputSchema` applies the server's own normalizer without its
+    // transform, so the message lands under the input and the rules cannot
+    // drift from the endpoint's. OPTIONAL: the profile field may be absent
+    // (staff without a number), and blank still means "clear".
+    phone: OptionalPhoneInputSchema,
+    // The country the number was typed in - it travels with the digits so the
+    // server can read a national number instead of guessing one.
+    phoneCountry: PhoneCountrySchema.optional(),
+  })
+  // Country rule (2026-11-27): `PhoneInputSchema` only checks the SHAPE, so a
+  // number that is wrong for the country on the trigger used to reach the API
+  // and come back as a toast. It now reports under the field.
+  .superRefine((values, ctx) => refinePhonePair(values, ctx));
 type ProfileFormValues = z.infer<typeof ProfileFormSchema>;
 
 export default function SettingsPage() {
@@ -290,7 +298,16 @@ function ProfileSection({
           await onSaved();
         },
         onError: (err: unknown) => {
-          toast.error(err instanceof Error ? err.message : 'Could not save your profile');
+          const message = err instanceof Error ? err.message : 'Could not save your profile';
+          // A phone the SERVER refused (a duplicate) is shown in BOTH places:
+          // under the field, with focus moved there, and in the toast. The
+          // inline copy is the one that survives long enough to act on.
+          const phoneMessage = phoneFieldErrorFromServer(err);
+          if (phoneMessage !== null) {
+            form.setError('phone', { message: phoneMessage });
+            focusField('phone');
+          }
+          toast.error(message);
         },
       },
     );
@@ -405,6 +422,17 @@ function ProfileSection({
         <Form
           form={form}
           onSubmit={onSubmit}
+          // The phone is a custom item, so the Form's own focus cannot reach it
+          // (verified: it does focus every declarative field). Nudge it only
+          // when the phone is what failed.
+          //
+          // The guard reads the callback's `errors` argument, not
+          // `form.formState.errors`: inside this callback the proxied formState
+          // has not been committed yet and reads empty, so the check silently
+          // never fired (found by asserting focus, 2026-11-27).
+          onSubmitError={(errors) => {
+            if (errors.phone) focusField('phone');
+          }}
           fields={fields}
           submitText={updateProfile.isPending ? 'Saving...' : 'Save name'}
           submitButtonProps={{

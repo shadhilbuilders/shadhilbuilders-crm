@@ -26,8 +26,11 @@ import {
   OptionalPhoneInputSchema,
   PhoneCountrySchema,
   countryOfStored,
+  phoneFieldErrorFromServer,
+  refinePhonePair,
   toPhoneInputValue,
 } from '@/lib/phone';
+import { focusField } from '@/lib/form-focus';
 
 /**
  * The smallest shape both dialogs need. `UserRow` (the list) and
@@ -56,13 +59,18 @@ export type UserEditTarget = {
  * only produce a string, so `null` cannot flow through React Hook Form.
  * `onSubmit` maps '' -> null (clear) and omits the key for CUSTOMER.
  */
-const EditUserFormSchema = UpdateUserDtoSchema.omit({ phone: true, phoneCountry: true }).extend({
-  // Shape-only inline (see lib/phone.ts): the country rules run server-side
-  // with `phoneCountry`, which the field sets alongside the digits. OPTIONAL,
-  // because a staff account is valid without a number.
-  phone: OptionalPhoneInputSchema,
-  phoneCountry: PhoneCountrySchema.optional(),
-});
+const EditUserFormSchema = UpdateUserDtoSchema.omit({ phone: true, phoneCountry: true })
+  .extend({
+    // Shape-only inline (see lib/phone.ts): the country rules run server-side
+    // with `phoneCountry`, which the field sets alongside the digits. OPTIONAL,
+    // because a staff account is valid without a number.
+    phone: OptionalPhoneInputSchema,
+    phoneCountry: PhoneCountrySchema.optional(),
+  })
+  // Country rule (2026-11-27): the shape rule accepts any 7-15 digits, so a
+  // number that is wrong for the selected country used to reach the API and
+  // return as a toast. It now reports under the field.
+  .superRefine((values, ctx) => refinePhonePair(values, ctx));
 type EditUserFormValues = z.infer<typeof EditUserFormSchema>;
 
 function EditUserDialog({
@@ -118,6 +126,13 @@ function EditUserDialog({
           onClose();
         },
         onError: (error) => {
+          // A phone the SERVER refused (a duplicate in this org) is shown under
+          // the field with focus moved there, and in the toast as well.
+          const phoneMessage = phoneFieldErrorFromServer(error);
+          if (phoneMessage !== null) {
+            form.setError('phone', { message: phoneMessage });
+            focusField('phone');
+          }
           toast.error(error instanceof Error ? error.message : 'Update failed');
         },
       },
@@ -202,6 +217,12 @@ function EditUserDialog({
         id="edit-user-form"
         form={form}
         onSubmit={onSubmit}
+        // Refused submit -> cursor on the first failing field, in the order the
+        // dialog reads (2026-11-27). Reads the callback's `errors`, since
+        // `form.formState.errors` is not committed yet at this point.
+        onSubmitError={(errors) => {
+          if (errors.phone) focusField('phone');
+        }}
         hideSubmitButton
         hideResetButton
         fields={fields}
