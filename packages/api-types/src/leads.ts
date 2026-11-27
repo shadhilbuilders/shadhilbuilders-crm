@@ -211,6 +211,9 @@ export const LeadDetailSchema = z.object({
   name: z.string(),
   phone: z.string(),
   email: z.string().nullable(),
+  // T-NOTES (2026-11-27): the rep's free text about the buyer. Null means no
+  // note was ever written, which is different from an empty one.
+  notes: z.string().nullable(),
   source: z.string().nullable(),
   status: LeadStateSchema,
   ownerId: z.string().cuid2(),

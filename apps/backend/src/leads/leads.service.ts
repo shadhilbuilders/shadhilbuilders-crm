@@ -135,6 +135,16 @@ export interface LeadRow {
   id: string;
   name: string;
   phone: string;
+  // T-NOTES (2026-11-27): the rep's free text about the buyer. It rides the
+  // row because the inbox's Edit dialog seeds its textarea from the row it was
+  // opened from - a dialog that seeded an empty note would clear a real one on
+  // save.
+  notes: string | null;
+  // Same reason as `notes`: the inbox Edit dialog sends every field it renders,
+  // so a row without the email would clear the lead's email on save. Optional
+  // because only the LIST projection carries it; the transition/reassign
+  // returns have no use for it.
+  email?: string | null;
   status: string;
   source: string | null;
   ownerName: string | null;
@@ -168,6 +178,7 @@ export interface CreatedLead {
   id: string;
   name: string;
   phone: string;
+  notes: string | null;
   phoneE164: string | null;
   state: string;
   source: string | null;
@@ -436,7 +447,7 @@ export class LeadsService {
 
       const [rows, total, overdueCount, newTodayCount] = await Promise.all([
         tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
-            SELECT "id", "name", "phone", "state", "source", "ownerId",
+            SELECT "id", "name", "phone", "notes", "email", "state", "source", "ownerId",
               "createdAt", "updatedAt", "projectId",
               (SELECT "name" FROM "User" u WHERE u."id" = "Lead"."ownerId") AS "ownerName",
               -- T-USER-LEADS: the project label + slug ride the row so the
@@ -478,6 +489,8 @@ export class LeadsService {
           id: r.id as string,
           name: r.name as string,
           phone: r.phone as string,
+          notes: (r.notes as string | null) ?? null,
+          email: (r.email as string | null) ?? null,
           status: r.state as string,
           source: (r.source as string | null) ?? null,
           ownerId: r.ownerId as string,
@@ -542,6 +555,7 @@ export class LeadsService {
           id: true,
           name: true,
           phone: true,
+          notes: true,
           email: true,
           source: true,
           state: true,
@@ -568,6 +582,7 @@ export class LeadsService {
         name: row.name,
         phone: row.phone,
         email: row.email,
+        notes: row.notes,
         source: row.source,
         status: row.state,
         ownerId: row.ownerId,
@@ -703,6 +718,7 @@ export class LeadsService {
       id: created.id,
       name: created.name,
       phone: created.phone,
+      notes: created.notes,
       status: created.state,
       source: created.source,
       ownerId: created.ownerId,
@@ -1100,6 +1116,9 @@ export class LeadsService {
         // numbers that are not Indian.
         ...phoneColumns,
         email: dto.email && dto.email.trim().length > 0 ? dto.email : null,
+        // T-NOTES (2026-11-27): this was accepted by the DTO and dropped on
+        // the floor because the column did not exist.
+        notes: dto.notes && dto.notes.trim().length > 0 ? dto.notes : null,
         source: dto.source,
         // T-LEAD-PROJECT-REQUIRED (2026-09-16): this was `dto.projectId ?? null`,
         // which is exactly how project-less leads were created. The DTO requires
@@ -1122,6 +1141,7 @@ export class LeadsService {
         name: true,
         phone: true,
         phoneE164: true,
+        notes: true,
         state: true,
         source: true,
         ownerId: true,
@@ -1203,6 +1223,7 @@ export class LeadsService {
       id: created.id,
       name: created.name,
       phone: created.phone,
+      notes: created.notes,
       phoneE164: created.phoneE164,
       state: created.state,
       source: created.source,
@@ -1355,6 +1376,7 @@ export class LeadsService {
           coOwnerId: true,
           name: true,
           phone: true,
+          notes: true,
           source: true,
           project: { select: { id: true, slug: true, name: true } },
           createdAt: true,
@@ -1445,6 +1467,7 @@ export class LeadsService {
           id: existing.id,
           name: existing.name,
           phone: existing.phone,
+          notes: existing.notes,
           status: existing.state,
           source: existing.source,
           ownerId: existing.ownerId,
@@ -1489,6 +1512,7 @@ export class LeadsService {
           id: true,
           name: true,
           phone: true,
+          notes: true,
           state: true,
           source: true,
           ownerId: true,
@@ -1542,6 +1566,7 @@ export class LeadsService {
         id: updated.id,
         name: updated.name,
         phone: updated.phone,
+        notes: updated.notes,
         status: updated.state,
         source: updated.source,
         ownerId: updated.ownerId,
@@ -1579,6 +1604,7 @@ export class LeadsService {
           coOwnerId: true,
           name: true,
           phone: true,
+          notes: true,
           source: true,
           project: { select: { id: true, slug: true, name: true } },
           createdAt: true,
@@ -1663,6 +1689,7 @@ export class LeadsService {
           id: true,
           name: true,
           phone: true,
+          notes: true,
           state: true,
           source: true,
           ownerId: true,
@@ -1705,6 +1732,7 @@ export class LeadsService {
         id: updated.id,
         name: updated.name,
         phone: updated.phone,
+        notes: updated.notes,
         status: updated.state,
         source: updated.source,
         ownerId: updated.ownerId,
@@ -1735,6 +1763,7 @@ export class LeadsService {
           name: true,
           email: true,
           phone: true,
+          notes: true,
           state: true,
           source: true,
           updatedAt: true,
@@ -1789,11 +1818,18 @@ export class LeadsService {
           ...(dto.phone !== undefined
             ? leadPhoneColumns(toPhoneInput(dto.phone, dto.phoneCountry))
             : {}),
+          // T-NOTES (2026-11-27): `null` clears the note deliberately (the
+          // operator emptied the box); `undefined` leaves it alone. That is
+          // the same convention email uses one line up.
+          ...(dto.notes !== undefined
+            ? { notes: dto.notes && dto.notes.trim().length > 0 ? dto.notes : null }
+            : {}),
         },
         select: {
           id: true,
           name: true,
           phone: true,
+          notes: true,
           state: true,
           source: true,
           ownerId: true,
@@ -1815,11 +1851,15 @@ export class LeadsService {
             name: existing.name,
             email: existing.email,
             phone: existing.phone,
+            notes: existing.notes,
           },
           after: {
             name: updated.name,
             email: dto.email,
             phone: updated.phone,
+            // The note is the only field here that staff write in free text,
+            // so the audit row keeps both sides of it (T-NOTES).
+            notes: updated.notes,
           },
           reason: `lead.update by ${actor.email} (${actor.role})`,
         },
@@ -1829,6 +1869,7 @@ export class LeadsService {
         id: updated.id,
         name: updated.name,
         phone: updated.phone,
+        notes: updated.notes,
         status: updated.state,
         source: updated.source,
         ownerId: updated.ownerId,
@@ -1914,6 +1955,7 @@ export class LeadsService {
         state: true,
         name: true,
         phone: true,
+        notes: true,
         source: true,
         project: { select: { id: true, slug: true, name: true } },
         createdAt: true,
@@ -1975,6 +2017,7 @@ export class LeadsService {
         id: existing.id,
         name: existing.name,
         phone: existing.phone,
+        notes: existing.notes,
         status: existing.state,
         source: existing.source,
         ownerId: existing.ownerId,
@@ -1994,6 +2037,7 @@ export class LeadsService {
         id: true,
         name: true,
         phone: true,
+        notes: true,
         state: true,
         source: true,
         ownerId: true,
@@ -2055,6 +2099,7 @@ export class LeadsService {
       id: updated.id,
       name: updated.name,
       phone: updated.phone,
+      notes: updated.notes,
       status: updated.state,
       source: updated.source,
       ownerId: updated.ownerId,
@@ -2140,6 +2185,7 @@ export class LeadsService {
           id: true,
           name: true,
           phone: true,
+          notes: true,
           phoneE164: true,
           email: true,
           source: true,

@@ -62,9 +62,26 @@ describe('LeadEditFormBody', () => {
     expect(html).toContain('data-qa="lead-edit-email"');
   });
 
-  it('has no notes field (D15: Lead has no notes column - contract drops it)', () => {
-    const html = renderToStaticMarkup(<LeadEditFormBody lead={lead} onSubmit={noopSubmit} />);
-    expect(html).not.toContain('Notes');
+  it('renders the notes textarea, seeded from the row', () => {
+    // T-NOTES (2026-11-27): the Lead.notes column exists now, so the dialog
+    // carries the field. It is seeded from the row because a dialog that
+    // opened empty would clear a real note on the next save.
+    const withNote = { ...lead, notes: 'Budget: 2 Cr - 5 Cr. Prefers Chennai.' };
+    const html = renderToStaticMarkup(<LeadEditFormBody lead={withNote} onSubmit={noopSubmit} />);
+    expect(html).toContain('data-qa="lead-edit-notes"');
+    expect(html).toContain('Budget: 2 Cr - 5 Cr. Prefers Chennai.');
+    expect(html).toContain('Notes');
+  });
+
+  it('renders the notes textarea empty when the lead has no note', () => {
+    const html = renderToStaticMarkup(
+      <LeadEditFormBody lead={{ ...lead, notes: null }} onSubmit={noopSubmit} />,
+    );
+    // React renders a textarea's initial value as children, not a value
+    // attribute, so an empty note is a textarea with nothing between its tags.
+    // (The placeholder mentions "Budget", so asserting on that word would test
+    // the placeholder instead of the value.)
+    expect(html).toMatch(/<textarea[^>]*data-qa="lead-edit-notes"[^>]*><\/textarea>/);
   });
 
   it('hides the Form action section - Save lives in the Dialog footer', () => {

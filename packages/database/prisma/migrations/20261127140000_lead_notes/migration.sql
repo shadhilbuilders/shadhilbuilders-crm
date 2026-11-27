@@ -1,0 +1,14 @@
+-- T-NOTES: what the rep knows about the buyer, in their own words.
+--
+-- `CreateLeadDto.notes` and `UpdateLeadDto.notes` have been in the API contract
+-- since the beginning, and the service never wrote them: there was no column,
+-- so an import that carried "Budget: 2 Cr - 5 Cr, preferred city Chennai" lost
+-- that context on the way in. This is the column.
+--
+-- Nullable on purpose. Every row written before this migration has no note, and
+-- "we never wrote one" is different from "the note is empty" in the audit trail.
+--
+-- Not backfilled: the dropped text never reached the database, so there is
+-- nothing here to recover. Rows that came from an import can be re-stated once
+-- the edit dialog ships.
+ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS "notes" TEXT;

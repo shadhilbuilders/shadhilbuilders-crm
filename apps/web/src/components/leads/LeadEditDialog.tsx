@@ -2,9 +2,8 @@
 
 // LeadEditDialog - edit a lead from the inbox row actions (autoplan
 // 2026-09-07, plan §2). Editable surface is name / email / phone
-// (D15/D10): notes was dropped because the Lead model has no notes
-// column and the service silently drops the field - shipping a notes
-// input would fake persistence (TODOS.md T-NOTES tracks the column).
+// (D15/D10) plus notes (T-NOTES, 2026-11-27 - the Lead.notes column now
+// exists, so the textarea persists instead of faking it).
 //
 // Two-API convention: props API `<Dialog open onOpenChange header footer>`
 // wraps a separately-exported `LeadEditFormBody` - the named export is
@@ -55,6 +54,7 @@ type LeadEditFormValues = {
   // mount and the picker keeps it set, so submit always has a country.
   phoneCountry?: CountryCode;
   email: string;
+  notes: string;
 };
 
 /**
@@ -73,6 +73,10 @@ const LeadEditFormSchema = z
     phone: PhoneInputSchema,
     phoneCountry: PhoneCountrySchema.optional(),
     email: z.string(),
+    // T-NOTES (2026-11-27): the note is free text but not unbounded - the API
+    // caps it at 2000, so the field must too or a long paste fails after the
+    // round trip.
+    notes: z.string().max(2000, 'Notes must be at most 2000 characters'),
   })
   // The country rule (2026-11-27): the shape rule above accepts
   // `1234567890`, which is not an Indian mobile. That used to reach the API and
@@ -88,6 +92,12 @@ export type LeadEditTarget = {
   phone: string;
   phoneE164?: string | null;
   email?: string | null;
+  /**
+   * T-NOTES: the row's note. The dialog seeds its textarea from this and sends
+   * it back, so a row that arrives without it would clear a real note on save -
+   * the inbox query selects `notes` for exactly that reason.
+   */
+  notes?: string | null;
 };
 
 /**
@@ -135,6 +145,7 @@ export function LeadEditFormBody({
       phone: toPhoneInputValue(lead.phoneE164 ?? lead.phone),
       phoneCountry: countryOfStored(lead.phoneE164 ?? lead.phone) ?? DEFAULT_PHONE_COUNTRY,
       email: lead.email ?? '',
+      notes: lead.notes ?? '',
     },
     // `onSubmit`: the number is checked on Save and cleared as soon as it
     // parses. `name`/`email` behave the same way.
@@ -188,6 +199,18 @@ export function LeadEditFormBody({
         autoComplete: 'email',
       },
     },
+    {
+      type: 'textarea',
+      name: 'notes',
+      label: 'Notes',
+      placeholder: 'Budget, preferred city, anything the buyer told us',
+      description: 'Optional, up to 2000 characters. Shown on the lead detail page.',
+      textareaProps: {
+        rows: 4,
+        maxLength: 2000,
+        'data-qa': 'lead-edit-notes',
+      },
+    },
   ];
 
   return (
@@ -227,6 +250,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
       phone: toPhoneInputValue(lead?.phoneE164 ?? lead?.phone),
       phoneCountry: countryOfStored(lead?.phoneE164 ?? lead?.phone) ?? DEFAULT_PHONE_COUNTRY,
       email: lead?.email ?? '',
+      notes: lead?.notes ?? '',
     },
     mode: 'onSubmit',
   });
@@ -241,6 +265,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
         phone: toPhoneInputValue(lead.phoneE164 ?? lead.phone),
         phoneCountry: countryOfStored(lead.phoneE164 ?? lead.phone) ?? DEFAULT_PHONE_COUNTRY,
         email: lead.email ?? '',
+        notes: lead.notes ?? '',
       });
     }
     // form is stable (useForm); lead identity drives the reset. The
@@ -261,6 +286,9 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
         ...(values.email.trim().length > 0
           ? { email: values.email.trim().toLowerCase() }
           : { email: null }),
+        // Sent always, so clearing the box clears the note. The server treats
+        // '' as null (T-NOTES).
+        notes: values.notes.trim(),
       },
       {
         onSuccess: () => {
@@ -289,7 +317,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
       open={open}
       onOpenChange={onOpenChange}
       contentClassName="sm:max-w-lg"
-      header={{ title: 'Edit lead', description: "Edit the lead's name, phone, and email." }}
+      header={{ title: 'Edit lead', description: "Edit the lead's name, phone, email and notes." }}
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button

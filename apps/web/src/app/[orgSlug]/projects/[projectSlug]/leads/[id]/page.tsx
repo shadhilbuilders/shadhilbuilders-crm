@@ -43,7 +43,8 @@ import { projectHref } from '@/lib/nav';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import type { LeadDetail } from '@shadhil/api-types';
 import { LeadTimeline } from '@/components/leads/lead-timeline';
-import { LuTrash2 } from '@paalstack/react-icons/lu';
+import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
+import { LuPencil, LuTrash2 } from '@paalstack/react-icons/lu';
 
 export default function LeadDetailPage() {
   const params = useParams<{ id: string }>();
@@ -64,6 +65,10 @@ export default function LeadDetailPage() {
   const { user } = useSessionUser();
   const canDelete = user !== null && canDeleteLeads(user.role);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // Edit sits beside Delete (T-NOTES, 2026-11-27): the note is written while
+  // you are reading the lead, and until now the only editor lived in the inbox
+  // row menu.
+  const [editOpen, setEditOpen] = useState(false);
   const deleteLead = useDeleteLead(leadId);
 
   // Pages arrive newest-first; each page is oldest-first. Reverse each page so
@@ -89,18 +94,51 @@ export default function LeadDetailPage() {
           { label: leadName },
         ]}
         action={
-          canDelete && lead !== undefined && lead !== null ? (
-            <Button
-              variant="outline"
-              size="sm"
-              leftIcon={<LuTrash2 className="size-4" />}
-              onClick={() => setDeleteOpen(true)}
-              data-qa="lead-delete-button"
-            >
-              Delete
-            </Button>
+          lead !== undefined && lead !== null ? (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<LuPencil className="size-4" />}
+                onClick={() => setEditOpen(true)}
+                data-qa="lead-edit-button"
+              >
+                Edit
+              </Button>
+              {canDelete ? (
+                <Button
+                  variant="soft"
+                  color="danger"
+                  size="sm"
+                  leftIcon={<LuTrash2 className="size-4" />}
+                  onClick={() => setDeleteOpen(true)}
+                  data-qa="lead-delete-button"
+                >
+                  Delete
+                </Button>
+              ) : null}
+            </div>
           ) : null
         }
+      />
+
+      <LeadEditDialog
+        lead={
+          lead !== undefined && lead !== null
+            ? {
+                id: lead.id,
+                name: lead.name,
+                phone: lead.phone,
+                email: lead.email,
+                notes: lead.notes,
+              }
+            : null
+        }
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={() => {
+          void leadQuery.refetch();
+        }}
       />
 
       <AlertDialog
@@ -232,6 +270,17 @@ function LeadInfoCard({ lead }: { lead: LeadDetail }) {
             <dd className="text-sm">{formatDateTime(lead.updatedAt)}</dd>
           </div>
         </dl>
+        {/* T-NOTES: what the rep knows in their own words - budget, preferred
+            city, whatever came off the brochure. Kept out of the definition
+            list because it is prose, not a one-line fact. */}
+        {typeof lead.notes === 'string' && lead.notes.trim().length > 0 ? (
+          <div className="border-t pt-3" data-qa="lead-notes">
+            <div className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+              Notes
+            </div>
+            <p className="mt-1 text-sm whitespace-pre-wrap">{lead.notes}</p>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

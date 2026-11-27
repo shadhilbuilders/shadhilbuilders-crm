@@ -1039,6 +1039,16 @@ model Lead {
   /// nothing (Postgres treats NULLs as distinct).
   phoneE164           String
   email               String?
+  // T-NOTES (2026-11-27): free-text the rep keeps about the buyer - budget,
+  // preferred city, whatever came off a brochure or an exhibition. Until now
+  // `CreateLeadDto.notes` was accepted and silently dropped (the column did
+  // not exist), which made an import that carried context lose it.
+  //
+  // Separate from Activity: Activity is the append-only timeline (who did
+  // what, when). This is the current state of what we know, editable in
+  // place, and shown back in the edit dialog - the same split as
+  // Consent.note.
+  notes               String?       @db.Text
   source              String?
   state               LeadState     @default(NEW)
   ownerId             String

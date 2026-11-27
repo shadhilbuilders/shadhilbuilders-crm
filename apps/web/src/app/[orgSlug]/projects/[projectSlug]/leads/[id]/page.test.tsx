@@ -45,6 +45,9 @@ vi.mock('@/hooks/queries/crm', () => ({
   useDecideLeadFact: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   // 2026-11-23: deletion is available from this page for admins/owners.
   useDeleteLead: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  // T-NOTES (2026-11-27): the page now mounts LeadEditDialog (Edit beside
+  // Delete), which calls useUpdateLead. The dialog is not under test here.
+  useUpdateLead: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   // 2026-11-23: the page now renders LeadMarketingConsent, which owns the
   // consent ledger write. Not under test here; it needs a hook that resolves so
   // this suite keeps asserting the page's own state matrix.
@@ -90,6 +93,7 @@ const FULL_LEAD = {
   name: 'Priya Sharma',
   phone: '+919876543210',
   email: 'priya@example.com',
+  notes: null,
   source: 'WEBSITE',
   status: 'NEW',
   ownerId: 'u-2',
@@ -178,8 +182,8 @@ describe('LeadDetailPage - T-D3 state matrix', () => {
 // only in the list. Same role gate as the list: ADMIN/OWNER only, and the server
 // refuses everyone else regardless of what the UI renders.
 describe('LeadDetailPage - delete action', () => {
-  const renderWithRole = (role: string) => {
-    mockedUseLead.mockReturnValue({ data: FULL_LEAD, isLoading: false, error: null } as never);
+  const renderWithRole = (role: string, lead: Record<string, unknown> = FULL_LEAD) => {
+    mockedUseLead.mockReturnValue({ data: lead, isLoading: false, error: null } as never);
     // Infinite query shape (pages), not a flat array.
     mockedUseLeadActivities.mockReturnValue({
       data: { pages: [{ items: [], nextCursor: null }] },
@@ -216,5 +220,24 @@ describe('LeadDetailPage - delete action', () => {
   it('hides it from a SALES_EXEC and a MANAGER', () => {
     expect(renderWithRole('SALES_EXEC')).not.toContain('data-qa="lead-delete-button"');
     expect(renderWithRole('MANAGER')).not.toContain('data-qa="lead-delete-button"');
+  });
+
+  // T-NOTES (2026-11-27): Edit sits beside Delete, and unlike Delete it is not
+  // role-gated - any staff member who can read the lead writes the note, and the
+  // server's own lane check decides whether the edit is allowed.
+  it('offers Edit to every role, next to Delete', () => {
+    for (const role of ['ADMIN', 'OWNER', 'MANAGER', 'SALES_EXEC', 'TELECALLER']) {
+      const html = renderWithRole(role);
+      expect(html).toContain('data-qa="lead-edit-button"');
+    }
+  });
+
+  it('renders the note when the lead has one', () => {
+    const html = renderWithRole('ADMIN', {
+      ...FULL_LEAD,
+      notes: 'Budget: 2 Cr - 5 Cr. Prefers Chennai.',
+    });
+    expect(html).toContain('data-qa="lead-notes"');
+    expect(html).toContain('Budget: 2 Cr - 5 Cr. Prefers Chennai.');
   });
 });

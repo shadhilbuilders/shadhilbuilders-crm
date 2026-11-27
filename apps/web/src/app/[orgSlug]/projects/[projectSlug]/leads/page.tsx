@@ -77,6 +77,11 @@ type LeadRow = {
   id: string;
   name: string;
   phone?: string;
+  // T-NOTES (2026-11-27): seeded into the Edit dialog from the row, because the
+  // dialog sends every field it renders - a row without them would clear the
+  // lead's note and email on Save.
+  notes?: string | null;
+  email?: string | null;
   status?: string;
   source?: string;
   ownerName?: string;
@@ -94,6 +99,11 @@ const leadRowSchema = z.object({
   id: z.string(),
   name: z.string(),
   phone: z.string().optional(),
+  // T-NOTES: DataTableRowActions parses the row with this schema before calling
+  // onEdit, and zod strips unknown keys - leaving these out would hand the edit
+  // dialog a row with no note and no email, and Save would clear both.
+  notes: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
   status: z.string().optional(),
   source: z.string().optional(),
   ownerName: z.string().optional(),
@@ -431,7 +441,11 @@ function LeadInboxPageInner() {
                 id: editTarget.id,
                 name: editTarget.name,
                 phone: editTarget.phone ?? '',
-                email: null,
+                // T-NOTES (2026-11-27): the dialog sends every field it renders,
+                // so the row must carry them. Passing null here (the old shape)
+                // meant Save from the inbox wiped the lead's email.
+                email: editTarget.email,
+                notes: editTarget.notes,
               }
         }
         open={editTarget !== null}
