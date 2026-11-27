@@ -44,11 +44,12 @@ const FORM_ID = 'lead-consent-form';
  * One radio row.
  *
  * The height class goes on the LABEL and never on the control. `option.className`
- * is applied to the RadioGroupItem itself, which is a size-4 circle, so a
- * `min-h-11` there stretches the radio into a 16x44 sliver with the text
- * floating beside it - which is exactly how this dialog looked when checked in
- * the browser on 2026-11-27. The label is the tallest child, so it is what gives
- * the row its touch target while the circle stays a circle.
+ * is applied to the RadioGroupItem itself, which is a size-4 circle, so a height
+ * class there stretches the radio into a sliver with the text floating beside it.
+ *
+ * min-h-8 (32px), not min-h-11: this is a six-row desktop dialog, and 44px rows
+ * plus the group gaps pushed it past a 674px viewport and made it scroll with
+ * almost no content in it.
  */
 function radioRow<T extends string>(
   value: T,
@@ -57,7 +58,7 @@ function radioRow<T extends string>(
   return {
     value,
     label,
-    labelContent: <span className="flex min-h-11 items-center">{label}</span>,
+    labelContent: <span className="flex min-h-8 items-center">{label}</span>,
   };
 }
 
@@ -124,7 +125,7 @@ export function LeadConsentForm({
   return (
     <form
       id={FORM_ID}
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-3"
       onSubmit={(event) => {
         event.preventDefault();
         const trimmed = note.trim();
@@ -157,7 +158,7 @@ export function LeadConsentForm({
         <Label htmlFor="lead-consent-note">What they said (optional)</Label>
         <Textarea
           id="lead-consent-note"
-          rows={3}
+          rows={2}
           maxLength={500}
           value={note}
           onValueChange={setNote}
@@ -207,7 +208,7 @@ export function LeadMarketingConsent({ lead }: { lead: LeadDetail }) {
         onOpenChange={setOpen}
         // A laptop window at 700px would otherwise clip the footer with no way
         // to scroll to it, because the dialog has no height cap of its own.
-        contentClassName="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md"
+        contentClassName="max-h-[calc(100dvh-2rem)] gap-3 overflow-y-auto sm:max-w-md"
         header={{
           title: 'Site update messages',
           description:
