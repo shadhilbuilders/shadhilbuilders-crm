@@ -65,14 +65,14 @@ export function PortalMilestones({ milestones, now }: PortalMilestonesProps) {
       <div className="portal-rule-b flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 pb-2.5">
         <h2
           id="portal-milestones-title"
-          className="portal-display flex items-center gap-2 text-[1.375rem] leading-none text-[var(--portal-navy)]"
+          className="portal-display flex items-center gap-2 text-[1.375rem] leading-none text-(--portal-navy)"
         >
           <LuFlag className="size-4 shrink-0" aria-hidden="true" />
           Milestones
         </h2>
         <p
           data-qa="portal-milestones-count"
-          className="portal-figure text-[0.6875rem] tracking-[0.1em] text-[var(--portal-ink-2)] uppercase"
+          className="portal-figure text-[0.6875rem] tracking-widest text-(--portal-ink-2) uppercase"
         >
           {done} of {entries.length} reached
         </p>
@@ -91,7 +91,7 @@ export function PortalMilestones({ milestones, now }: PortalMilestonesProps) {
               data-qa="portal-milestone"
               data-state={state}
               aria-current={state === 'next' ? 'step' : undefined}
-              className="portal-hairline-b grid grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-3 py-3 last:border-b-0 sm:grid-cols-[1.25rem_minmax(0,1fr)_auto]"
+              className="portal-hairline-b grid grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-3 py-3 last:border-b-0"
             >
               <Marker state={state} />
 
@@ -100,8 +100,8 @@ export function PortalMilestones({ milestones, now }: PortalMilestonesProps) {
                   data-qa="portal-milestone-name"
                   className={
                     state === 'upcoming'
-                      ? 'text-[0.9375rem] leading-snug text-[var(--portal-ink-2)]'
-                      : 'text-[0.9375rem] leading-snug text-[var(--portal-navy)]'
+                      ? 'text-[0.9375rem] leading-snug text-(--portal-ink-2)'
+                      : 'text-[0.9375rem] leading-snug text-(--portal-navy)'
                   }
                 >
                   {milestone.name}
@@ -112,23 +112,11 @@ export function PortalMilestones({ milestones, now }: PortalMilestonesProps) {
                     Source casing is sentence case; the class uppercases it. */}
                 <p
                   data-qa="portal-milestone-meta"
-                  className="portal-figure mt-0.5 text-[0.6875rem] tracking-[0.1em] text-[var(--portal-ink-2)] uppercase"
+                  className="portal-figure mt-0.5 text-[0.6875rem] tracking-widest text-(--portal-ink-2) uppercase"
                 >
                   {metaCopy(state, milestone, overdue)}
                 </p>
               </div>
-
-              {/* Trailing date column: the same figure the row's meta repeats
-                  would be noise, so only unfinished rows with a target get a
-                  right-aligned date at `sm` and up. */}
-              {state === 'next' && milestone.targetDate !== null ? (
-                <time
-                  dateTime={milestone.targetDate}
-                  className="portal-figure hidden text-[0.8125rem] text-[var(--portal-navy)] sm:block"
-                >
-                  {formatDay(milestone.targetDate)}
-                </time>
-              ) : null}
             </li>
           );
         })}

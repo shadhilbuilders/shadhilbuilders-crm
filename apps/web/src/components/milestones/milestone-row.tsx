@@ -19,10 +19,12 @@
 //     with dead space underneath. The height now goes through `inputClassName`,
 //     which reaches the element, so the field and the controls share a centre.
 //
-// Mobile-first: 44px controls, one card per milestone, dates stack under `sm`.
+// Mobile-first: one card per milestone, dates stack when they run out of room.
+// Every control is 36px, taken from the library's own sizes (Button `icon-lg`,
+// plus `min-h-9` on the Input, which has no size prop).
 import { useId } from 'react';
 
-import { IconButton, Input } from '@paalstack/react-ui';
+import { Button, Input } from '@paalstack/react-ui';
 import { LuArrowDown, LuArrowUp, LuTrash2 } from '@paalstack/react-icons/lu';
 
 import type { MilestoneDraft } from './milestone-draft';
@@ -64,13 +66,13 @@ export function MilestoneRow({
       <div className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-2">
         <span
           aria-hidden="true"
-          className="text-muted-foreground flex h-11 items-center text-sm tabular-nums"
+          className="text-muted-foreground flex h-9 items-center text-sm tabular-nums"
         >
           {position}
         </span>
 
         <div className="min-w-0 space-y-2" data-qa="milestone-fields">
-          {/* MOBILE (2026-11-11). Measured at 320px, three inline 44px controls
+          {/* MOBILE (2026-11-11). Measured at 320px, three inline controls
               squeezed the name field to 76px - about five characters, on the one
               device where typing a milestone name is hardest.
               The fix is FLUID, not a `sm:` breakpoint: this app overrides
@@ -79,7 +81,7 @@ export function MilestoneRow({
               wrapped controls. Instead the actions are `shrink-0` and the name
               field refuses to go below 12rem, so `flex-wrap` keeps them inline
               whenever both fit and drops the controls to their own line when
-              they do not. The controls stay 44px at every width. */}
+              they do not. The controls stay 36px at every width. */}
           <div className="flex flex-wrap items-center gap-2">
             <Input
               id={nameId}
@@ -95,30 +97,33 @@ export function MilestoneRow({
               data-qa="milestone-actions"
               className="ml-auto flex shrink-0 items-center justify-end gap-2"
             >
-              <IconButton
-                icon={<LuArrowUp className="size-4" />}
-                aria-label={`Move milestone ${position} up`}
+              <Button
                 variant="ghost"
-                className="size-11 shrink-0"
+                size="icon-lg"
+                aria-label={`Move milestone ${position} up`}
                 disabled={isFirst}
                 onClick={onMoveUp}
-              />
-              <IconButton
-                icon={<LuArrowDown className="size-4" />}
-                aria-label={`Move milestone ${position} down`}
+              >
+                <LuArrowUp className="size-4" />
+              </Button>
+              <Button
                 variant="ghost"
-                className="size-11 shrink-0"
+                size="icon-lg"
+                aria-label={`Move milestone ${position} down`}
                 disabled={isLast}
                 onClick={onMoveDown}
-              />
-              <IconButton
-                icon={<LuTrash2 className="size-4" />}
-                aria-label={`Remove milestone ${position}`}
+              >
+                <LuArrowDown className="size-4" />
+              </Button>
+              <Button
                 variant="ghost"
+                size="icon-lg"
                 color="danger"
-                className="size-11 shrink-0"
+                aria-label={`Remove milestone ${position}`}
                 onClick={onRemove}
-              />
+              >
+                <LuTrash2 className="size-4" />
+              </Button>
             </div>
           </div>
 

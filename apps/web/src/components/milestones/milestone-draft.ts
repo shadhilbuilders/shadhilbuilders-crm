@@ -104,3 +104,43 @@ export function toPayload(list: readonly MilestoneDraft[]): ReplaceMilestonesDto
     })),
   };
 }
+
+/**
+ * True when the editor still holds exactly what `rows` seeded it with: same
+ * length, same order, same fields. Client keys are ignored because they are
+ * not user input. Used to decide whether a refetch may replace the drafts.
+ */
+export function isUntouched(
+  drafts: readonly MilestoneDraft[],
+  rows: readonly ProjectMilestoneRow[],
+): boolean {
+  const seeded = draftsFromRows(rows);
+  if (drafts.length !== seeded.length) return false;
+  return drafts.every((d, i) => {
+    const s = seeded[i] as MilestoneDraft;
+    return d.name === s.name && d.targetDay === s.targetDay && d.completedDay === s.completedDay;
+  });
+}
+
+export type EmptyConfirmCopy = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+};
+
+/** Copy for the "save an empty list" confirmation, singular for one milestone. */
+export function emptyConfirmCopy(count: number): EmptyConfirmCopy {
+  if (count === 1) {
+    return {
+      title: 'Delete the milestone?',
+      description:
+        'This removes the milestone from this project, and buyers stop seeing any checkpoint on their portal.',
+      confirmLabel: 'Delete it',
+    };
+  }
+  return {
+    title: 'Delete all milestones?',
+    description: `This removes all ${count} milestones from this project, and buyers stop seeing any checkpoints on their portal.`,
+    confirmLabel: 'Delete them',
+  };
+}

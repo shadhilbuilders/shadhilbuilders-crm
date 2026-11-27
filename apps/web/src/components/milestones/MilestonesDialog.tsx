@@ -3,17 +3,19 @@
 // MilestonesDialog (portal redesign, 2026-11-09): ADMIN/OWNER edits the
 // buyer-visible checkpoints of a project. The list is saved as a whole; the
 // order here is the order the buyer reads. Mobile-first: one card per
-// milestone, 44px controls, the dialog body scrolls under a pinned footer.
+// milestone, 36px controls, the dialog body scrolls under a pinned footer.
 import { useEffect, useRef, useState } from 'react';
 
 import { AlertDialog, Button, Dialog, toast } from '@paalstack/react-ui';
 import { LuPlus } from '@paalstack/react-icons/lu';
-import { MAX_MILESTONES_PER_PROJECT } from '@shadhil/api-types';
+import { MAX_MILESTONES_PER_PROJECT, type ProjectMilestoneRow } from '@shadhil/api-types';
 
 import { useProjectMilestones, useReplaceMilestones } from '@/hooks/queries/milestones';
 
 import {
   draftsFromRows,
+  emptyConfirmCopy,
+  isUntouched,
   moveDraft,
   newDraft,
   toPayload,
@@ -35,9 +37,31 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
   const [drafts, setDrafts] = useState<MilestoneDraft[]>([]);
   const counter = useRef(0);
 
-  // Seed from the server each time the dialog opens or fresh data lands.
+  // The rows the editor was last seeded from, and the live drafts, held in refs
+  // so the seeding effect can compare them without re-running on every keystroke.
+  const seededFrom = useRef<readonly ProjectMilestoneRow[] | null>(null);
+  const draftsRef = useRef<MilestoneDraft[]>(drafts);
+  // Synced in an effect, not during render. Declared BEFORE the seeding effect so
+  // the seeding effect always reads the committed drafts.
   useEffect(() => {
-    if (open && query.data !== undefined) setDrafts(draftsFromRows(query.data));
+    draftsRef.current = drafts;
+  }, [drafts]);
+
+  // Seed from the server when the dialog opens. A refetch while open refreshes
+  // the list only if the admin has not touched it; once they have typed, their
+  // edits win (saving still replaces the server list, as before).
+  useEffect(() => {
+    if (!open) {
+      seededFrom.current = null;
+      return;
+    }
+    const rows = query.data;
+    if (rows === undefined) return;
+    const prior = seededFrom.current;
+    if (prior === null || isUntouched(draftsRef.current, prior)) {
+      seededFrom.current = rows;
+      setDrafts(draftsFromRows(rows));
+    }
   }, [open, query.data]);
 
   const update = (key: string, patch: Partial<MilestoneDraft>) =>
@@ -49,6 +73,7 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
 
   // What the buyer currently sees, as opposed to what the editor holds.
   const savedCount = query.data?.length ?? 0;
+  const emptyCopy = emptyConfirmCopy(savedCount);
 
   function persist() {
     replace.mutate(toPayload(drafts), {
@@ -165,7 +190,7 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
                 Add milestone
               </Button>
               {problem !== null && drafts.length > 0 ? (
-                <p className="text-danger text-sm" role="alert">
+                <p className="text-destructive text-sm" role="alert">
                   {problem}
                 </p>
               ) : null}
@@ -183,11 +208,11 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
         open={confirmEmpty}
         onOpenChange={setConfirmEmpty}
         header={{
-          title: 'Delete every milestone?',
-          description: `This removes all ${savedCount} milestones from this project, and buyers stop seeing any checkpoints on their portal.`,
+          title: emptyCopy.title,
+          description: emptyCopy.description,
         }}
         cancelButtonText="Keep editing"
-        confirmButtonText="Delete them"
+        confirmButtonText={emptyCopy.confirmLabel}
         confirmButtonProps={{ 'data-qa': 'milestones-confirm-empty' }}
         onConfirm={() => {
           setConfirmEmpty(false);

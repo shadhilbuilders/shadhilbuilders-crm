@@ -3,7 +3,8 @@
 // protects= every field in the row starts on ONE left rail (the numeral owns its
 //           own gutter column, it does not indent the name field), and the
 //           36px field height (`min-h-9`) reaches the <input> element rather
-//           than its wrapper, while the icon buttons stay at 44px;
+//           than its wrapper, and the icon buttons are 36px via the library's
+//           own `icon-lg` size (`size-9`), with no size class passed in;
 // fails_when= the name field is indented 28px from the dates below it, or
 //           `min-h-9` is passed through `className` and lands on the wrapper;
 // no_claim= static markup, not a visual diff.
@@ -56,9 +57,13 @@ describe('MilestoneRow', () => {
   it('sizes the field itself, not its wrapper', () => {
     const html = render();
     // `inputClassName` reaches the <input>; `className` would hit the wrapper.
-    expect(html).not.toContain('className="min-h-9"');
-    // Every field in the row is 36px: name + both dates.
-    expect(html.match(/min-h-9/g)?.length).toBeGreaterThanOrEqual(3);
+    // renderToStaticMarkup emits `class=`, so assert on the tags themselves.
+    const inputs = html.match(/<input[^>]*>/g) ?? [];
+    expect(inputs.length).toBe(3);
+    for (const tag of inputs) expect(tag).toContain('min-h-9');
+    // The wrapper divs must not carry it.
+    const divs = html.match(/<div[^>]*>/g) ?? [];
+    for (const tag of divs) expect(tag).not.toContain('min-h-9');
   });
 
   it('numbers the row from one and labels its controls for a screen reader', () => {
@@ -99,7 +104,7 @@ describe('MilestoneRow', () => {
     expect(html).toContain(`id="${targetFor}-target"`);
   });
 
-  // Regression (2026-11-11): measured at 320px, three inline 44px icon buttons
+  // Regression (2026-11-11): measured at 320px, three inline icon buttons
   // squeezed the name field to 76px - about five characters, on the device where
   // typing a milestone name is hardest.
   //
@@ -109,7 +114,7 @@ describe('MilestoneRow', () => {
   // controls, so the row wraps on real available space instead:
   //   - the name field asks for 16rem of basis but may shrink (`grow` +
   //     `min-w-0`, NOT `min-w-16rem` which would overflow at 320px),
-  //   - the actions are `shrink-0`, so they are never squeezed below 44px.
+  //   - the actions are `shrink-0`, so they are never squeezed below 36px.
   it('keeps the name field usable on phones without squeezing the controls', () => {
     const html = render();
     const nameTag = html.match(/<input[^>]*aria-label="Milestone 1 name"[^>]*>/)?.[0] ?? '';
@@ -128,10 +133,15 @@ describe('MilestoneRow', () => {
     expect(html).not.toContain('min-w-[16rem]');
   });
 
-  it('keeps every control at the 44px touch target on the wrapping line', () => {
-    const html = render();
-    // Three icon buttons, all size-11, none squeezed by the wrap.
-    expect(html.match(/size-11/g)?.length).toBeGreaterThanOrEqual(3);
+  it('sizes the three icon buttons at 36px from the library, with no override', () => {
+    const html = render({ isFirst: false, isLast: false });
+    expect(html).not.toContain('size-11');
+    expect(html).not.toContain('h-11');
+    for (const label of ['Move milestone 1 up', 'Move milestone 1 down', 'Remove milestone 1']) {
+      const tag = html.match(new RegExp(`<button[^>]*aria-label="${label}"[^>]*>`))?.[0] ?? '';
+      expect(tag, label).toContain('size-9');
+      expect(tag, label).not.toContain('size-11');
+    }
   });
 
   // The date pair must also be fluid, not `sm:grid-cols-2` (which would only

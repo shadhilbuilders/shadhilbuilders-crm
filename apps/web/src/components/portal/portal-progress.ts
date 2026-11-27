@@ -69,16 +69,6 @@ export type MilestoneLike = {
   completedAt: string | null;
 };
 
-export function nextMilestone<M extends MilestoneLike>(
-  milestones: readonly M[],
-): { next: M | null; done: number; total: number } {
-  return {
-    next: milestones.find((m) => m.completedAt === null) ?? null,
-    done: milestones.filter((m) => m.completedAt !== null).length,
-    total: milestones.length,
-  };
-}
-
 /** Whole IST days from `now` to the given day; negative once it has passed. */
 export function daysUntilDay(iso: string, now: number): number {
   return istDayNumber(new Date(iso).getTime()) - istDayNumber(now);
@@ -99,10 +89,10 @@ export type MilestoneEntry<M extends MilestoneLike> = {
  * date: an admin who drags "Handover" above "Fit-out" means it, and re-sorting
  * by date would silently overrule them.
  *
- * Everything before `next` is reached and everything after is upcoming, even if
- * the data is odd (a reached row sitting after an unfinished one). Marking by
- * position keeps the ladder monotonic: a buyer never sees "upcoming" above
- * "next" with no explanation.
+ * A row with a recorded completion date is always `reached`, wherever it sits:
+ * the date is a fact the admin entered, so a reached row after `next` stays
+ * reached. Only unfinished rows are split, the first being `next` and the rest
+ * `upcoming`. The "N of M reached" count uses the same rule.
  */
 export function milestoneEntries<M extends MilestoneLike>(
   milestones: readonly M[],

@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   draftsFromRows,
+  emptyConfirmCopy,
+  isUntouched,
   moveDraft,
   newDraft,
   toPayload,
@@ -113,5 +115,60 @@ describe('milestone drafts', () => {
     ];
     expect(warnDrafts(late)).toBeNull();
     expect(warnDrafts([newDraft('a')])).toBeNull();
+  });
+});
+
+describe('emptyConfirmCopy', () => {
+  it('reads singular for one milestone', () => {
+    const c = emptyConfirmCopy(1);
+    expect(c.title).toBe('Delete the milestone?');
+    expect(c.confirmLabel).toBe('Delete it');
+    expect(c.description).not.toMatch(/all 1|milestones/);
+    expect(c.description).toContain('milestone');
+  });
+
+  it('reads plural for several milestones and names the count', () => {
+    const c = emptyConfirmCopy(2);
+    expect(c.title).toBe('Delete all milestones?');
+    expect(c.confirmLabel).toBe('Delete them');
+    expect(c.description).toContain('all 2 milestones');
+  });
+});
+
+describe('isUntouched', () => {
+  it('is true for drafts seeded straight from the rows', () => {
+    expect(isUntouched(draftsFromRows(rows), rows)).toBe(true);
+    expect(isUntouched([], [])).toBe(true);
+  });
+
+  it('is false after an edit, add, remove or reorder', () => {
+    const base = draftsFromRows(rows);
+    expect(
+      isUntouched(
+        base.map((d, i) => (i === 0 ? { ...d, name: 'Slab' } : d)),
+        rows,
+      ),
+    ).toBe(false);
+    expect(isUntouched([...base, newDraft('n')], rows)).toBe(false);
+    expect(isUntouched(base.slice(1), rows)).toBe(false);
+    expect(isUntouched(moveDraft(base, 0, 1), rows)).toBe(false);
+  });
+
+  it('is true again when an edit is reverted, and ignores client keys', () => {
+    const base = draftsFromRows(rows);
+    const edited = base.map((d, i) => (i === 0 ? { ...d, completedDay: '' } : d));
+    expect(isUntouched(edited, rows)).toBe(false);
+    expect(
+      isUntouched(
+        edited.map((d, i) => (i === 0 ? { ...d, completedDay: '2026-11-10' } : d)),
+        rows,
+      ),
+    ).toBe(true);
+    expect(
+      isUntouched(
+        base.map((d) => ({ ...d, key: `x-${d.key}` })),
+        rows,
+      ),
+    ).toBe(true);
   });
 });

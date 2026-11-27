@@ -192,13 +192,13 @@ describe('PortalMilestones', () => {
     expect(html).not.toContain('overflow-hidden');
   });
 
-  // The trailing date duplicate is a desktop affordance; on a phone it would
-  // repeat the line directly above it on a 320px-wide row.
-  it('hides the duplicate trailing date below sm', () => {
+  // One date per row: the meta line already says "Next · Target <date>", so a
+  // right-hand duplicate column would repeat it.
+  it('renders each date once, with no trailing date column at any width', () => {
     const html = renderToStaticMarkup(<PortalMilestones milestones={three} now={NOW} />);
-    const timeTag = html.match(/<time[^>]*>/)?.[0] ?? '';
-    expect(timeTag).toContain('hidden');
-    expect(timeTag).toContain('sm:block');
+    expect(html).not.toContain('<time');
+    expect(html).not.toContain('_auto]');
+    expect(html).toMatch(/Next · Target/i);
   });
 });
 

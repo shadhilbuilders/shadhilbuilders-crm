@@ -13,7 +13,6 @@ import {
   groupByPhase,
   handoverSummary,
   milestoneEntries,
-  nextMilestone,
   stagePosition,
   updatedLabel,
 } from './portal-progress';
@@ -70,25 +69,6 @@ describe('groupByPhase', () => {
   });
 });
 
-describe('nextMilestone', () => {
-  const m = (id: string, completedAt: string | null) => ({
-    id,
-    name: id,
-    targetDate: null,
-    completedAt,
-  });
-  it('returns the first unfinished milestone and the done count', () => {
-    const r = nextMilestone([m('a', '2026-10-01T00:00:00Z'), m('b', null), m('c', null)]);
-    expect(r.next?.id).toBe('b');
-    expect(r.done).toBe(1);
-    expect(r.total).toBe(3);
-  });
-  it('has no next when all are done or there are none', () => {
-    expect(nextMilestone([m('a', '2026-10-01T00:00:00Z')]).next).toBeNull();
-    expect(nextMilestone([]).next).toBeNull();
-  });
-});
-
 describe('handoverSummary', () => {
   const now = new Date('2026-11-09T10:00:00Z').getTime();
   it('formats the date and a coarse countdown', () => {
@@ -127,7 +107,7 @@ describe('milestoneEntries', () => {
     completedAt,
   });
 
-  it('marks the first unfinished row "next" and everything after it upcoming', () => {
+  it('marks the first unfinished row "next" and the other unfinished rows upcoming', () => {
     const states = milestoneEntries([
       m('a', '2026-10-01T00:00:00Z'),
       m('b', null),
@@ -136,6 +116,19 @@ describe('milestoneEntries', () => {
     expect(states).toEqual([
       ['a', 'reached'],
       ['b', 'next'],
+      ['c', 'upcoming'],
+    ]);
+  });
+
+  it('keeps a reached row reached even when it sits after next', () => {
+    const states = milestoneEntries([
+      m('a', null),
+      m('b', '2026-10-01T00:00:00Z'),
+      m('c', null),
+    ]).map((e) => [e.milestone.id, e.state]);
+    expect(states).toEqual([
+      ['a', 'next'],
+      ['b', 'reached'],
       ['c', 'upcoming'],
     ]);
   });

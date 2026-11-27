@@ -197,6 +197,46 @@ unit to hang a delivery on.
 touch their own project-scoped rows. Convert any that start counting org-wide rows, or that drive a
 cron, with `createTestTenant` + `holdCronLockForFile`.
 
+## UI / control sizing
+
+### 44px touch targets outside the milestones editor — after the 36px rule
+
+**What:** The milestones editor moved its controls to 36px on the owner's instruction
+(`Button size="icon-lg"` is exactly 36px, inputs keep one `inputClassName="min-h-9"`).
+Elsewhere in `apps/web/src`, `size-11` / `h-11` / `min-h-11` still size controls at 44px.
+
+**Measured 2026-11-27**, `grep -rlE '(size-11|h-11|min-h-11|sm:size-11)' apps/web/src`:
+
+    49 files total
+    11 are tests
+    38 source files, 1 of them (milestones/milestone-row.tsx) fixed by the milestones plan
+    37 outside that plan
+     4 of those 37 already gate the enlargement behind `pointer-fine:`
+    33 are ungated
+
+The four already-gated files (`shared/PhoneNumber.tsx`, `admin/users/components/CopyableLink.tsx`,
+`admin/users/components/InviteRowActions.tsx`, `app-shell.tsx`) are the pattern to copy, not a
+backlog item. `PhoneNumber.tsx:83-91` records why it works that way: `pointer-fine:` says "finger
+device gets the big target" directly, where width queries get it wrong (a landscape phone is
+568-844px wide and still a finger device; so is a touch tablet), and a negative margin keeps the
+enlarged hit area from moving the row.
+
+**Why this is not a simple size change:** not every match is a touch target. Some are avatars,
+skeletons (`login/loading.tsx:36-39` on a `Skeleton`) and flex spacers. The 36px call came from
+a dense admin table; the portal (`portal-nav.tsx`, `portal-sign-out.tsx`, `portal-lock.tsx`) is
+thumb-driven on a phone and 44px there is deliberate, not stale. The rule the repo already
+encodes is "bigger target for coarse pointers", not "36px everywhere".
+
+**Context / where to start:** run the grep above, then for each of the 33 ungated files decide one
+of three things: it is a real touch target and gets gated behind `pointer-fine:`; it is a dense
+pointer-only surface and goes to 36px; or it is not a control at all and gets marked as such.
+Do the portal sweep as its own PR with a phone in hand, since that is the surface where 44px is
+load-bearing.
+
+**Depends on / blocked by:** nothing. The milestones plan does not touch these files, so this can
+start at any time. A shared `tapTarget` class or a `TouchTarget` wrapper is worth considering once
+the four gated call sites have been read, but only if a fifth wants the same behavior.
+
 ## Completed
 
 ### users.service.ts split into its six concerns - DONE 2026-11-26 (Round 67)
