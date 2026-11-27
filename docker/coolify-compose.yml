@@ -74,6 +74,13 @@ services:
       NODE_ENV: production
       API_PORT: "8080"
       POOL_MODE: session
+      # Prisma's own pool ceiling (packages/database). The library default of 8
+      # queued past $transaction maxWait (2s) under chat polling plus cron ticks
+      # and surfaced as P2028 "Unable to start a transaction in the given time",
+      # which the global filter turns into a bare 500 on whatever request was
+      # unlucky. 16 sits comfortably under pgbouncer's default_pool_size of 25
+      # (2026-11-27).
+      DB_POOL_MAX: "16"
       DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
       DIRECT_DATABASE_URL: postgresql://shadhil:${PG_PASSWORD}@shadhil-postgres:5432/shadhil_crm?schema=public
       REDIS_URL: redis://shadhil-redis:6379
