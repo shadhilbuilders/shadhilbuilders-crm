@@ -91,9 +91,19 @@ type FixtureRow = { id: string; state: string; createdAt: Date };
  * inside `[now-24h, midnight)` for every run except the final minute of the day.
  * In that one minute the suite cannot tell the definitions apart at all, and says
  * so by SKIPPING (a visible skip, never a silent pass).
+ *
+ * ONE MINUTE BEFORE MIDNIGHT IS NOT ALWAYS OLD ENOUGH. This row also carries the
+ * OVERDUE expectation, and overdue means older than the 30-minute SLA. Ten
+ * minutes after midnight it is ten minutes old, so `EXPECTED_OVERDUE = 2` becomes
+ * a promise the clock breaks: CI ran at 00:27 and counted 1. The row is now the
+ * EARLIER of "one minute before midnight" and "45 minutes ago", which is always
+ * before midnight (the band's edge), always past the SLA, and still inside the
+ * last 24 hours.
  */
-function discriminatorCreatedAt(midnightAt: Date): Date {
-  return new Date(midnightAt.getTime() - 60_000);
+function discriminatorCreatedAt(midnightAt: Date, now: Date = NOW): Date {
+  const justBeforeMidnight = new Date(midnightAt.getTime() - 60_000);
+  const pastTheSla = new Date(now.getTime() - 45 * MIN);
+  return pastTheSla.getTime() < justBeforeMidnight.getTime() ? pastTheSla : justBeforeMidnight;
 }
 
 const DISCRIMINATOR_AT = discriminatorCreatedAt(MIDNIGHT);
@@ -392,6 +402,26 @@ describe('the two endpoints agree on "new today"', () => {
     await adminSeed(async (db) => {
       await db.lead.update({ where: { id: target.id }, data: { state: 'NEW' } });
     });
+  });
+});
+
+describe('the fixture holds at any hour', () => {
+  // CI ran this suite at 00:27 UTC and the overdue count came back 1: the row
+  // that must be overdue was one minute before midnight, so at that hour it was
+  // 28 minutes old and inside the SLA. The fixture is now derived from both the
+  // day boundary and the clock, and this pins that at every hour.
+  it('places the discriminator past the SLA and before midnight, whatever the clock says', () => {
+    const midnight = new Date(2026, 10, 27, 0, 0, 0, 0);
+    for (const minutes of [1, 27, 45, 46, 720, 1439]) {
+      const now = new Date(midnight.getTime() + minutes * MIN);
+      const at = discriminatorCreatedAt(midnight, now);
+      const ageMin = (now.getTime() - at.getTime()) / MIN;
+      expect(at.getTime()).toBeLessThan(midnight.getTime());
+      expect(ageMin).toBeGreaterThan(OVERDUE_AFTER_MIN);
+      // The band is [now-24h, midnight), so 24h exactly is its far edge, reached
+      // in the last minute of the day; that run SKIPS, as CAN_DISCRIMINATE says.
+      expect(ageMin).toBeLessThanOrEqual(24 * 60);
+    }
   });
 });
 
