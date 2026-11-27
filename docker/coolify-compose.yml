@@ -78,8 +78,10 @@ services:
       # queued past $transaction maxWait (2s) under chat polling plus cron ticks
       # and surfaced as P2028 "Unable to start a transaction in the given time",
       # which the global filter turns into a bare 500 on whatever request was
-      # unlucky. 16 sits comfortably under pgbouncer's default_pool_size of 25
-      # (2026-11-27).
+      # unlucky. 16 sits well under pgbouncer's default_pool_size, raised to 60
+      # on the host ini (/data/coolify/shadhil/pgbouncer.ini) for this plus the
+      # SSE pool (2026-11-27). Postgres allows 300 backends; measured load is a
+      # dozen.
       DB_POOL_MAX: "16"
       DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
       DIRECT_DATABASE_URL: postgresql://shadhil:${PG_PASSWORD}@shadhil-postgres:5432/shadhil_crm?schema=public
@@ -181,6 +183,11 @@ services:
       SSE_DB_TICK_MS: "5000"
       DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
       POOL_MODE: session
+      # 12, not the API's 16: the SSE poller is one short query per client per
+      # 5s tick, so it queues far less. Explicit here so a Coolify-wide
+      # DB_POOL_MAX (set to 16 for the API) cannot hand this container more
+      # connections than it needs (2026-11-27).
+      DB_POOL_MAX: "12"
     ulimits:
       nofile:
         soft: 65536
