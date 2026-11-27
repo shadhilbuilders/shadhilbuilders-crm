@@ -1,4 +1,5 @@
-// Marketing consent panel on the lead detail page (2026-11-23).
+// Site-update consent panel on the lead detail page (2026-11-23, re-scoped
+// 2026-11-27: only a denial stops a send).
 //
 // protects= the screen tells the three states apart - "not asked" is not shown
 // as a refusal - and the dialog submits what the operator actually chose, with
@@ -55,12 +56,14 @@ describe('LeadMarketingConsent', () => {
 
   it('says "Not asked yet" for a lead with no consent row', () => {
     // The state most existing leads are in. Showing it as "opted out" would
-    // tell a rep the buyer refused when nobody ever asked them.
+    // tell a rep the buyer refused when nobody ever asked them - and, since the
+    // templates are UTILITY, it would also be wrong about the send: an unasked
+    // buyer still receives updates.
     const html = renderToStaticMarkup(<LeadMarketingConsent lead={lead()} />);
 
     expect(html).toContain('Not asked yet');
-    expect(html).toContain('Nothing has been sent');
-    expect(html).not.toContain('Opted out');
+    expect(html).toContain('a villa they have booked is a service message');
+    expect(html).not.toContain('Asked us to stop');
     expect(html).toContain('data-qa="lead-consent-record-button"');
   });
 
@@ -74,11 +77,11 @@ describe('LeadMarketingConsent', () => {
       />,
     );
 
-    expect(html).toContain('Opted in on');
-    expect(html).toContain('Site-update messages can go out at any time');
+    expect(html).toContain('Agreed to updates on');
+    expect(html).toContain('Site updates reach this buyer at any time');
   });
 
-  it('shows an opt-out and says the earlier answer is kept', () => {
+  it('shows a refusal and says the earlier answer is kept', () => {
     const html = renderToStaticMarkup(
       <LeadMarketingConsent
         lead={lead({
@@ -88,8 +91,8 @@ describe('LeadMarketingConsent', () => {
       />,
     );
 
-    expect(html).toContain('Opted out on');
-    expect(html).toContain('newest answer wins');
+    expect(html).toContain('Asked us to stop on');
+    expect(html).toContain('the newest answer is the one that counts');
   });
 });
 

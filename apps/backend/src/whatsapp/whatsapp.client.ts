@@ -85,8 +85,9 @@
 //    per-recipient marketing allowance, and made the buyer's MARKETING consent a
 //    precondition. The replacements were approved as UTILITY the day they were
 //    submitted and delivered their first message at 12:21:58Z that day.
-//    The consent gate in site-update-delivery.service.ts stays: it is the record
-//    of what the buyer agreed to, not a delivery precondition any more.
+//    What still gates the send is a recorded "no" (2026-11-27): the consent
+//    panel is the stop switch, and a skip now reads SKIPPED_OPTED_OUT rather
+//    than a missing opt-in. A buyer nobody has asked still gets the update.
 //    Header:    VIDEO (4) / IMAGE (5) - the ONLY difference between the two,
 //                because Meta fixes a header type at approval and one name
 //                cannot serve both a clip and its poster.

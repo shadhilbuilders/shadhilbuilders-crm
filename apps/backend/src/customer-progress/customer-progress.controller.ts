@@ -124,9 +124,10 @@ export class CustomerProgressController {
   }
 
   // ── Send a site update again (2026-11-26) ─────────────────────────────────
-  // A skipped or failed delivery used to be a dead record. The common case is
-  // SKIPPED_NO_CONSENT (the templates are MARKETING), which is exactly the row a
-  // staff member needs to act on once the buyer opts in.
+  // A skipped or failed delivery used to be a dead record. The live case is
+  // SKIPPED_OPTED_OUT, the row a staff member needs once the buyer opts back in
+  // (SKIPPED_NO_CONSENT is the same thing from before the templates went
+  // UTILITY, and old rows still read that way).
   //
   // 200 with an outcome, not an error: "not sent, and here is why" is a real
   // answer, and the row is unchanged by it. Authorization is RLS plus the
@@ -135,7 +136,7 @@ export class CustomerProgressController {
   @Post('site-updates/:deliveryId/resend')
   @ApiOperation({
     summary:
-      'Send a skipped or failed site update again (every gate re-evaluated; refuses without consent).',
+      'Send a skipped or failed site update again (every gate re-evaluated; refuses on a recorded opt-out).',
   })
   async resendSiteUpdate(
     @Req() req: AuthedRequest,

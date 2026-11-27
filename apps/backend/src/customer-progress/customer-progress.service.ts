@@ -599,10 +599,11 @@ export class CustomerProgressService {
    * Send a site update again (2026-11-26).
    *
    * WHY THIS EXISTS: every non-sent outcome was a terminal row - a record of
-   * something that did not happen, with no way to act on it. The common one is
-   * `SKIPPED_NO_CONSENT`, because the site-update templates are approved as
-   * MARKETING, so a buyer who has not opted in is skipped and the staff member
-   * looking at the row has nothing to press.
+   * something that did not happen, with no way to act on it. The common one was
+   * `SKIPPED_NO_CONSENT`, written while the site-update templates were MARKETING
+   * and a missing opt-in blocked the send. Those rows are history now; what can
+   * still stop a send is a buyer who asked us to stop
+   * (`SKIPPED_OPTED_OUT`), and a fresh opt-in is what lifts it.
    *
    * The resend re-derives the message input from the rows rather than from
    * anything the caller sends: the newest photo of the batch, the unit's own
@@ -610,9 +611,8 @@ export class CustomerProgressService {
    * caption or a villa number into a message to a buyer.
    *
    * Every gate is re-evaluated by the same code that made the first decision.
-   * If the buyer still has not opted in, the answer is the same skip and a
-   * sentence that says so - never a send that bypasses the gate that protected
-   * them.
+   * If the buyer asked us to stop, the answer is the same skip and a sentence
+   * that says so - never a send that bypasses the gate that protected them.
    */
   async resendSiteUpdate(
     actor: JwtPayload,

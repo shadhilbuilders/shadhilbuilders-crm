@@ -214,7 +214,11 @@ const DELIVERY_WORDS = {
   SKIPPED_WINDOW: 'Not sent: buyer window closed',
   SKIPPED_NO_TEMPLATE: 'Not sent: no approved template',
   SKIPPED_NO_BUYER: 'Not sent: no buyer on this unit',
-  SKIPPED_NO_CONSENT: 'Not sent: buyer has not opted in',
+  // They asked us to stop. The only consent answer that blocks a send now that
+  // the templates are UTILITY (2026-11-27).
+  SKIPPED_OPTED_OUT: 'Not sent: buyer asked us to stop',
+  // Rows from before that change, when a missing opt-in blocked the send.
+  SKIPPED_NO_CONSENT: 'Not sent: no opt-in on record at the time',
   // The switch, not a fault: "off" is the operator's decision, and the words say
   // so rather than blaming a missing template or a failed send.
   SKIPPED_DISABLED: 'Not sent: buyer updates switched off',

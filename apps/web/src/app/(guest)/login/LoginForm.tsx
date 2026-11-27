@@ -236,9 +236,11 @@ export function LoginForm() {
             options={picker.map((account) => ({
               value: account.userId,
               label: account.name,
-              className: 'min-h-11',
+              // The height belongs on the label, not on option.className: that
+              // lands on the radio circle itself and turns a size-4 dot into a
+              // 16x44 sliver (fixed 2026-11-27, same bug as the consent dialog).
               labelContent: (
-                <span className="flex flex-col">
+                <span className="flex min-h-11 flex-col justify-center">
                   <span className="text-sm font-medium">{account.name}</span>
                   <span className="text-muted-foreground text-xs">
                     {account.organizationName}

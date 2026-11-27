@@ -55,6 +55,7 @@ export type TimelinePhoto = {
     | 'SKIPPED_WINDOW'
     | 'SKIPPED_NO_TEMPLATE'
     | 'SKIPPED_NO_BUYER'
+    | 'SKIPPED_OPTED_OUT'
     | 'SKIPPED_NO_CONSENT'
     | 'SKIPPED_DISABLED'
     | 'FAILED'

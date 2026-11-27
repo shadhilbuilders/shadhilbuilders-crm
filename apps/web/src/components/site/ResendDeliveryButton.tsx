@@ -2,11 +2,10 @@
 
 // ResendDeliveryButton (2026-11-26): act on a site update that did not send.
 //
-// WHY: every non-sent outcome used to be a dead record. The common one is
-// SKIPPED_NO_CONSENT, because the site-update templates are approved as
-// MARKETING - so the buyer without an opt-in is skipped, and the staff member
-// staring at "Not sent: buyer has not opted in" had nothing to press once the
-// buyer did opt in.
+// WHY: every non-sent outcome used to be a dead record. The live one is
+// SKIPPED_OPTED_OUT - a buyer who asked us to stop - and once they say yes again
+// the staff member staring at that row needs something to press. SKIPPED_NO_CONSENT
+// is the same situation from before the templates went UTILITY.
 //
 // The server decides everything. This button sends one request keyed on the
 // delivery row and then SHOWS WHAT THE SERVER ANSWERED: the gates re-run, so a
@@ -30,6 +29,10 @@ const RETRYABLE = new Set([
   'SKIPPED_WINDOW',
   'SKIPPED_NO_TEMPLATE',
   'SKIPPED_NO_BUYER',
+  'SKIPPED_OPTED_OUT',
+  // Legacy rows from when a missing opt-in blocked the send. Retryable for the
+  // same reason as the row above: the server re-runs every gate, so the press
+  // either sends now or says again why it cannot.
   'SKIPPED_NO_CONSENT',
   'SKIPPED_DISABLED',
   'FAILED',

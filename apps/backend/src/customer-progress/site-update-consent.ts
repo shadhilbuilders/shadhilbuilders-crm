@@ -1,10 +1,11 @@
-// Whether a buyer may receive a MARKETING template (owner note 2026-11-23).
+// What a buyer said about site-update messages (owner note 2026-11-23).
 //
-// WHY THIS EXISTS: the site-update templates were approved as MARKETING, not the
-// UTILITY they were submitted as. Meta requires MARKETING opt-in for marketing
-// templates, and repeatedly sending marketing to people who did not opt in is
-// what damages a sender number's quality rating - eventually down to a block.
-// So the send needs a consent answer, not an assumption.
+// WHY THIS EXISTS: the site-update templates were MARKETING when this was
+// written, so an opt-in was a delivery precondition. They are UTILITY now
+// (2026-11-24), and since 2026-11-27 only a denial blocks: the answer is still
+// read on every outside-window send, but "never asked" no longer stops one. What
+// remains is the part that matters legally and for the sender's quality rating -
+// the buyer who said stop must not be messaged.
 //
 // THE RULE, in order:
 //   1. The latest MARKETING row for this lead, if any, decides. Consent is a

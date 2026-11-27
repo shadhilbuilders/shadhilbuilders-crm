@@ -16,6 +16,10 @@
 //   3. Is the clip an MP4? WhatsApp takes MP4/H.264 only. A WebM (or a clip
 //      whose bytes are gone) still gets a message: its POSTER plus a link, so
 //      the buyer learns about the update instead of the send being dropped.
+//   4. Did the buyer ask us to stop? That is the ONLY consent answer that
+//      blocks now that the templates are UTILITY (2026-11-27). A buyer nobody
+//      has asked yet still gets the update, because a site update for a villa
+//      they have booked is a service message, not marketing.
 //
 // ONE MESSAGE PER BATCH, NOT PER ROW. A note saves one row per file with a
 // shared batchId (step 1), so a per-row send would fire six templates at a buyer
@@ -54,7 +58,16 @@ export type DeliveryOutcome =
   | 'SKIPPED_WINDOW'
   | 'SKIPPED_NO_TEMPLATE'
   | 'SKIPPED_NO_BUYER'
-  /** The templates are approved as MARKETING and this buyer has no opt-in. */
+  /**
+   * The buyer asked us to stop. The only consent answer that blocks a send now
+   * that the templates are UTILITY (2026-11-27).
+   */
+  | 'SKIPPED_OPTED_OUT'
+  /**
+   * Legacy, and nothing writes it any more: the outcome for a missing MARKETING
+   * opt-in between 2026-11-23 and 2026-11-27. Kept because rows carrying it are
+   * still in the table and a name is cheaper than a backfill.
+   */
   | 'SKIPPED_NO_CONSENT'
   /** The operator switched the WhatsApp leg off. Not a fault, and not a template gap. */
   | 'SKIPPED_DISABLED'
@@ -111,8 +124,12 @@ export function resendMessage(status: SiteUpdateDeliveryStatus): string {
     case 'DELIVERED':
     case 'READ':
       return 'This update has already reached the buyer.';
+    case 'SKIPPED_OPTED_OUT':
+      return 'Not sent: the buyer asked us to stop site-update messages. Only a fresh opt-in from them changes that.';
     case 'SKIPPED_NO_CONSENT':
-      return 'Not sent: the buyer has not opted in to marketing messages. Record their opt-in first, then send again.';
+      // Legacy rows, written before 2026-11-27. Past tense on purpose: staff
+      // reading an old row must not be told the current rule is still that one.
+      return 'Not sent: at the time, an opt-in was required and none was on record.';
     case 'SKIPPED_NO_BUYER':
       return 'Not sent: this villa has no buyer with a phone number on file.';
     case 'SKIPPED_DISABLED':
@@ -218,11 +235,9 @@ export interface DeliveryContext {
   target: BuyerTarget;
   /** True when the clip can go as a WhatsApp video (MP4 in storage). */
   clipIsMp4: boolean;
-  /**
-   * The buyer's MARKETING opt-in. The templates are approved as marketing, so
-   * Meta requires opt-in for them - consulted on the TEMPLATE path only,
-   * because a freeform reply inside the service window is not marketing.
-   */
+  /** The newest consent answer. Only `denied` blocks a send now that the
+   * site-update templates are UTILITY: a buyer nobody has asked still gets the
+   * update, because it is a service message for a villa they have booked. */
   marketingConsent: MarketingConsent;
 }
 
@@ -255,17 +270,15 @@ export function planDelivery(ctx: DeliveryContext): DeliveryPlan {
       reason: 'no approved site-update template and the 24h window is closed',
     };
   }
-  // MARKETING OPT-IN (2026-11-23). The templates were approved as marketing, so
-  // sending without consent is exactly what erodes the sender's quality rating.
-  // Inside the window this branch is never reached: that path is freeform.
-  if (ctx.marketingConsent !== 'granted') {
+  // ONLY A DENIAL BLOCKS (2026-11-27). The templates are UTILITY now, so a buyer
+  // who was never asked still gets the update they booked a villa for; what must
+  // never happen is sending after they said stop. Inside the window this branch
+  // is never reached: that path is freeform.
+  if (ctx.marketingConsent === 'denied') {
     return {
       send: 'none',
-      outcome: 'SKIPPED_NO_CONSENT',
-      reason:
-        ctx.marketingConsent === 'denied'
-          ? 'the buyer opted out of marketing messages'
-          : 'the buyer has no recorded marketing opt-in',
+      outcome: 'SKIPPED_OPTED_OUT',
+      reason: 'the buyer asked not to receive these messages',
     };
   }
   return { send: 'template', templateName: ctx.templateName, media };

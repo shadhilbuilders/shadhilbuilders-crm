@@ -1,24 +1,25 @@
 'use client';
 
-// Marketing consent, on the lead detail page (2026-11-23).
+// Site-update consent, on the lead detail page (2026-11-23, re-scoped 2026-11-27).
 //
-// WHY THIS EXISTS: the site-update WhatsApp templates were approved as
-// MARKETING on 2026-11-23. The send decision reads the newest MARKETING row on
-// the Consent ledger and skips the send otherwise - and until this panel, no
-// screen wrote that row, so every outside-window message was recorded as
-// skipped-for-consent. A gate nobody can satisfy is a feature that never runs.
+// WHY THIS EXISTS: it is two things at once, and only one of them gates a send.
+// It is the RECORD of what this buyer said about receiving site updates, and it
+// is the STOP SWITCH: a recorded "no" is the only consent answer that blocks a
+// send. Since the templates were recategorised as UTILITY (2026-11-24), a buyer
+// nobody has asked still receives updates, because a site update for a villa
+// they have booked is a service message and not marketing.
 //
 // WHO USES IT: the rep who just spoke to the buyer. Consent here is recorded,
-// not requested - the buyer already said yes on the phone, and this is the
-// note that turns that into a row the sender can read. That is why the default
-// answer is "yes" and the default source is "during a call", and why the copy
-// asks the operator to record what happened rather than to ask permission.
+// not requested - the buyer already said yes on the phone, and this turns that
+// into a row the sender can read. That is why the default answer is "yes" and
+// the default source is "during a call", and why the copy asks the operator to
+// record what happened rather than to ask permission.
 //
 // THREE STATES, NOT A BOOLEAN: "not asked" is the most common state on an
 // existing book of leads, and showing it as "no" would tell a rep the buyer
-// refused when nobody ever asked. The sender treats both as non-sends; the
-// difference matters to the person reading the screen.
-import { useState } from 'react';
+// refused when nobody ever asked. Only "denied" stops a send; the difference
+// matters both to the sender and to the person reading the screen.
+import { useState, type ReactNode } from 'react';
 
 import {
   Button,
@@ -39,17 +40,39 @@ import type { LeadConsentSource, LeadDetail, RecordLeadConsentDto } from '@shadh
 
 const FORM_ID = 'lead-consent-form';
 
-/** How the opt-in was obtained, in the operator's words. */
-const SOURCE_OPTIONS: Array<{ value: LeadConsentSource; label: string; className: string }> = [
-  { value: 'call_verbal', label: 'During a call', className: 'min-h-11' },
-  { value: 'in_person', label: 'In person', className: 'min-h-11' },
-  { value: 'whatsapp_button', label: 'WhatsApp reply', className: 'min-h-11' },
-  { value: 'booking_form', label: 'Booking form', className: 'min-h-11' },
-];
+/**
+ * One radio row.
+ *
+ * The height class goes on the LABEL and never on the control. `option.className`
+ * is applied to the RadioGroupItem itself, which is a size-4 circle, so a
+ * `min-h-11` there stretches the radio into a 16x44 sliver with the text
+ * floating beside it - which is exactly how this dialog looked when checked in
+ * the browser on 2026-11-27. The label is the tallest child, so it is what gives
+ * the row its touch target while the circle stays a circle.
+ */
+function radioRow<T extends string>(
+  value: T,
+  label: string,
+): { value: T; label: string; labelContent: ReactNode } {
+  return {
+    value,
+    label,
+    labelContent: <span className="flex min-h-11 items-center">{label}</span>,
+  };
+}
 
-const ANSWER_OPTIONS: Array<{ value: string; label: string; className: string }> = [
-  { value: 'granted', label: 'Yes, they agreed to site updates', className: 'min-h-11' },
-  { value: 'denied', label: 'No, they asked us not to', className: 'min-h-11' },
+/** How the opt-in was obtained, in the operator's words. */
+const SOURCE_OPTIONS: Array<{ value: LeadConsentSource; label: string; labelContent: ReactNode }> =
+  [
+    radioRow<LeadConsentSource>('call_verbal', 'During a call'),
+    radioRow<LeadConsentSource>('in_person', 'In person'),
+    radioRow<LeadConsentSource>('whatsapp_button', 'WhatsApp reply'),
+    radioRow<LeadConsentSource>('booking_form', 'Booking form'),
+  ];
+
+const ANSWER_OPTIONS: Array<{ value: string; label: string; labelContent: ReactNode }> = [
+  radioRow('granted', 'Yes, they agreed to site updates'),
+  radioRow('denied', 'No, they asked us not to'),
 ];
 
 function statusCopy(lead: LeadDetail): { headline: string; detail: string } {
@@ -60,22 +83,22 @@ function statusCopy(lead: LeadDetail): { headline: string; detail: string } {
 
   if (lead.marketingConsent === 'granted') {
     return {
-      headline: when === null ? 'Opted in' : `Opted in on ${when}`,
+      headline: when === null ? 'Agreed to updates' : `Agreed to updates on ${when}`,
       detail:
-        'Site-update messages can go out at any time. Inside the 24-hour reply window they need no template at all.',
+        'Site updates reach this buyer at any time. Inside the 24-hour reply window they go as an ordinary reply, with no template at all.',
     };
   }
   if (lead.marketingConsent === 'denied') {
     return {
-      headline: when === null ? 'Opted out' : `Opted out on ${when}`,
+      headline: when === null ? 'Asked us to stop' : `Asked us to stop on ${when}`,
       detail:
-        'Site-update messages will be skipped for this buyer. The record of the earlier opt-in stays; the newest answer wins.',
+        'Site updates are skipped for this buyer. An earlier agreement stays on the record; the newest answer is the one that counts.',
     };
   }
   return {
     headline: 'Not asked yet',
     detail:
-      'Nothing has been sent. The site-update templates count as marketing, so they only go to a buyer who has agreed - record that here when they do.',
+      'Site updates still reach this buyer, because a villa they have booked is a service message. Record their answer here once they give you one either way.',
   };
 }
 
@@ -114,6 +137,7 @@ export function LeadConsentForm({
     >
       <RadioGroup
         aria-label="Did the buyer agree to site-update messages?"
+        label="Their answer"
         value={answer}
         onValueChange={(value) => setAnswer(value ?? 'granted')}
         options={ANSWER_OPTIONS}
@@ -121,8 +145,8 @@ export function LeadConsentForm({
       />
 
       <RadioGroup
-        aria-label="How did they give it?"
-        label="How did they give it?"
+        aria-label="How did they tell you?"
+        label="How did they tell you?"
         value={source}
         onValueChange={(value) => setSource(value ?? 'call_verbal')}
         options={SOURCE_OPTIONS}
@@ -159,7 +183,7 @@ export function LeadMarketingConsent({ lead }: { lead: LeadDetail }) {
   return (
     <Card data-qa="lead-consent-card">
       <CardHeader>
-        <CardTitle className="text-base">Marketing consent</CardTitle>
+        <CardTitle className="text-base">Site update messages</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         <p className="text-sm font-medium" data-qa="lead-consent-status">
@@ -173,7 +197,7 @@ export function LeadMarketingConsent({ lead }: { lead: LeadDetail }) {
             onClick={() => setOpen(true)}
             data-qa="lead-consent-record-button"
           >
-            Record consent
+            Record their answer
           </Button>
         </div>
       </CardContent>
@@ -181,11 +205,13 @@ export function LeadMarketingConsent({ lead }: { lead: LeadDetail }) {
       <Dialog
         open={open}
         onOpenChange={setOpen}
-        contentClassName="sm:max-w-md"
+        // A laptop window at 700px would otherwise clip the footer with no way
+        // to scroll to it, because the dialog has no height cap of its own.
+        contentClassName="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md"
         header={{
-          title: 'Record marketing consent',
+          title: 'Site update messages',
           description:
-            'Record what the buyer told you. This adds a row to their consent history; it never rewrites an earlier answer.',
+            'Record what the buyer told you. This adds a row to their history and never rewrites an earlier answer. Only a "no" stops updates going out.',
         }}
         footer={
           <div className="flex w-full justify-end gap-2">

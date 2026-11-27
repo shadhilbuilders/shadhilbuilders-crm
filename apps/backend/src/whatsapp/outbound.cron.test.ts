@@ -222,6 +222,9 @@ async function seedOutbound(
         messageId,
         leadId: TEST_LEAD_ID,
         sendType: 'TEMPLATE',
+        // A RETIRED name on purpose: this row was written before the templates
+        // were recategorised, and the cron is what upgrades it to the current
+        // name for that slot (RETIRED_TEMPLATE_NAMES in outbound.service.ts).
         templateName: 'shadhil_chat_reply',
         templateVars: { name: 'Test', body: 'test outbound message body' },
         status: 'PENDING',
@@ -386,7 +389,12 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)('T-E2b outbound cron - lease + claim + se
     expect(tick.sent).toBe(1);
     expect(tick.failed).toBe(0);
     expect(stubWhatsApp.calls).toHaveLength(1);
-    expect(stubWhatsApp.calls[0]?.templateName).toBe('shadhil_chat_reply');
+    // The current name for the chat-reply slot, not the retired one the row
+    // carries: the env is what decides, so the assertion reads it rather than
+    // hardcoding whichever name the local .env happened to hold.
+    expect(stubWhatsApp.calls[0]?.templateName).toBe(
+      process.env['WA_TEMPLATE_CHAT_REPLY'] ?? 'shadhil_enquiry_reply',
+    );
 
     const updated = await adminSeed(async (db) =>
       db.outboundMessage.findUnique({

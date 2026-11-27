@@ -353,9 +353,10 @@ describe('SiteUpdateDeliveryService', () => {
     });
   });
 
-  it('refuses the marketing template when the buyer never opted in', async () => {
-    // Approved as MARKETING, so an unconsented send is what damages the sender
-    // number. Outside the window only the template path exists, so it must skip.
+  it('sends the template to a buyer nobody has asked, because it is a service message', async () => {
+    // 2026-11-27: the templates are UTILITY, so "never asked" is no longer a
+    // reason to withhold a site update for a villa the buyer has booked. The old
+    // rule skipped here and dropped 3 real updates on production.
     const h = harness({ lastInbound: COLD, consent: null });
     const saved = {
       v: process.env['WA_TEMPLATE_SITE_UPDATE_VIDEO'],
@@ -371,17 +372,47 @@ describe('SiteUpdateDeliveryService', () => {
       if (saved.i === undefined) delete process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'];
       else process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'] = saved.i;
     }
+    expect(h.enqueue).toHaveBeenCalledTimes(1);
+    // The clip is MP4 in this harness, so the VIDEO template is the one used;
+    // which name it carries is not what this test is about.
+    expect(h.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ sendType: 'TEMPLATE', templateName: 'shadhil_site_update_video' }),
+      h.tx,
+    );
+    // The row moved to PENDING (the send is queued); nothing was marked skipped.
+    const statuses = h.client.siteUpdateDelivery.update.mock.calls.map(
+      (call) => (call[0] as { data?: { status?: string } }).data?.status,
+    );
+    expect(statuses).not.toContain('SKIPPED_OPTED_OUT');
+    expect(statuses).not.toContain('SKIPPED_NO_CONSENT');
+  });
+
+  it('refuses a buyer who asked us to stop, and says so by name', async () => {
+    // The one consent answer that still blocks: a denial, not a gap.
+    const h = harness({ lastInbound: COLD, consent: { granted: false } });
+    const savedVideo = process.env['WA_TEMPLATE_SITE_UPDATE_VIDEO'];
+    const savedImage = process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'];
+    process.env['WA_TEMPLATE_SITE_UPDATE_VIDEO'] = 'shadhil_villa_update_video';
+    process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'] = 'shadhil_villa_update_image';
+    try {
+      await h.service.recordAndSend({ ...input, tx: h.tx });
+    } finally {
+      if (savedVideo === undefined) delete process.env['WA_TEMPLATE_SITE_UPDATE_VIDEO'];
+      else process.env['WA_TEMPLATE_SITE_UPDATE_VIDEO'] = savedVideo;
+      if (savedImage === undefined) delete process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'];
+      else process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'] = savedImage;
+    }
     expect(h.enqueue).not.toHaveBeenCalled();
     expect(h.client.siteUpdateDelivery.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'SKIPPED_NO_CONSENT' }),
+        data: expect.objectContaining({ status: 'SKIPPED_OPTED_OUT' }),
       }),
     );
   });
 
-  it('still sends freeform inside the window with no opt-in, because that is a reply', async () => {
-    // A freeform message inside the 24h window is not a marketing template, so
-    // requiring opt-in there would block the ordinary case for no reason.
+  it('still sends freeform inside the window with no recorded answer', async () => {
+    // A freeform message inside the 24h window is a reply, not a template, so
+    // consent is never consulted there - the ordinary case must not need a row.
     const h = harness({ consent: null });
     await h.service.recordAndSend({ ...input, tx: h.tx });
     expect(h.enqueue).toHaveBeenCalledWith(expect.objectContaining({ sendType: 'FREEFORM' }), h.tx);
@@ -535,13 +566,13 @@ describe('resend', () => {
     else process.env[TEMPLATE_ENV] = templateBefore;
   });
 
-  it('refuses while the buyer has still not opted in, and says why', async () => {
+  it('refuses for a buyer who asked us to stop, and says why', async () => {
     // `lastInbound: null` is load-bearing: INSIDE the 24-hour window the send is
-    // a freeform reply, which is not marketing, so consent is not consulted at
-    // all (site-update-consent.ts). The consent gate belongs to the template
-    // path, which is the one a closed window forces.
+    // a freeform reply, so consent is not consulted at all
+    // (site-update-consent.ts). The gate belongs to the template path, which is
+    // the one a closed window forces.
     const h = harness({
-      deliveryStatus: 'SKIPPED_NO_CONSENT',
+      deliveryStatus: 'SKIPPED_OPTED_OUT',
       consent: { granted: false },
       lastInbound: null,
     });
@@ -552,8 +583,23 @@ describe('resend', () => {
     // the gate that answers the second time.
     expect(h.enqueue).not.toHaveBeenCalled();
     expect(h.client.message.create).not.toHaveBeenCalled();
-    expect(out.status).toBe('SKIPPED_NO_CONSENT');
-    expect(out.message).toContain('opted in');
+    expect(out.status).toBe('SKIPPED_OPTED_OUT');
+    expect(out.message).toContain('asked us to stop');
+  });
+
+  it('re-sends a legacy no-consent row once the buyer has agreed', async () => {
+    // The rows written before 2026-11-27 keep their old name; a granted answer
+    // now lifts them too, so nobody has to know which era a row came from.
+    const h = harness({
+      deliveryStatus: 'SKIPPED_NO_CONSENT',
+      consent: { granted: true },
+      lastInbound: null,
+    });
+
+    const out = await h.service.resend({ ...input, tx: h.tx }, 'sud-1');
+
+    expect(h.enqueue).toHaveBeenCalledTimes(1);
+    expect(out.status).toBe('PENDING');
   });
 
   it('sends again once the consent is on the ledger', async () => {
@@ -616,6 +662,7 @@ describe('resendMessage', () => {
       'DELIVERED',
       'READ',
       'SKIPPED_NO_BUYER',
+      'SKIPPED_OPTED_OUT',
       'SKIPPED_NO_CONSENT',
       'SKIPPED_DISABLED',
       'SKIPPED_NO_TEMPLATE',

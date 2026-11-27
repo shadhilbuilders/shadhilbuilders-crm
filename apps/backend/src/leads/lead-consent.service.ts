@@ -1,10 +1,12 @@
 // Marketing consent for a lead - the only writer of the Consent ledger.
 //
-// WHY THIS EXISTS: the site-update WhatsApp templates were approved as
-// MARKETING on 2026-11-23. site-update-consent.ts gates every outside-window
-// send on the newest MARKETING row, and until this service existed nothing in
-// the codebase ever wrote one - so every send recorded SKIPPED_NO_CONSENT and
-// the template path had never fired. A gate with no writer is not a gate.
+// WHY THIS EXISTS: the site-update templates were MARKETING when this was
+// written (2026-11-23), and site-update-consent.ts gated every outside-window
+// send on the newest row, so nothing could be written until this service
+// existed. The templates are UTILITY now (2026-11-24) and the gate is narrower
+// (2026-11-27): a granted answer sends, a denial stops, and never-asked sends.
+// The ledger is unchanged either way, which is the point - the record outlived
+// the rule it was written for.
 //
 // THREE RULES, and each one is a decision rather than a convenience:
 //

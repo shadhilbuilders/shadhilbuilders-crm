@@ -2056,9 +2056,16 @@ enum SiteUpdateDeliveryStatus {
    */
   SKIPPED_NO_BUYER
   /**
-   * Nothing was sent because the buyer has no MARKETING opt-in. The site-update
-   * templates were approved as MARKETING (2026-11-23), and mailing a buyer who
-   * never opted in is what erodes a sender number's quality rating.
+   * Nothing was sent because the buyer asked us to stop (2026-11-27). The only
+   * consent answer that blocks a send now that the site-update templates are
+   * UTILITY: a buyer nobody asked still receives the update, because a site
+   * update for a villa they have booked is a service message.
+   */
+  SKIPPED_OPTED_OUT
+  /**
+   * LEGACY, written only between 2026-11-23 and 2026-11-27, when the templates
+   * were MARKETING and a missing opt-in blocked the send. Kept so the rows
+   * already carrying it keep their meaning; nothing writes it any more.
    */
   SKIPPED_NO_CONSENT
   /**
