@@ -132,7 +132,7 @@ export function BackLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center gap-1 px-2 text-sm"
+      className="text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center gap-1 px-2 text-sm pointer-fine:min-h-9"
     >
       <LuArrowLeft className="size-4 shrink-0" aria-hidden />
       {label}

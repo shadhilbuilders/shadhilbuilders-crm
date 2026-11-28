@@ -48,7 +48,7 @@ export function ProgressPhotoActions({ photo, unitId }: { photo: TimelinePhoto; 
             type="button"
             variant="ghost"
             size="sm"
-            className="size-11 shrink-0"
+            className="size-11 shrink-0 pointer-fine:size-9"
             aria-label={`Actions for the photo from ${new Date(photo.takenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`}
             data-qa={`progress-photo-menu-${photo.id}`}
           >

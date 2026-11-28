@@ -355,43 +355,54 @@ cron, with `createTestTenant` + `holdCronLockForFile`.
 
 ## UI / control sizing
 
-### 44px touch targets outside the milestones editor — after the 36px rule
+### 44px touch targets: the sweep, and what is deliberately still 44px (2026-11-28)
 
-**What:** The milestones editor moved its controls to 36px on the owner's instruction
-(`Button size="icon-lg"` is exactly 36px, inputs keep one `inputClassName="min-h-9"`).
-Elsewhere in `apps/web/src`, `size-11` / `h-11` / `min-h-11` still size controls at 44px.
+The rule the repo already encodes is "bigger target for coarse pointers", not "36px
+everywhere". `pointer-fine:` is a built-in Tailwind v4 variant, and the build emits
+`@media (pointer:fine)`, so the pattern is: keep the coarse size as the base class and
+override it for a fine pointer. Width queries are wrong for this and always were (a
+landscape phone is 568-844px wide and still a finger device), which is why
+`sm:size-11` in `app-header.tsx` became `size-11 pointer-fine:size-9`.
 
-**Measured 2026-11-27**, `grep -rlE '(size-11|h-11|min-h-11|sm:size-11)' apps/web/src`:
+Measured this round, `grep -rlE '(size-11|h-11|min-h-11|sm:size-11)' apps/web/src`
+excluding tests: 38 files, 4 already gated, 34 ungated.
 
-    49 files total
-    11 are tests
-    38 source files, 1 of them (milestones/milestone-row.tsx) fixed by the milestones plan
-    37 outside that plan
-     4 of those 37 already gate the enlargement behind `pointer-fine:`
-    33 are ungated
+Changed, all additive overrides on the element itself:
 
-The four already-gated files (`shared/PhoneNumber.tsx`, `admin/users/components/CopyableLink.tsx`,
-`admin/users/components/InviteRowActions.tsx`, `app-shell.tsx`) are the pattern to copy, not a
-backlog item. `PhoneNumber.tsx:83-91` records why it works that way: `pointer-fine:` says "finger
-device gets the big target" directly, where width queries get it wrong (a landscape phone is
-568-844px wide and still a finger device; so is a touch tablet), and a negative margin keeps the
-enlarged hit area from moving the row.
+    components/theme-toggle.tsx              default button 44 -> 36 on fine
+    components/app-header.tsx                theme toggle, both popover triggers
+    components/offline-queue-badge.tsx       icon button
+    components/inventory/ProgressPhotoActions.tsx   photo actions button
+    components/teams/project-team-list.tsx   row actions button
+    components/shared/ModulePending.tsx      BackLink
+    components/site/SiteVideoPlayer.tsx      download link
+    components/dashboard/dashboard-shared.tsx  section "more" link
 
-**Why this is not a simple size change:** not every match is a touch target. Some are avatars,
-skeletons (`login/loading.tsx:36-39` on a `Skeleton`) and flex spacers. The 36px call came from
-a dense admin table; the portal (`portal-nav.tsx`, `portal-sign-out.tsx`, `portal-lock.tsx`) is
-thumb-driven on a phone and 44px there is deliberate, not stale. The rule the repo already
-encodes is "bigger target for coarse pointers", not "36px everywhere".
+Deliberately left at 44px, with the reason each time:
 
-**Context / where to start:** run the grep above, then for each of the 33 ungated files decide one
-of three things: it is a real touch target and gets gated behind `pointer-fine:`; it is a dense
-pointer-only surface and goes to 36px; or it is not a control at all and gets marked as such.
-Do the portal sweep as its own PR with a phone in hand, since that is the surface where 44px is
-load-bearing.
+- **The portal** (`portal-nav`, `portal-lock`, `portal-header`, `portal-sign-out`,
+  `portal-push-prompt`, `unit-switcher`, `photo-lightbox`). Thumb-driven on a phone by
+  design. A phone in a hand is the surface, and 44px there is load-bearing, not stale.
+- **Site capture and viewing** (`SiteRecorder`, `SiteCaptureView`, `SitePhotoViewer`,
+  `ZoomableImage`). An engineer films and reviews on a handset at the site. The recorder
+  buttons stay 44px on every pointer type because the same person sometimes reviews on a
+  laptop and the layout is already built around these sizes.
+- **Form inputs** on the guest and settings surfaces (`min-h-11 w-full`). That is the
+  design system's input height, not a tap target to shrink: 44px is a normal desktop
+  input, and the dense 36px call came from admin tables specifically.
+- **Skeletons and spacers** (`[&>div]:h-11` on a Skeleton, `<span className="size-11"
+aria-hidden>`). Not controls.
+- **Grid cells** (`year-view-day-cell.tsx`, dashboard cards built as links). The cell IS
+  the target and the grid's geometry depends on its size.
+- **`PageError` and dialog close buttons.** Both are descendant selectors
+  (`[&_button]:min-h-11`, `[&>[data-slot=dialog-close]]:size-11`). Stacking an arbitrary
+  variant onto `pointer-fine:` was not proven to compile, and a wrong guess compiles to
+  nothing rather than failing, so they were left alone rather than half-done. If someone
+  wants them changed, prove the stack in the built CSS first.
 
-**Depends on / blocked by:** nothing. The milestones plan does not touch these files, so this can
-start at any time. A shared `tapTarget` class or a `TouchTarget` wrapper is worth considering once
-the four gated call sites have been read, but only if a fifth wants the same behavior.
+The next file that matches the grep gets the same three-way question: real touch target
+and gets gated, dense pointer-only surface and goes to 36px, or not a control and gets
+left alone.
 
 ## Completed
 

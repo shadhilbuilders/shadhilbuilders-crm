@@ -100,7 +100,7 @@ export const OfflineQueueBadge = () => {
           <button
             type="button"
             aria-label={`${items.length} pending offline change${items.length === 1 ? '' : 's'}`}
-            className="hover:bg-muted focus-visible:ring-ring relative inline-flex h-11 w-11 items-center justify-center rounded-md focus-visible:ring-2"
+            className="hover:bg-muted focus-visible:ring-ring relative inline-flex h-11 w-11 items-center justify-center rounded-md focus-visible:ring-2 pointer-fine:h-9 pointer-fine:w-9"
           >
             <LuCloudOff className="h-4 w-4" aria-hidden="true" />
             <Badge

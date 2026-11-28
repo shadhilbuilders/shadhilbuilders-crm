@@ -47,7 +47,7 @@ export function SiteVideoPlayer({ src, poster, durationMs, filename }: SiteVideo
         <a
           href={src}
           download={filename}
-          className="text-primary focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm underline focus-visible:ring-2"
+          className="text-primary focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm underline focus-visible:ring-2 pointer-fine:min-h-9"
           data-qa="video-download"
         >
           <LuDownload aria-hidden="true" /> Download the clip

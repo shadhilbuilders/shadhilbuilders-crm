@@ -332,7 +332,7 @@ function TeamRowActions({
               size="sm"
               aria-label={`Actions for ${row.teamName}`}
               data-qa={`project-team-actions-${row.teamId}`}
-              className="h-11 w-11 shrink-0"
+              className="h-11 w-11 shrink-0 pointer-fine:h-9 pointer-fine:w-9"
             >
               <LuEllipsis className="size-4" />
             </Button>

@@ -357,7 +357,7 @@ export function SectionCard({
         {moreHref !== undefined ? (
           <Link
             href={moreHref}
-            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex min-h-11 items-center rounded-sm px-2 text-sm focus-visible:ring-2 focus-visible:outline-none"
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex min-h-11 items-center rounded-sm px-2 text-sm focus-visible:ring-2 focus-visible:outline-none pointer-fine:min-h-9"
           >
             See all
             <LuArrowRight className="h-4 w-4" aria-hidden="true" />
