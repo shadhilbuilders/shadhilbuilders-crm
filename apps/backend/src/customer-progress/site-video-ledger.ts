@@ -1,11 +1,16 @@
 // Byte ledgers for site video: one row per organisation, one per project
 // (2026-11-23).
 //
-// Both caps are enforced by a CONDITIONAL UPDATE (`usedBytes + size <= cap`) in
-// the same transaction as the row insert, so two concurrent records cannot both
-// squeeze under the line, and a cap failure rolls the whole record back. The org
-// row is always updated before the project row: one lock order everywhere means
-// two records cannot deadlock each other.
+// The ORG cap is always enforced, by a CONDITIONAL UPDATE (`usedBytes + size <=
+// cap`) in the same transaction as the row insert, so two concurrent records
+// cannot both squeeze under the line, and a cap failure rolls the whole record
+// back. The org row is always updated before the project row: one lock order
+// everywhere means two records cannot deadlock each other.
+//
+// The PROJECT cap is optional (2026-11-28). When `projectCapBytes` is null the
+// project ledger is still updated, so spend per villa stays visible, but the
+// charge is not refused: the org cap already bounds the total, and a per-project
+// ceiling was refusing a large villa bytes the organisation had authorised.
 //
 // Sizes are the SERVER-verified `stat` size, never a client claim.
 import { Prisma, type RlsTx } from '@shadhil/database';
@@ -14,7 +19,8 @@ import { siteVideoError } from './site-video.errors';
 
 export interface LedgerCaps {
   orgCapBytes: number;
-  projectCapBytes: number;
+  /** null means no per-project limit; the org cap still applies. */
+  projectCapBytes: number | null;
 }
 
 export interface LedgerScope {
@@ -55,12 +61,16 @@ export async function chargeLedgers(
     throw siteVideoError('VIDEO_STORAGE_CAP_REACHED', { scope: 'ORGANIZATION' });
   }
 
+  const projectGuard =
+    caps.projectCapBytes === null
+      ? Prisma.sql`TRUE`
+      : Prisma.sql`"usedBytes" + ${bytes} <= ${caps.projectCapBytes}`;
   const project = await tx.$executeRaw(Prisma.sql`
     UPDATE "ProjectStorageUsage"
     SET "usedBytes" = "usedBytes" + ${bytes}, "updatedAt" = NOW()
     WHERE "projectId" = ${scope.projectId}
       AND "organizationId" = ${scope.organizationId}
-      AND "usedBytes" + ${bytes} <= ${caps.projectCapBytes}`);
+      AND ${projectGuard}`);
   if (project === 0) {
     throw siteVideoError('VIDEO_STORAGE_CAP_REACHED', { scope: 'PROJECT' });
   }
@@ -90,20 +100,20 @@ export async function assertHeadroom(
   maxBytes: number,
   caps: LedgerCaps,
 ): Promise<void> {
-  const [org, project] = await Promise.all([
-    tx.storageUsage.findUnique({
-      where: { organizationId: scope.organizationId },
-      select: { usedBytes: true },
-    }),
-    tx.projectStorageUsage.findUnique({
-      where: { projectId: scope.projectId },
-      select: { usedBytes: true },
-    }),
-  ]);
+  const org = await tx.storageUsage.findUnique({
+    where: { organizationId: scope.organizationId },
+    select: { usedBytes: true },
+  });
   if (Number(org?.usedBytes ?? 0n) + maxBytes > caps.orgCapBytes) {
     throw siteVideoError('VIDEO_STORAGE_CAP_REACHED', { scope: 'ORGANIZATION' });
   }
-  if (Number(project?.usedBytes ?? 0n) + maxBytes > caps.projectCapBytes) {
+  const projectCap = caps.projectCapBytes;
+  if (projectCap === null) return;
+  const project = await tx.projectStorageUsage.findUnique({
+    where: { projectId: scope.projectId },
+    select: { usedBytes: true },
+  });
+  if (Number(project?.usedBytes ?? 0n) + maxBytes > projectCap) {
     throw siteVideoError('VIDEO_STORAGE_CAP_REACHED', { scope: 'PROJECT' });
   }
 }

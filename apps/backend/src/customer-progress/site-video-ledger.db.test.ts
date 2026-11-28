@@ -85,6 +85,33 @@ describe.skipIf(!HAS_DB)('site video ledgers (live database)', () => {
     expect(await used()).toEqual({ org: BigInt(25 * MB), project: BigInt(25 * MB) });
   });
 
+  it('does not refuse a project past the old ceiling when no project cap is set', async () => {
+    const unlimited = { orgCapBytes: 100 * MB, projectCapBytes: null };
+    const chargeUnlimited = (bytes: number) =>
+      withRlsContext(prisma, staff(), (tx) => chargeLedgers(tx, scope(), bytes, unlimited));
+    await chargeUnlimited(25 * MB);
+    await chargeUnlimited(20 * MB); // 45 MB: past the 30 MB ceiling the other cases use
+    expect(await used()).toEqual({ org: BigInt(45 * MB), project: BigInt(45 * MB) });
+    // The org cap is still the wall, and it still rolls both rows back.
+    await admin().storageUsage.update({
+      where: { organizationId: ORG },
+      data: { usedBytes: BigInt(100 * MB) },
+    });
+    await expect(chargeUnlimited(1 * MB)).rejects.toMatchObject({
+      response: { details: { scope: 'ORGANIZATION' } },
+    });
+  });
+
+  it('grant-time headroom ignores a project cap that is not set', async () => {
+    const unlimited = { orgCapBytes: 100 * MB, projectCapBytes: null };
+    await expect(
+      withRlsContext(prisma, staff(), (tx) => assertHeadroom(tx, scope(), 60 * MB, unlimited)),
+    ).resolves.toBeUndefined();
+    await expect(
+      withRlsContext(prisma, staff(), (tx) => assertHeadroom(tx, scope(), 200 * MB, unlimited)),
+    ).rejects.toMatchObject({ response: { details: { scope: 'ORGANIZATION' } } });
+  });
+
   it('refuses the charge that would pass the ORG cap even when the project has room', async () => {
     // Fill the org with another project's bytes.
     await withRlsContext(prisma, staff(), (tx) =>

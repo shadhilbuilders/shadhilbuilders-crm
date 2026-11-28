@@ -1,10 +1,16 @@
 // Site update video configuration (2026-11-23).
 //
 // The storage caps are configuration, not constants and not columns: a limit is
-// an operating decision, and nothing here guesses one. When the feature is ON
-// the process refuses to start without both caps, and says what is wrong in one
-// message, the same posture as assertBootEnv. When it is OFF nothing is
-// required and every video route answers 404.
+// an operating decision, and nothing here guesses one. The ORG cap is required
+// when the feature is ON, because storage costs money and an unbounded tenant is
+// not a decision anyone made; the process refuses to start without it and says
+// what is wrong in one message, the same posture as assertBootEnv.
+//
+// The PROJECT cap is optional and unset in production since 2026-11-28. When it
+// is absent the per-project ledger still counts bytes (so spend per villa stays
+// visible) but nothing is refused; when it is present it may not exceed the org
+// cap, because a project cannot be allowed more than its organisation. When the
+// feature is OFF nothing is required and every video route answers 404.
 //
 // The upload-grant rate limits DO have defaults, because a sensible rate is not
 // a business decision: 20 grants per user and 100 per project in 10 minutes is
@@ -22,8 +28,8 @@ export interface SiteVideoConfig {
   enabled: boolean;
   /** Bytes of video one organisation may hold. 0 when disabled. */
   orgCapBytes: number;
-  /** Bytes of video one project may hold. 0 when disabled. */
-  projectCapBytes: number;
+  /** Bytes one project may hold, or null for no per-project limit. 0 when disabled. */
+  projectCapBytes: number | null;
   /** Upload grants one user may request per window. */
   authPerUserLimit: number;
   /** Upload grants one project may issue per window, across all users. */
@@ -64,12 +70,16 @@ export function readSiteVideoConfig(
 
   const problems: string[] = [];
   const orgCap = parsePositiveInt(env[SITE_VIDEO_ENV.orgCap]);
-  const projectCap = parsePositiveInt(env[SITE_VIDEO_ENV.projectCap]);
+  const projectCapRaw = env[SITE_VIDEO_ENV.projectCap];
+  const projectCapUnset = projectCapRaw === undefined || projectCapRaw.trim() === '';
+  const projectCap = projectCapUnset ? null : parsePositiveInt(projectCapRaw);
   if (orgCap === null) {
     problems.push(`${SITE_VIDEO_ENV.orgCap} must be a positive integer number of bytes`);
   }
-  if (projectCap === null) {
-    problems.push(`${SITE_VIDEO_ENV.projectCap} must be a positive integer number of bytes`);
+  if (!projectCapUnset && projectCap === null) {
+    problems.push(
+      `${SITE_VIDEO_ENV.projectCap} must be a positive integer number of bytes when set`,
+    );
   }
   if (orgCap !== null && projectCap !== null && projectCap > orgCap) {
     problems.push(
@@ -97,7 +107,7 @@ export function readSiteVideoConfig(
   return {
     enabled: true,
     orgCapBytes: orgCap as number,
-    projectCapBytes: projectCap as number,
+    projectCapBytes: projectCap,
     authPerUserLimit,
     authPerProjectLimit,
     authWindowSeconds,

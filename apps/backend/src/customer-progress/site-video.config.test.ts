@@ -31,9 +31,24 @@ describe('readSiteVideoConfig', () => {
     });
   });
 
-  it('refuses to start without a cap, naming every missing one', () => {
+  it('refuses to start without the ORG cap, naming it', () => {
     expect(() => readSiteVideoConfig({ SITE_VIDEO_CAPTURE: 'true' })).toThrow(
-      /SITE_VIDEO_ORG_CAP_BYTES[\s\S]*SITE_VIDEO_PROJECT_CAP_BYTES/,
+      /SITE_VIDEO_ORG_CAP_BYTES/,
+    );
+  });
+
+  it('boots with no project cap, and says so instead of guessing one', () => {
+    const cfg = readSiteVideoConfig({
+      SITE_VIDEO_CAPTURE: 'true',
+      SITE_VIDEO_ORG_CAP_BYTES: '53687091200',
+    });
+    expect(cfg.enabled).toBe(true);
+    expect(cfg.projectCapBytes).toBeNull();
+  });
+
+  it('rejects a project cap that is set to garbage', () => {
+    expect(() => readSiteVideoConfig({ ...ON, SITE_VIDEO_PROJECT_CAP_BYTES: 'ten' })).toThrow(
+      /SITE_VIDEO_PROJECT_CAP_BYTES/,
     );
   });
 

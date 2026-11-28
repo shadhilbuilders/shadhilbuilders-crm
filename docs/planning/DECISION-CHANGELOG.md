@@ -2030,3 +2030,35 @@ should fail loudly if someone flips the flag without the caps in place.
 The lesson is about where a gate lives. The flag was correct in the code and honoured
 by every surface; it was simply set to `true` in an env table that no repository
 audit reads. A feature gate that exists only in Coolify is invisible to `grep`.
+
+## Round 70 - 2026-11-28, 11:50 UTC - One cap, and the gate goes back on
+
+Two decisions, taken together because they pull in opposite directions.
+
+The gate went back on with the four handset checks still owed. The reason is the
+owner's: the feature is worth more live in front of real buyers than it is safe behind
+a checklist that only he can run. The known defect is narrow - a low-end Android misses
+the 3 second playback bar - and nothing in the recording path breaks; what a slow handset
+loses is the ability to review a clip before uploading it. Recorded in TODOS.md as a debt
+with its symptom, not as a blocker, so the next person reading the repo knows the feature
+is on by choice and what is still owed on it.
+
+The per-project storage cap is gone. It was 1 GiB against an 8 GiB org cap, which sounds
+prudent until you price a villa in clips: at roughly 50 MB per minute of 1080p, one large
+project reaches 1 GiB after about twenty minutes of footage, and the ceiling then refuses
+bytes the organisation had already paid for. A limit that only binds on the customer who
+uses the feature most is not protecting anyone. The org cap is the one that maps to
+money, and it was already the wall.
+
+What the code keeps: the per-project ledger row is still written and still credited on
+delete, so spend per villa stays visible to whoever is looking at storage. Only the
+refusal is gone. `projectCapBytes` is `number | null`, and null means no project limit,
+which is a state the parser reaches by absence rather than by a magic number - `0` would
+have been indistinguishable from a cap nobody can meet.
+
+The cost, named: one project can now consume the whole org quota and starve its
+neighbours. Accepted at two organisations and 128 units; reopen the cap if a project
+starts starving others rather than when a single project gets big.
+
+The grant path also got cheaper: with no project cap, `assertHeadroom` reads one ledger
+row instead of two.

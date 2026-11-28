@@ -126,27 +126,31 @@ migration plus a backfill for a problem two indexed lookups solve.
 
 ## Site video
 
-### The capture flag is off until four handset checks pass (2026-11-28)
+### The capture gate is on, the project cap is gone, four handset checks are still owed (2026-11-28)
 
-`SITE_VIDEO_CAPTURE` was `true` on every production container while the device gate
-was still open. It is off now: Coolify's env holds `false`, the generated `.env` and
-the running stack agree, and the value reads `false` in api, web and realtime-sse.
-The backend treats the flag as an exact string, so `false` is OFF and every video
-route answers 404; the web surface reads it server-side (`env.SITE_VIDEO_CAPTURE ===
-'true'`), so no recorder renders.
+`SITE_VIDEO_CAPTURE` was `true` on every production container while the device gate was
+open. It was turned off at the source that morning (Coolify env, generated `.env`, and a
+container recreate), and turned back on the same day on the owner's instruction with the
+checks still owed. Written down plainly because the sequence is the record: the feature
+is live in production, and the four handset-only checks are a debt against it, not a
+blocker in front of it.
 
-Four handset-only checks remain owed. The known failure: a low-end Android misses the
-3 second playback bar, measured at 9.50 s in the emulator. Everything else stays
-wired and needs no rebuild when the flag flips back - the caps
-(`SITE_VIDEO_ORG_CAP_BYTES` 8 GiB, `SITE_VIDEO_PROJECT_CAP_BYTES` 1 GiB), the
-upload-grant rate limits, the delivery and consent paths, and any video already
-stored.
+The known failure those checks cover: a low-end Android misses the 3 second playback bar,
+measured at 9.50 s in the emulator.
 
-To reopen: set `SITE_VIDEO_CAPTURE=true` in Coolify's env for the service, then
+The per-project cap is gone. `SITE_VIDEO_PROJECT_CAP_BYTES` is unset in production and
+`projectCapBytes` is `null` in `readSiteVideoConfig`, which `chargeLedgers` reads as "no
+project limit". The per-project ledger row is still written and still credited on delete,
+so spend per villa stays visible; nothing refuses a charge against it any more. The org
+cap (8 GiB) is unchanged and is still the wall, still enforced by the conditional UPDATE
+inside the insert transaction. The trade-off accepted: one project can now fill the whole
+org quota. Reopen the per-project cap if a multi-project org starts starving one project
+to feed another.
+
+To turn the feature off again: set `SITE_VIDEO_CAPTURE=false` in Coolify's env and
 recreate the containers (a push, or `docker compose -p 0bjahklz8gtdtr4do4r7ae6m up -d`
-in `/data/coolify/services/0bjahklz8gtdtr4do4r7ae6m` once the generated `.env`
-carries the value). The backend refuses to boot with the flag on and a cap missing,
-so the caps have to be in place before the flag moves.
+in `/data/coolify/services/0bjahklz8gtdtr4do4r7ae6m` once the generated `.env` carries
+the value). Boot refuses to start with the flag on and no org cap, by design.
 
 ## Access control
 
