@@ -141,6 +141,7 @@ jobs:
     env:
       SHADHIL_APP_PASSWORD: shadhil_app_ci
       SHADHIL_OWNER_PASSWORD: shadhil_owner_ci
+      SHADHIL_SEED_PASSWORD: shadhil_seed_ci
     services:
       postgres:
         image: postgres:16-alpine
@@ -181,6 +182,18 @@ jobs:
       - run: cd packages/database && npx prisma migrate deploy
         env:
           DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
+      # The owner split is the shape this repo ships (docs/planning/OWNER-ROLE-CUTOVER.md),
+      # so CI runs it and `packages/database/test/owner-roles.test.ts` enforces it: the three
+      # roles' attributes, every SECURITY DEFINER helper owned by the bypass role, and the
+      # exact set of roles that can cross a tenant boundary. Without this step that test
+      # fails on a missing role, which is how it announced itself after the split landed.
+      - name: Owner split roles
+        run: |
+          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm_test \
+            -v ON_ERROR_STOP=1 \
+            -v owner_password="$SHADHIL_OWNER_PASSWORD" \
+            -v seed_password="$SHADHIL_SEED_PASSWORD" \
+            -f scripts/owner-role-bootstrap.sql
       - run: cd packages/database && pnpm exec tsx src/seed.ts
         env:
           DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
@@ -257,6 +270,7 @@ jobs:
       # shadhil (owner) password matches DIRECT_DATABASE_URL below
       # and the postgres service POSTGRES_PASSWORD env above.
       SHADHIL_OWNER_PASSWORD: shadhil_owner_ci
+      SHADHIL_SEED_PASSWORD: shadhil_seed_ci
     services:
       postgres:
         image: postgres:16-alpine
@@ -310,6 +324,15 @@ jobs:
           # values - that's bash syntax. Use the ${{ }} expression form or
           # Prisma gets the literal '${...}' as the password (P1000).
           DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
+      # Same owner split as the test job: this job runs the same
+      # `owner-roles.test.ts`, so the roles and the ownership walk have to exist here too.
+      - name: Owner split roles
+        run: |
+          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm_test \
+            -v ON_ERROR_STOP=1 \
+            -v owner_password="$SHADHIL_OWNER_PASSWORD" \
+            -v seed_password="$SHADHIL_SEED_PASSWORD" \
+            -f scripts/owner-role-bootstrap.sql
       # AR-4 companion: the matrix FAILS if the DB is unreachable - a missing
       # DATABASE_URL must never silently skip the security suite.
       - run: cd packages/database && pnpm test
