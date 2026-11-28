@@ -1994,6 +1994,16 @@ because RETURNING is checked against SELECT - the same trap as AuditLog above, n
 recorded twice on purpose: a cron-context INSERT that asks for its row back needs
 a SELECT arm too.
 
+**The prompt existed only on paper.** `shadhil_visit_reminder` was approved in
+Meta, described in the code comment, and sent by nobody: the reminder cron
+notified staff and stamped `reminderSentAt` as though the customer had been told.
+So the reply handling had no prompt in front of it. `remind` now queues the
+template to the lead and writes the thread row the answer lands against, in one
+transaction, before the staff notification. The claim rule splits accordingly: a
+failed queue write releases it so the next tick retries, while a customer who has
+already been messaged keeps the claim even if a staff emit fails, because a second
+copy to the customer is the worse outcome.
+
 **What is not here.** No auto-reply to the customer: an acknowledgement template
 would be a third submission and a third approval, and the reply that matters is the
 staff call. No NO/cancel.

@@ -40,14 +40,73 @@ const BACKOFF_MS = [
 ];
 
 /**
+ * The four names the swap retired, mapped to the slot they now resolve to.
+ *
+ * A row queued before 2026-11-24 still carries one of these. Meta will not
+ * recategorise an approved template (3835031), so the old pair is still live as
+ * MARKETING and a verbatim pass-through would quietly keep sending it. Rows
+ * follow their slot instead.
+ */
+const RETIRED_TEMPLATE_NAMES: Record<
+  string,
+  'chatReply' | 'visitFollowup' | 'siteImage' | 'siteVideo' | 'visitReminder'
+> = {
+  shadhil_chat_reply: 'chatReply',
+  shadhil_site_visit_followup: 'visitFollowup',
+  shadhil_site_update_image: 'siteImage',
+  shadhil_site_update_video: 'siteVideo',
+  // Renamed, not recategorised: Meta would not accept a body edit on the approved
+  // template, so `shadhil_visit_reminder` is deleted and its replacement is _v2.
+  shadhil_visit_reminder: 'visitReminder',
+};
+
+/**
+ * A template name from the environment, with one guard: a value that names a
+ * RETIRED template is ignored in favour of the built-in current name.
+ *
+ * T-WA-VISIT-REPLY (2026-11-28): production carried
+ * `WA_TEMPLATE_VISIT_REMINDER=shadhil_visit_reminder` after that template was
+ * deleted from Meta. `resolveTemplateName` could not save it, because a retired
+ * name resolves TO a slot and the slot is read from this same variable, so the
+ * old name came straight back and every send would fail 132001. An env var is
+ * configuration, not authority: if it names something we know is gone, the code
+ * name wins.
+ *
+ * Empty and undefined fall back too. Any OTHER unknown name passes through, so a
+ * future template only needs its env var set and Meta names it in the error if
+ * it does not exist.
+ */
+export function resolveConfiguredTemplateName(
+  configured: string | undefined,
+  fallback: string,
+): string {
+  const name = configured === undefined || configured === '' ? fallback : configured;
+  return name in RETIRED_TEMPLATE_NAMES ? fallback : name;
+}
+
+/**
  * The template a completed site visit is followed up with.
  *
  * Named here rather than at the call site so the fallback lives in one place
  * with the other template names: `WA_TEMPLATE_VISIT_FOLLOWUP` is the same
  * variable that used to hold the MARKETING `shadhil_site_visit_followup`.
  */
-export const VISIT_CHECKIN_TEMPLATE =
-  process.env['WA_TEMPLATE_VISIT_FOLLOWUP'] || 'shadhil_site_visit_checkin';
+export const VISIT_CHECKIN_TEMPLATE = resolveConfiguredTemplateName(
+  process.env['WA_TEMPLATE_VISIT_FOLLOWUP'],
+  'shadhil_site_visit_checkin',
+);
+
+/**
+ * The template that asks a customer to confirm an upcoming visit.
+ *
+ * Named here for the same reason as the check-in: the cron that sends it and the
+ * send path must agree on one name. `_v2` because Meta refuses to edit an
+ * approved template, so the corrected copy was a new submission.
+ */
+export const VISIT_REMINDER_TEMPLATE = resolveConfiguredTemplateName(
+  process.env['WA_TEMPLATE_VISIT_REMINDER'],
+  'shadhil_visit_reminder_v2',
+);
 
 @Injectable()
 export class OutboundService {
@@ -82,13 +141,16 @@ export class OutboundService {
     // so a missing env var used to put a marketing template back on the send
     // path without a word in the log. See RETIRED_TEMPLATE_NAMES below for the
     // rows that still carry the old names.
-    chatReply: process.env.WA_TEMPLATE_CHAT_REPLY || 'shadhil_enquiry_reply',
+    chatReply: resolveConfiguredTemplateName(
+      process.env.WA_TEMPLATE_CHAT_REPLY,
+      'shadhil_enquiry_reply',
+    ),
     visitFollowup: VISIT_CHECKIN_TEMPLATE,
     // T-WA-VISIT-REPLY (2026-11-28): _v2 because Meta refuses to edit an
     // approved template (2388039), so the corrected copy is a new name and the
     // old `shadhil_visit_reminder` is deleted. A row still naming the old one
     // resolves through RETIRED_TEMPLATE_NAMES below.
-    visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER || 'shadhil_visit_reminder_v2',
+    visitReminder: VISIT_REMINDER_TEMPLATE,
   };
 
   private get client(): PrismaClient {
@@ -585,31 +647,14 @@ export class OutboundService {
  * rejects an image header parameter and an IMAGE template rejects a video one.
  * The send picks the template by what media it actually has.
  */
-export const SITE_UPDATE_TEMPLATE_VIDEO =
-  process.env['WA_TEMPLATE_SITE_UPDATE_VIDEO'] || 'shadhil_site_update_video';
-export const SITE_UPDATE_TEMPLATE_IMAGE =
-  process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'] || 'shadhil_villa_update_image';
-
-/**
- * The four names the swap retired, mapped to the slot they now resolve to.
- *
- * A row queued before 2026-11-24 still carries one of these. Meta will not
- * recategorise an approved template (3835031), so the old pair is still live as
- * MARKETING and a verbatim pass-through would quietly keep sending it. Rows
- * follow their slot instead.
- */
-const RETIRED_TEMPLATE_NAMES: Record<
-  string,
-  'chatReply' | 'visitFollowup' | 'siteImage' | 'siteVideo' | 'visitReminder'
-> = {
-  shadhil_chat_reply: 'chatReply',
-  shadhil_site_visit_followup: 'visitFollowup',
-  shadhil_site_update_image: 'siteImage',
-  shadhil_site_update_video: 'siteVideo',
-  // Renamed, not recategorised: Meta would not accept a body edit on the approved
-  // template, so `shadhil_visit_reminder` is deleted and its replacement is _v2.
-  shadhil_visit_reminder: 'visitReminder',
-};
+export const SITE_UPDATE_TEMPLATE_VIDEO = resolveConfiguredTemplateName(
+  process.env['WA_TEMPLATE_SITE_UPDATE_VIDEO'],
+  'shadhil_villa_update_video',
+);
+export const SITE_UPDATE_TEMPLATE_IMAGE = resolveConfiguredTemplateName(
+  process.env['WA_TEMPLATE_SITE_UPDATE_IMAGE'],
+  'shadhil_villa_update_image',
+);
 
 /** The three slots a row may name other than the site-update pair. */
 export interface TemplateNames {

@@ -3,12 +3,16 @@
 //
 // WHEN: `Organization.visitReminderLeadMinutes` before `scheduledFor` (default 60,
 // configurable per org via PATCH /api/organization/settings).
-// WHO: exec, lead owner, lead's team manager, org owner(s) - the SAME audience as
-// the "visit scheduled" notification (`resolveVisitStakeholders`).
+// WHO: the CUSTOMER on WhatsApp (`shadhil_visit_reminder_v2`, 2026-11-28) *and*
+// exec, lead owner, lead's team manager, org owner(s) - the same staff audience as
+// the "visit scheduled" notification (`resolveVisitStakeholders`). Before
+// 2026-11-28 only the staff half existed: the customer was never messaged, while
+// `reminderSentAt` was stamped as though they had been.
 // ONCE: `SiteVisit.reminderSentAt` is claimed with a conditional update BEFORE
-// sending, so two replicas (or a lost Redis lock) cannot double-send. If every
-// emit fails the claim is released so the next tick retries; a partial failure
-// keeps the claim (some people already got it - a duplicate would be worse).
+// sending, so two replicas (or a lost Redis lock) cannot double-send. If the
+// customer message cannot be queued the claim is released so the next tick
+// retries; once the customer has been messaged the claim stays even if a staff
+// emit fails (re-sending the customer a second time would be worse).
 // A rescheduled visit is a NEW row, so it gets its own reminder.
 //
 // Safety shell mirrors overdue-alerts: Redis lock + lease renewal, per-org
@@ -23,7 +27,11 @@ import { withRlsContext, type PrismaClient } from '@shadhil/database';
 
 import { checkinStillWorthSending } from '../visits/checkin-schedule';
 import { greetingName } from '../customer-progress/site-update-greeting';
-import { OutboundService, VISIT_CHECKIN_TEMPLATE } from '../whatsapp/outbound.service';
+import {
+  OutboundService,
+  VISIT_CHECKIN_TEMPLATE,
+  VISIT_REMINDER_TEMPLATE,
+} from '../whatsapp/outbound.service';
 
 import { forEachOrganization } from '../common/cron-orgs';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -57,7 +65,12 @@ type DueVisit = {
   userId: string;
   organizationId: string;
   scheduledFor: Date;
-  lead: { name: string };
+  lead: {
+    name: string;
+    phoneE164: string | null;
+    phone: string | null;
+    projectId: string;
+  };
 };
 
 @Injectable()
@@ -140,7 +153,9 @@ export class VisitRemindersService implements OnModuleDestroy {
               userId: true,
               organizationId: true,
               scheduledFor: true,
-              lead: { select: { name: true } },
+              lead: {
+                select: { name: true, phoneE164: true, phone: true, projectId: true },
+              },
             },
           })) as DueVisit[];
         });
@@ -329,6 +344,11 @@ export class VisitRemindersService implements OnModuleDestroy {
     );
     if (claimed.count !== 1) return false; // another replica won, or visit closed
 
+    // The customer first. The reply this template invites is what the webhook
+    // acts on, so a reminder that never reaches the customer leaves that path
+    // dead - and the thread row is where the reply lands.
+    const told = await this.sendCustomerReminder(ctx, visit);
+
     const audience = await resolveVisitStakeholders(this.client, {
       organizationId: visit.organizationId,
       leadId: visit.leadId,
@@ -353,8 +373,8 @@ export class VisitRemindersService implements OnModuleDestroy {
       }
     }
 
-    if (delivered === 0) {
-      // Nobody was told: release the claim so the next tick retries.
+    if (delivered === 0 && !told) {
+      // Nobody was told at all: release the claim so the next tick retries.
       await withRlsContext(this.client, ctx, async (tx) =>
         (tx as unknown as PrismaClient).siteVisit.updateMany({
           where: { id: visit.id },
@@ -363,6 +383,85 @@ export class VisitRemindersService implements OnModuleDestroy {
       );
       return false;
     }
+    if (delivered === 0) {
+      // The customer has the message; a retry would send them a duplicate. Staff
+      // can still see the visit on the dashboard.
+      this.logger.error(`Reminder for visit ${visit.id} reached the customer but no staff member`);
+    }
     return true;
+  }
+
+  /**
+   * Queue the customer's WhatsApp reminder and write the thread row it belongs to.
+   *
+   * Returns false when there is no number to send to. Throws when the queue write
+   * fails, after releasing the claim, so the next tick tries the whole reminder
+   * again.
+   */
+  private async sendCustomerReminder(
+    ctx: { userId: string; role: 'CRON_SERVICE'; organizationId: string },
+    visit: DueVisit,
+  ): Promise<boolean> {
+    const phone = visit.lead.phoneE164 ?? visit.lead.phone;
+    if (phone === null || phone.length === 0) {
+      this.logger.warn(
+        `Reminder for visit ${visit.id} not sent: lead ${visit.leadId} has no WhatsApp number`,
+      );
+      return false;
+    }
+
+    try {
+      await withRlsContext(this.client, ctx, async (tx) => {
+        const db = tx as unknown as PrismaClient;
+        const project = await db.project.findUnique({
+          where: { id: visit.lead.projectId },
+          select: { name: true },
+        });
+
+        // Raw INSERT, no RETURNING: Message has INSERT policies for CRON_SERVICE
+        // but no SELECT arm, so a typed create fails on the read-back Prisma
+        // always appends (42501). The id is derived from the visit, so a retried
+        // transaction collides instead of writing a second row.
+        const messageId = `visit_reminder_${visit.id}`;
+        await db.$executeRawUnsafe(
+          `INSERT INTO "Message" (id, "organizationId", "leadId", "userId", direction, channel, kind, body, "createdAt")
+           VALUES ($1, $2, $3, $4, 'OUT', 'WHATSAPP', 'CUSTOMER', $5, NOW())`,
+          messageId,
+          visit.organizationId,
+          visit.leadId,
+          // The visit's assignee: the column is a non-null FK, and the send is on
+          // the exec's behalf.
+          visit.userId,
+          `Site visit reminder sent to the customer (${VISIT_REMINDER_TEMPLATE}).`,
+        );
+
+        await this.outbound.enqueue(
+          {
+            messageId,
+            organizationId: visit.organizationId,
+            leadId: visit.leadId,
+            sendType: 'TEMPLATE',
+            templateName: VISIT_REMINDER_TEMPLATE,
+            // {{1}} the site, {{2}} the slot. `Lead.projectId` is a required
+            // column, so the fallback is unreachable; it exists so a missing
+            // project row can never put an empty string into a customer message.
+            templateVars: {
+              '1': project?.name ?? 'the site',
+              '2': formatVisitWhen(visit.scheduledFor),
+            },
+          },
+          tx as unknown as Parameters<OutboundService['enqueue']>[1],
+        );
+      });
+      return true;
+    } catch (err) {
+      await withRlsContext(this.client, ctx, async (tx) =>
+        (tx as unknown as PrismaClient).siteVisit.updateMany({
+          where: { id: visit.id },
+          data: { reminderSentAt: null },
+        }),
+      );
+      throw err;
+    }
   }
 }

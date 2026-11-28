@@ -3,7 +3,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { NotificationsService } from '../notifications/notifications.service';
-import { OutboundService, VISIT_CHECKIN_TEMPLATE } from '../whatsapp/outbound.service';
+import {
+  OutboundService,
+  VISIT_CHECKIN_TEMPLATE,
+  VISIT_REMINDER_TEMPLATE,
+} from '../whatsapp/outbound.service';
 import type { WhatsAppClient } from '../whatsapp/whatsapp.client';
 import { PrismaService } from '../prisma/prisma.module';
 import type { RedisService } from '../redis/redis.module';
@@ -40,10 +44,12 @@ const ids = {
   // one OWNER per org is enforced by the DB: seeded into this run's org.
   owner: `${P}ownr-${RUN}`,
   project: `${P}proj-${RUN}`,
+  projectB: `${P}projB-${RUN}`,
   team: `${P}team-${RUN}`,
   lead: `${P}lead-${RUN}`,
   lead2: `${P}lead2-${RUN}`,
   lead3: `${P}lead3-${RUN}`,
+  lead5: `${P}lead5-${RUN}`,
   soon: `${P}visit-soon-${RUN}`,
   later: `${P}visit-later-${RUN}`,
 };
@@ -108,6 +114,18 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
           organizationId: ORG,
         },
       });
+      // A second project: `@@unique([organizationId, phoneE164, projectId])` means
+      // two leads with an empty phone collide inside one project, and the no-number
+      // cases need exactly that empty string.
+      await db.project.create({
+        data: {
+          id: ids.projectB,
+          name: 'vrem B',
+          slug: `${P}-b${RUN}`,
+          address: 't',
+          organizationId: ORG,
+        },
+      });
       await db.team.create({
         data: { id: ids.team, name: `vrem ${RUN}`, managerId: ids.mgr, organizationId: ORG },
       });
@@ -159,6 +177,24 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
           projectId: ids.project,
         },
       });
+      // No reachable number: the staff reminder still goes out, the customer
+      // message cannot.
+      await db.lead.create({
+        data: {
+          id: ids.lead5,
+          name: 'Reminder Lead 5',
+          phone: '',
+          phoneE164: '',
+          source: 'WHATSAPP',
+          state: 'VISIT_SCHEDULED',
+          ownerId: ids.tc,
+          ownerType: 'TELECALLER',
+          coOwnerId: ids.exec,
+          teamId: ids.team,
+          organizationId: ORG,
+          projectId: ids.projectB,
+        },
+      });
     });
     // The sweep only ever WRITES an outbox row; delivery belongs to outbound.cron,
     // so the client here is never called and needs no token.
@@ -179,6 +215,14 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
     // notifications the cron wrote.
     await tenant.dispose();
   }, 120_000);
+
+  const reminderOutboxFor = (leadId: string) =>
+    admin((db) =>
+      db.outboundMessage.findMany({
+        where: { leadId, templateName: VISIT_REMINDER_TEMPLATE },
+        select: { id: true, status: true, templateVars: true },
+      }),
+    );
 
   const seedVisit = (id: string, minutesAhead: number, leadId = ids.lead) =>
     admin((db) =>
@@ -212,6 +256,24 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
     for (const who of [ids.exec, ids.tc, ids.mgr, ids.owner]) {
       expect(await inbox(who)).toContain(ids.lead);
     }
+
+    // The customer's half: a queued template carrying the site and the slot, and
+    // the thread row the reply will land against. Before 2026-11-28 the cron told
+    // staff and left the customer alone, while stamping reminderSentAt as if the
+    // customer had been told.
+    const toCustomer = await reminderOutboxFor(ids.lead);
+    expect(toCustomer).toHaveLength(1);
+    expect(toCustomer[0]?.status).toBe('PENDING');
+    const vars = toCustomer[0]?.templateVars as Record<string, string> | null;
+    expect(vars?.['1']).toBe('vrem');
+    expect((vars?.['2'] ?? '').length).toBeGreaterThan(0);
+    const thread = await admin((db) =>
+      db.message.findMany({
+        where: { leadId: ids.lead, direction: 'OUT' },
+        select: { id: true },
+      }),
+    );
+    expect(thread.map((m) => m.id)).toContain(`visit_reminder_${ids.soon}`);
 
     // Second tick: no duplicate for the soon visit, and the later one is outside 60 min.
     await service.tick();
@@ -287,9 +349,12 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
     expect((vars?.['1'] ?? '').length).toBeGreaterThan(0);
     expect((vars?.['2'] ?? '').length).toBeGreaterThan(0);
 
-    // The thread row the buyer's reply will land against.
+    // The thread row the buyer's reply will land against. Scoped to the check-in:
+    // the reminder writes its own OUT row into the same thread now.
     const thread = await admin((db) =>
-      db.message.count({ where: { leadId: ids.lead, direction: 'OUT' } }),
+      db.message.count({
+        where: { leadId: ids.lead, direction: 'OUT', id: { startsWith: 'visit_checkin_' } },
+      }),
     );
     expect(thread).toBe(1);
 
@@ -334,5 +399,22 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
     expect(await outboxFor(ids.lead3)).toHaveLength(0);
     const thread = await admin((db) => db.message.count({ where: { leadId: ids.lead3 } }));
     expect(thread).toBe(0);
+  });
+
+  it('still tells staff, and gives up on the customer message, when there is no number', async () => {
+    const visit = `${P}visit-nophone-${RUN}`;
+    await seedVisit(visit, 30, ids.lead5);
+
+    await service.tick();
+
+    expect(await reminderOutboxFor(ids.lead5)).toHaveLength(0);
+    expect(await admin((db) => db.message.count({ where: { leadId: ids.lead5 } }))).toBe(0);
+    // Staff were told, so the claim stays: retrying forever would only notify them
+    // again for a number that will never appear.
+    expect(await inbox(ids.exec)).toContain(ids.lead5);
+    const row = await admin((db) =>
+      db.siteVisit.findUnique({ where: { id: visit }, select: { reminderSentAt: true } }),
+    );
+    expect(row?.reminderSentAt).not.toBeNull();
   });
 });

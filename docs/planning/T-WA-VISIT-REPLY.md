@@ -324,4 +324,24 @@ its new dependencies.
 
 **What is not verified.** Nothing has been sent through a real Meta webhook in
 production: the reply path is exercised against the database, not against Meta.
-`§8`'s copy fix is operator work in WhatsApp Manager and was not done here.
+
+**The reminder now sends (2026-11-28, same day).** The cron that was supposed to
+prompt the customer was notifying staff only, so the reply path had no prompt in
+front of it. `VisitRemindersService.remind` now queues
+`shadhil_visit_reminder_v2` to the lead and writes the `Message` row the reply
+will land against, inside one transaction, before the staff notification. Three
+consequences worth knowing:
+
+- `reminderSentAt` finally means what it says. It used to be stamped while no
+  customer message existed anywhere.
+- If the queue write fails the claim is released, so the next tick retries the
+  whole reminder. Once the CUSTOMER has the message the claim stays even if a
+  staff emit fails; sending the customer a second copy would be worse than a
+  missed internal notification, and the visit is on the dashboard anyway.
+- A lead with no number still gets the staff reminder and the claim is kept, so
+  nothing retries forever for a number that will never appear.
+
+`Lead.projectId` is a required column, so the `?? 'your site visit'` fallback in
+the check-in path is unreachable and the "for your site visit" sentence I recorded
+earlier cannot render. The new reminder passes `the site` in that impossible slot
+rather than an empty string.
