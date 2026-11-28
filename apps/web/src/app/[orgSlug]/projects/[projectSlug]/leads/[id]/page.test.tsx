@@ -71,6 +71,17 @@ vi.mock('@/components/shared/PhoneNumber', () => ({
   PhoneNumber: () => null,
 }));
 
+// Records the props the page gives the dialog: the page is the only place that
+// knows which fields a save must carry, and a field it forgets to pass is a
+// field the dialog posts back empty (the email-wipe bug, T-NOTES).
+const editDialogProps: Array<Record<string, unknown>> = [];
+vi.mock('@/components/leads/LeadEditDialog', () => ({
+  LeadEditDialog: (props: Record<string, unknown>) => {
+    editDialogProps.push(props);
+    return null;
+  },
+}));
+
 vi.mock('@/lib/session', () => ({
   useSessionUser: vi.fn(() => ({
     user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
@@ -231,6 +242,13 @@ describe('LeadDetailPage - delete action', () => {
       const html = renderWithRole(role);
       expect(html).toContain('data-qa="lead-edit-button"');
     }
+  });
+
+  it('hands the dialog the budget, so saving a note cannot clear the band', () => {
+    editDialogProps.length = 0;
+    renderWithRole('ADMIN', { ...FULL_LEAD, budget: 'FROM_2CR_TO_5CR' });
+    const lead = editDialogProps.at(-1)?.lead as Record<string, unknown> | null;
+    expect(lead?.budget).toBe('FROM_2CR_TO_5CR');
   });
 
   it('renders the budget band in words, not as the enum', () => {

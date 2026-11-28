@@ -351,7 +351,10 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
       open={open}
       onOpenChange={onOpenChange}
       contentClassName="sm:max-w-lg"
-      header={{ title: 'Edit lead', description: "Edit the lead's name, phone, email and notes." }}
+      header={{
+        title: 'Edit lead',
+        description: "Edit the lead's name, phone, email, budget and notes.",
+      }}
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button

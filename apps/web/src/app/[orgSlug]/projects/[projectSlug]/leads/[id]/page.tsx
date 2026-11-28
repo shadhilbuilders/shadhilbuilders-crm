@@ -131,6 +131,7 @@ export default function LeadDetailPage() {
                 phone: lead.phone,
                 email: lead.email,
                 notes: lead.notes,
+                budget: lead.budget,
               }
             : null
         }
