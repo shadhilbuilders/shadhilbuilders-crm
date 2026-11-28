@@ -254,11 +254,18 @@ So RLS stops accidental cross-tenant queries and a bad JOIN. It does not stop a
 leaked `DATABASE_URL`, and it never did. The owner-role migration removes
 cluster-level superuser exposure, which is worth doing, but it does not change this.
 
-Making the tenant unforgeable needs one of: a per-tenant database login, a signed
-tenant token verified inside a SECURITY DEFINER function, or a database per tenant.
-All are larger than anything currently planned. Decide which before spending more
-time on role taxonomy, and keep the forged-GUC test from
-`docs/planning/OWNER-ROLE-MIGRATION.md` (W19) as the red test that proves the fix.
+Making the tenant unforgeable needs one of: a per-tenant database login, a per-tenant
+secret verified inside a SECURITY DEFINER function, or a database per tenant. All are
+larger than anything currently planned.
+
+**Decided 2026-11-28, in `docs/planning/TENANT-IDENTITY.md`:** build the per-tenant
+secret (option B), and not yet. The trigger is the first second paying client, not a
+date: production holds two organisations from one client family, so a leaked connection
+string today exposes that client's data to that client. It becomes somebody else's data
+the moment a second paying client shares the database. Until then
+`DIRECT_DATABASE_URL` is treated as a privileged secret, and
+`packages/database/test/tenant-forgery.test.ts` stays green on purpose: it pins the
+forgery so the day it goes red is the day the fix landed.
 
 ### A materialised access key for engineer scope: considered, rejected (2026-11-28)
 
