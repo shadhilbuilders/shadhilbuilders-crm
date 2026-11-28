@@ -1102,17 +1102,26 @@ CREATE POLICY managerassignmentrule_select_team ON "ManagerAssignmentRule"
 -- Also grants the non-owner app role access (00-init.sql creates the role).
 -- ────────────────────────────────────────────────────────────────────────────
 
+-- 2026-11-28: the array below used to be a hand-written list of 27 names, and it
+-- had rotted - Feedback, LeadFact, OutboundMessage, ProgressPhoto, ProjectOption,
+-- ProjectStaffRole and WhatsappUnknownContact were ENABLED and not FORCED, which
+-- is the drift this block was supposed to prevent. Ask the catalogue instead, so a
+-- table added next year is covered without anyone remembering this file.
+--
+-- Caveat worth keeping: FORCE constrains the table OWNER only when that role is
+-- not a superuser. `shadhil` is SUPERUSER with BYPASSRLS today, so these
+-- statements make the invariant true without constraining that connection; see
+-- TODOS.md.
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY[
-    'Lead','Activity','SiteVisit','Message','Booking','Reminder',
-    'Notification','PushSubscription','PushNotification','AuditLog',
-    'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
-    'Phase','Unit','StreamTicket','OutboundMessage',
-    'ProjectOption','WhatsappUnknownContact','Organization',
-    'TeamMember','ProjectTeam','MessageRecipient','Invite'
-  ]
+  FOR t IN
+    SELECT c.relname
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public'
+       AND c.relkind = 'r'
+       AND c.relrowsecurity
   LOOP
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
   END LOOP;

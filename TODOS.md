@@ -124,6 +124,58 @@ chat attachment read does a scan). If that shows up in a trace, add
 URL surface, and the BFF already carries the session; (b) a `MediaObject` table - a
 migration plus a backfill for a problem two indexed lookups solve.
 
+## Access control
+
+### RLS is FORCEd on every table now, and the owner still bypasses it
+
+Seven tables had RLS enabled and FORCE off: Feedback, LeadFact, OutboundMessage,
+ProgressPhoto, ProjectOption, ProjectStaffRole, WhatsappUnknownContact. The header
+of `src/rls.ts` claimed otherwise, and so did a hand-written list in
+`policies.sql`, which is exactly how the gap survived. FORCEd on 2026-11-28
+(migration `20261128091000_force_rls_remaining`), and `policies.sql` now derives
+the list from `pg_class` instead of naming tables. `packages/database/test/rls-force.test.ts`
+fails if any table is ever enabled and not forced again.
+
+**That does not close the hole it looks like it closes.** `shadhil`, the table
+owner, is SUPERUSER with BYPASSRLS on dev and prod, and a superuser ignores FORCE.
+Any connection as that role reads every table unfiltered, forced or not - all 34,
+not just the seven. The runtime never connects as it: both apps use the pooled
+`shadhil_app`, which owns nothing and is not superuser. The owner is reached by
+migrations, the seed, the tests, and psql through the SSH tunnel, so the exposure is
+whoever holds `DIRECT_DATABASE_URL`.
+
+Two ways to close it, preferred first:
+
+- `ALTER ROLE shadhil NOSUPERUSER`. Then FORCE bites and the owner is constrained
+  like any other role. Prove it on a restored copy before prod: the container
+  entrypoint expects a superuser for init, and pgcrypto is trusted on PG13+ so
+  migrations should survive, but "should" is not a reason to try it live.
+- Or accept it and treat `DIRECT_DATABASE_URL` as privileged: never in a BI tool,
+  an ad-hoc script, or a laptop session that is not a migration.
+
+If the role stops being superuser, the seed has to set the RLS GUCs or run as an
+admin actor, because it writes ProjectOption and ProjectStaffRole through the owner.
+
+### A materialised access key for engineer scope: considered, rejected (2026-11-28)
+
+Twenty-style scope tables were considered for engineer visibility and are not
+being built. Engineer scope is already a single indexed equality inside the policy
+(`Unit.assignedEngineerId`). The measured cost is not that equality: it is the OR
+beside `customer_can_read_unit(id)`, and for ProgressPhoto a per-row subplan with
+two sequential scans on Team.
+
+There is nothing to recover at today's volume. Prod holds 128 units and 11 progress
+photos, so the expensive plan costs microseconds. Reopen when one org passes roughly
+10,000 progress photos or 5,000 units, and reopen it with `EXPLAIN ANALYZE` against a
+prod-shaped copy - the local database degenerates every plan to a scan and its
+timings are meaningless.
+
+The narrow version, if it is ever reopened: stamp `ProgressPhoto.assignedEngineerId`
+with a partial index on `(assignedEngineerId, takenAt DESC)`, and make the engineer
+arm an equality on it. Not a general access-group system - that adds a recompute
+path on every assignment, team and role change to replace a predicate that is
+already correct.
+
 ## Test health
 
 ### ~~Shared-tenant test fixtures: five specs collide under concurrency~~ — FIXED 2026-11-23, re-verified 2026-11-26
