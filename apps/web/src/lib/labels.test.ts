@@ -6,7 +6,7 @@
 // `BOOKING_STATUSES` MUST have a matching entry in the corresponding
 // labels table. This test fails the build the moment a new enum
 // value lands in the Prisma schema but the UI table is forgotten.
-import { LEAD_STATE_LABELS } from '@shadhil/api-types';
+import { LEAD_BUDGET_BANDS, LEAD_STATE_LABELS } from '@shadhil/api-types';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -24,6 +24,7 @@ import {
   FACT_BANDS,
   FACT_STATUSES,
   factBandBadgeVariant,
+  LEAD_BUDGET_OPTIONS,
   CONSTRUCTION_STAGES,
   CONSTRUCTION_STAGE_ORDER,
   constructionStageBadgeVariant,
@@ -216,6 +217,35 @@ describe('lib/labels', () => {
       for (const [enumValue, expected] of Object.entries(expectations)) {
         expect(labelFor('source', enumValue)).toBe(expected);
       }
+    });
+  });
+
+  describe('LEAD_BUDGET_BANDS - every band has a human label', () => {
+    it.each(LEAD_BUDGET_BANDS)('%s renders a non-empty, non-raw label', (value) => {
+      const label = labelFor('leadBudget', value);
+      expect(label.length).toBeGreaterThan(0);
+      // The whole point of the band enum: a rep must never read the raw key.
+      expect(label).not.toBe(value);
+      expect(label).not.toMatch(/^[A-Z0-9_]+$/);
+    });
+
+    it('contains the explicit band mappings, in rupees', () => {
+      const expectations: Record<(typeof LEAD_BUDGET_BANDS)[number], string> = {
+        UNDER_50L: 'Under \u20b950 lakh',
+        FROM_50L_TO_1CR: '\u20b950 lakh - \u20b91 crore',
+        FROM_1CR_TO_2CR: '\u20b91 crore - \u20b92 crore',
+        FROM_2CR_TO_5CR: '\u20b92 crore - \u20b95 crore',
+        ABOVE_5CR: 'Above \u20b95 crore',
+        NOT_DECIDED: 'Not decided yet',
+      };
+      for (const [enumValue, expected] of Object.entries(expectations)) {
+        expect(labelFor('leadBudget', enumValue)).toBe(expected);
+      }
+    });
+
+    it('offers one picker option per band, cheapest first', () => {
+      expect(LEAD_BUDGET_OPTIONS.map((o) => o.value)).toEqual([...LEAD_BUDGET_BANDS]);
+      expect(LEAD_BUDGET_OPTIONS[0]?.label).toBe('Under \u20b950 lakh');
     });
   });
 

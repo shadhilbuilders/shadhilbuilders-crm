@@ -230,6 +230,13 @@ export default function LeadDetailPage() {
 /** Lead info card - the full detail row (Wireframe #5 header block). */
 function LeadInfoCard({ lead }: { lead: LeadDetail }) {
   const meta: Array<{ label: string; value: string | null }> = [
+    // T-LEAD-BUDGET: the band, labelled the way a buyer says it. A lead nobody
+    // has asked sits at '-' like the other unknown columns rather than
+    // inventing a band.
+    {
+      label: 'Budget',
+      value: typeof lead.budget === 'string' ? labelFor('leadBudget', lead.budget) : null,
+    },
     { label: 'Source', value: lead.source !== null ? labelFor('source', lead.source) : null },
     { label: 'Owner', value: lead.ownerName },
     { label: 'Co-owner', value: lead.coOwnerName },

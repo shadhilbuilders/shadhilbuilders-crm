@@ -94,6 +94,7 @@ const FULL_LEAD = {
   phone: '+919876543210',
   email: 'priya@example.com',
   notes: null,
+  budget: null,
   source: 'WEBSITE',
   status: 'NEW',
   ownerId: 'u-2',
@@ -230,6 +231,12 @@ describe('LeadDetailPage - delete action', () => {
       const html = renderWithRole(role);
       expect(html).toContain('data-qa="lead-edit-button"');
     }
+  });
+
+  it('renders the budget band in words, not as the enum', () => {
+    const html = renderWithRole('ADMIN', { ...FULL_LEAD, budget: 'FROM_2CR_TO_5CR' });
+    expect(html).toContain('\u20b92 crore - \u20b95 crore');
+    expect(html).not.toContain('FROM_2CR_TO_5CR');
   });
 
   it('renders the note when the lead has one', () => {

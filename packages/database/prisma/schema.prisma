@@ -79,6 +79,32 @@ enum LeadOwnerType {
   ADMIN
 }
 
+// T-LEAD-BUDGET (2026-11-27): what the buyer says they can spend, in bands.
+//
+// A band, not a number. Every source we have - the IPS exhibition sheet, a
+// phone conversation, a walk-in - gives a range ("Under 50 lakh", "2 to 5
+// crore"), never a figure a report could average. Typing it as an enum keeps
+// "2-5 Cr" spelled one way and makes "show me everyone above 1 crore" a WHERE
+// clause instead of a LIKE over free text.
+//
+// Nullable, and null is meaningful: the buyer has not said. `NOT_DECIDED` is
+// the case where they said exactly that ("not decided yet"), which is a
+// different thing from silence and is what a rep should follow up on.
+enum LeadBudgetBand {
+  /// Under ₹50 lakh
+  UNDER_50L
+  /// ₹50 lakh to ₹1 crore
+  FROM_50L_TO_1CR
+  /// ₹1 crore to ₹2 crore
+  FROM_1CR_TO_2CR
+  /// ₹2 crore to ₹5 crore
+  FROM_2CR_TO_5CR
+  /// Above ₹5 crore
+  ABOVE_5CR
+  /// Asked, and the buyer has not decided yet.
+  NOT_DECIDED
+}
+
 // T-LEAD-FACTS (2026-11-05): the lead fact ledger. See
 // docs/designs/lead-fact-ledger.md.
 //
@@ -1049,6 +1075,12 @@ model Lead {
   // place, and shown back in the edit dialog - the same split as
   // Consent.note.
   notes               String?       @db.Text
+  // T-LEAD-BUDGET (2026-11-27): the budget band the buyer gave us. Null means
+  // nobody has asked; NOT_DECIDED means they were asked and have not chosen.
+  // Free text about the figure (a broker's note, "stretches to 2.4 if the
+  // corner unit is free") still belongs in `notes` - this column is the part a
+  // report filters on.
+  budget              LeadBudgetBand?
   source              String?
   state               LeadState     @default(NEW)
   ownerId             String

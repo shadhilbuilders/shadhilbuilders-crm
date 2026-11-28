@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import { LeadStateSchema, LeadOwnerTypeSchema, ActivityTypeSchema } from './enums';
 import { CountryCodeSchema, PhoneSchema } from './common';
+import { LeadBudgetBandSchema } from './lead-budget';
 
 /**
  * Lead source - free-form today (Meta ads, landing site, referral). When the
@@ -55,6 +56,9 @@ export const CreateLeadDtoSchema = z.object({
    */
   projectId: z.cuid2(),
   notes: z.string().trim().max(2000).optional(),
+  // T-LEAD-BUDGET (2026-11-27): the band the buyer quoted. Omitted means nobody
+  // has asked yet - the same meaning as a null column.
+  budget: LeadBudgetBandSchema.optional(),
   // Internal: optional explicit owner override (public-leads only).
   assignedOwnerId: z.string().cuid2().optional(),
   // T-TEAM-AUTHORITATIVE (2026-09-13): optional explicit team pick. A
@@ -85,6 +89,9 @@ export const UpdateLeadDtoSchema = z.object({
     .nullable()
     .optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
+  // T-LEAD-BUDGET (2026-11-27): nullable so a rep can clear a band they were
+  // told wrong; omitted leaves it alone.
+  budget: LeadBudgetBandSchema.nullable().optional(),
 });
 export type UpdateLeadDto = z.infer<typeof UpdateLeadDtoSchema>;
 
@@ -214,6 +221,8 @@ export const LeadDetailSchema = z.object({
   // T-NOTES (2026-11-27): the rep's free text about the buyer. Null means no
   // note was ever written, which is different from an empty one.
   notes: z.string().nullable(),
+  // T-LEAD-BUDGET (2026-11-27): the filterable band. Null = never asked.
+  budget: LeadBudgetBandSchema.nullable(),
   source: z.string().nullable(),
   status: LeadStateSchema,
   ownerId: z.string().cuid2(),

@@ -49,6 +49,9 @@ import { LEAD_STATE_LABELS } from '@shadhil/api-types';
 // T-LEAD-SOURCES (2026-11-05): the lead-source vocabulary is shared with the
 // backend, which normalises an inbound channel against it.
 import { LEAD_SOURCES as SHARED_LEAD_SOURCES, type LeadSource } from '@shadhil/api-types';
+// T-LEAD-BUDGET (2026-11-27): the band vocabulary comes from api-types so the
+// label map, the API contract and the Postgres enum cannot drift.
+import { LEAD_BUDGET_BANDS, type LeadBudgetBand } from '@shadhil/api-types';
 
 // ---------------------------------------------------------------------------
 // Source-of-truth lists (the test asserts `labelFor(enum, x)` is defined
@@ -302,6 +305,23 @@ const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
   WEBSITE: 'Website',
 };
 
+/**
+ * Budget bands, as a buyer says them. A rep reading "FROM_2CR_TO_5CR" learns
+ * nothing; "₹2 crore - ₹5 crore" is what was actually said on the phone.
+ */
+const LEAD_BUDGET_LABELS: Record<LeadBudgetBand, string> = {
+  UNDER_50L: 'Under ₹50 lakh',
+  FROM_50L_TO_1CR: '₹50 lakh - ₹1 crore',
+  FROM_1CR_TO_2CR: '₹1 crore - ₹2 crore',
+  FROM_2CR_TO_5CR: '₹2 crore - ₹5 crore',
+  ABOVE_5CR: 'Above ₹5 crore',
+  NOT_DECIDED: 'Not decided yet',
+};
+
+/** Options for a budget picker (label + value, the Form select's shape). */
+export const LEAD_BUDGET_OPTIONS: { label: string; value: LeadBudgetBand }[] =
+  LEAD_BUDGET_BANDS.map((value) => ({ label: LEAD_BUDGET_LABELS[value], value }));
+
 const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   CALL: 'Call',
   NOTE: 'Note',
@@ -480,6 +500,7 @@ export function labelFor(
     | 'inventory'
     | 'booking'
     | 'source'
+    | 'leadBudget'
     | 'activity'
     | 'role'
     | 'feedback'
@@ -504,6 +525,9 @@ export function labelFor(
     if (mapped !== undefined) return mapped;
   } else if (kind === 'source') {
     const mapped = (LEAD_SOURCE_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else if (kind === 'leadBudget') {
+    const mapped = (LEAD_BUDGET_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
   } else if (kind === 'activity') {
     const mapped = (ACTIVITY_TYPE_LABELS as Record<string, string>)[value];

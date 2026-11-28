@@ -24,6 +24,7 @@ export * from './auth';
 export * from './leads';
 export * from './lead-facts';
 export * from './lead-source';
+export * from './lead-budget';
 export * from './projects';
 export * from './visits';
 export * from './visit-lead-sync';

@@ -3,7 +3,9 @@
 // LeadEditDialog - edit a lead from the inbox row actions (autoplan
 // 2026-09-07, plan §2). Editable surface is name / email / phone
 // (D15/D10) plus notes (T-NOTES, 2026-11-27 - the Lead.notes column now
-// exists, so the textarea persists instead of faking it).
+// exists, so the textarea persists instead of faking it) and the budget band
+// (T-LEAD-BUDGET, same date - a rep writes down what the buyer can spend while
+// the call is fresh, and the band is what the pipeline filters on).
 //
 // Two-API convention: props API `<Dialog open onOpenChange header footer>`
 // wraps a separately-exported `LeadEditFormBody` - the named export is
@@ -31,6 +33,7 @@ import { useForm, type UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 
 import { useUpdateLead } from '@/hooks/queries/crm';
+import { LEAD_BUDGET_OPTIONS } from '@/lib/labels';
 import {
   DEFAULT_PHONE_COUNTRY,
   PhoneCountrySchema,
@@ -43,6 +46,7 @@ import {
 import { focusField } from '@/lib/form-focus';
 import { IntlPhoneInput } from '@/components/shared/IntlPhoneInput';
 import type { CountryCode } from '@shadhil/api-types/phone';
+import { LEAD_BUDGET_BANDS, type LeadBudgetBand } from '@shadhil/api-types';
 
 const FORM_ID = 'lead-edit-form';
 
@@ -55,6 +59,12 @@ type LeadEditFormValues = {
   phoneCountry?: CountryCode;
   email: string;
   notes: string;
+  /**
+   * The band, or '' for "nobody has asked". '' is a real state here: a select
+   * cannot show a null, and clearing it must be possible when a rep realises
+   * the number was misheard.
+   */
+  budget: LeadBudgetBand | '';
 };
 
 /**
@@ -77,6 +87,7 @@ const LeadEditFormSchema = z
     // caps it at 2000, so the field must too or a long paste fails after the
     // round trip.
     notes: z.string().max(2000, 'Notes must be at most 2000 characters'),
+    budget: z.union([z.literal(''), z.enum(LEAD_BUDGET_BANDS)]),
   })
   // The country rule (2026-11-27): the shape rule above accepts
   // `1234567890`, which is not an Indian mobile. That used to reach the API and
@@ -98,6 +109,12 @@ export type LeadEditTarget = {
    * the inbox query selects `notes` for exactly that reason.
    */
   notes?: string | null;
+  /**
+   * T-LEAD-BUDGET: the band, or null/absent for "never asked". The dialog sends
+   * whatever it renders, so a row that arrives without it would wipe a band the
+   * rep set earlier - the inbox query selects `budget` for that reason.
+   */
+  budget?: LeadBudgetBand | null;
 };
 
 /**
@@ -146,6 +163,7 @@ export function LeadEditFormBody({
       phoneCountry: countryOfStored(lead.phoneE164 ?? lead.phone) ?? DEFAULT_PHONE_COUNTRY,
       email: lead.email ?? '',
       notes: lead.notes ?? '',
+      budget: lead.budget ?? '',
     },
     // `onSubmit`: the number is checked on Save and cleared as soon as it
     // parses. `name`/`email` behave the same way.
@@ -200,6 +218,18 @@ export function LeadEditFormBody({
       },
     },
     {
+      type: 'select',
+      name: 'budget',
+      label: 'Budget',
+      placeholder: 'Not asked yet',
+      description:
+        'What the buyer says they can spend. Reported on; the figure in detail goes in Notes.',
+      options: LEAD_BUDGET_OPTIONS,
+      selectProps: {
+        'data-qa': 'lead-edit-budget',
+      },
+    },
+    {
       type: 'textarea',
       name: 'notes',
       label: 'Notes',
@@ -251,6 +281,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
       phoneCountry: countryOfStored(lead?.phoneE164 ?? lead?.phone) ?? DEFAULT_PHONE_COUNTRY,
       email: lead?.email ?? '',
       notes: lead?.notes ?? '',
+      budget: lead?.budget ?? '',
     },
     mode: 'onSubmit',
   });
@@ -266,6 +297,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
         phoneCountry: countryOfStored(lead.phoneE164 ?? lead.phone) ?? DEFAULT_PHONE_COUNTRY,
         email: lead.email ?? '',
         notes: lead.notes ?? '',
+        budget: lead.budget ?? '',
       });
     }
     // form is stable (useForm); lead identity drives the reset. The
@@ -289,6 +321,8 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDi
         // Sent always, so clearing the box clears the note. The server treats
         // '' as null (T-NOTES).
         notes: values.notes.trim(),
+        // Same convention: '' clears the band, a value sets it (T-LEAD-BUDGET).
+        budget: values.budget === '' ? null : values.budget,
       },
       {
         onSuccess: () => {

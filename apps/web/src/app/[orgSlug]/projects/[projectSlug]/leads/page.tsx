@@ -44,6 +44,7 @@ import {
   DataTableRowActions,
 } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
+import { LEAD_BUDGET_BANDS, type LeadBudgetBand } from '@shadhil/api-types';
 import { dateIntl } from '@paalstack/react-ui/lib';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -82,6 +83,9 @@ type LeadRow = {
   // lead's note and email on Save.
   notes?: string | null;
   email?: string | null;
+  // T-LEAD-BUDGET: same reason as `notes` - the edit dialog submits every field
+  // it renders, so a row without the band would clear it on Save.
+  budget?: LeadBudgetBand | null;
   status?: string;
   source?: string;
   ownerName?: string;
@@ -104,6 +108,10 @@ const leadRowSchema = z.object({
   // dialog a row with no note and no email, and Save would clear both.
   notes: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
+  // T-LEAD-BUDGET: zod strips what this schema does not name, so the band has to
+  // be listed here or it never reaches the edit dialog. The closed set keeps a
+  // stray value from becoming an unlabelled option.
+  budget: z.enum(LEAD_BUDGET_BANDS).nullable().optional(),
   status: z.string().optional(),
   source: z.string().optional(),
   ownerName: z.string().optional(),
@@ -446,6 +454,7 @@ function LeadInboxPageInner() {
                 // meant Save from the inbox wiped the lead's email.
                 email: editTarget.email,
                 notes: editTarget.notes,
+                budget: editTarget.budget,
               }
         }
         open={editTarget !== null}

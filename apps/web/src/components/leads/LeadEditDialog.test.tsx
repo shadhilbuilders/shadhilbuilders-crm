@@ -73,6 +73,25 @@ describe('LeadEditFormBody', () => {
     expect(html).toContain('Notes');
   });
 
+  // T-LEAD-BUDGET: the data-qa lands on the select's portal content, which
+  // renderToStaticMarkup does not produce, so the label and the empty-state text
+  // are the assertions that hold here.
+  it('renders the budget field, empty until someone asks', () => {
+    const html = renderToStaticMarkup(<LeadEditFormBody lead={lead} onSubmit={noopSubmit} />);
+    expect(html).toContain('Budget');
+    expect(html).toContain('Not asked yet');
+    expect(html).not.toContain('FROM_2CR_TO_5CR');
+  });
+
+  it('seeds the budget from the row', () => {
+    const html = renderToStaticMarkup(
+      <LeadEditFormBody lead={{ ...lead, budget: 'FROM_2CR_TO_5CR' }} onSubmit={noopSubmit} />,
+    );
+    // Either a native select option or the trigger's visible label - both mean
+    // the stored band reached the control.
+    expect(html).toContain('\u20b92 crore - \u20b95 crore');
+  });
+
   it('renders the notes textarea empty when the lead has no note', () => {
     const html = renderToStaticMarkup(
       <LeadEditFormBody lead={{ ...lead, notes: null }} onSubmit={noopSubmit} />,

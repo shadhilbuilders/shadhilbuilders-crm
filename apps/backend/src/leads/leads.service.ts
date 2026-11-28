@@ -46,6 +46,7 @@ import type {
   BulkDeleteLeadsResult,
   CreateLeadDto,
   LeadActivitiesResponse,
+  LeadBudgetBand,
   LeadDetail,
   LeadFilterDto,
   LeadStateTransitionDto,
@@ -145,6 +146,10 @@ export interface LeadRow {
   // because only the LIST projection carries it; the transition/reassign
   // returns have no use for it.
   email?: string | null;
+  // T-LEAD-BUDGET (2026-11-27): the band, for the inbox's edit dialog and a
+  // future budget filter. Optional for the same reason as `email`: only the LIST
+  // projection carries it today.
+  budget?: LeadBudgetBand | null;
   status: string;
   source: string | null;
   ownerName: string | null;
@@ -179,6 +184,8 @@ export interface CreatedLead {
   name: string;
   phone: string;
   notes: string | null;
+  // T-LEAD-BUDGET (2026-11-27)
+  budget: LeadBudgetBand | null;
   phoneE164: string | null;
   state: string;
   source: string | null;
@@ -447,7 +454,7 @@ export class LeadsService {
 
       const [rows, total, overdueCount, newTodayCount] = await Promise.all([
         tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
-            SELECT "id", "name", "phone", "notes", "email", "state", "source", "ownerId",
+            SELECT "id", "name", "phone", "notes", "email", "budget", "state", "source", "ownerId",
               "createdAt", "updatedAt", "projectId",
               (SELECT "name" FROM "User" u WHERE u."id" = "Lead"."ownerId") AS "ownerName",
               -- T-USER-LEADS: the project label + slug ride the row so the
@@ -491,6 +498,7 @@ export class LeadsService {
           phone: r.phone as string,
           notes: (r.notes as string | null) ?? null,
           email: (r.email as string | null) ?? null,
+          budget: (r.budget as LeadBudgetBand | null) ?? null,
           status: r.state as string,
           source: (r.source as string | null) ?? null,
           ownerId: r.ownerId as string,
@@ -557,6 +565,7 @@ export class LeadsService {
           phone: true,
           notes: true,
           email: true,
+          budget: true,
           source: true,
           state: true,
           ownerId: true,
@@ -583,6 +592,7 @@ export class LeadsService {
         phone: row.phone,
         email: row.email,
         notes: row.notes,
+        budget: row.budget,
         source: row.source,
         status: row.state,
         ownerId: row.ownerId,
@@ -719,6 +729,7 @@ export class LeadsService {
       name: created.name,
       phone: created.phone,
       notes: created.notes,
+      budget: created.budget,
       status: created.state,
       source: created.source,
       ownerId: created.ownerId,
@@ -1119,6 +1130,8 @@ export class LeadsService {
         // T-NOTES (2026-11-27): this was accepted by the DTO and dropped on
         // the floor because the column did not exist.
         notes: dto.notes && dto.notes.trim().length > 0 ? dto.notes : null,
+        // T-LEAD-BUDGET (2026-11-27): omitted means nobody asked.
+        budget: dto.budget ?? null,
         source: dto.source,
         // T-LEAD-PROJECT-REQUIRED (2026-09-16): this was `dto.projectId ?? null`,
         // which is exactly how project-less leads were created. The DTO requires
@@ -1142,6 +1155,7 @@ export class LeadsService {
         phone: true,
         phoneE164: true,
         notes: true,
+        budget: true,
         state: true,
         source: true,
         ownerId: true,
@@ -1224,6 +1238,7 @@ export class LeadsService {
       name: created.name,
       phone: created.phone,
       notes: created.notes,
+      budget: created.budget,
       phoneE164: created.phoneE164,
       state: created.state,
       source: created.source,
@@ -1513,6 +1528,7 @@ export class LeadsService {
           name: true,
           phone: true,
           notes: true,
+          budget: true,
           state: true,
           source: true,
           ownerId: true,
@@ -1567,6 +1583,7 @@ export class LeadsService {
         name: updated.name,
         phone: updated.phone,
         notes: updated.notes,
+        budget: updated.budget,
         status: updated.state,
         source: updated.source,
         ownerId: updated.ownerId,
@@ -1690,6 +1707,7 @@ export class LeadsService {
           name: true,
           phone: true,
           notes: true,
+          budget: true,
           state: true,
           source: true,
           ownerId: true,
@@ -1733,6 +1751,7 @@ export class LeadsService {
         name: updated.name,
         phone: updated.phone,
         notes: updated.notes,
+        budget: updated.budget,
         status: updated.state,
         source: updated.source,
         ownerId: updated.ownerId,
@@ -1764,6 +1783,7 @@ export class LeadsService {
           email: true,
           phone: true,
           notes: true,
+          budget: true,
           state: true,
           source: true,
           updatedAt: true,
@@ -1824,12 +1844,16 @@ export class LeadsService {
           ...(dto.notes !== undefined
             ? { notes: dto.notes && dto.notes.trim().length > 0 ? dto.notes : null }
             : {}),
+          // T-LEAD-BUDGET (2026-11-27): same convention - `null` clears a band
+          // that turned out to be wrong, `undefined` leaves it.
+          ...(dto.budget !== undefined ? { budget: dto.budget } : {}),
         },
         select: {
           id: true,
           name: true,
           phone: true,
           notes: true,
+          budget: true,
           state: true,
           source: true,
           ownerId: true,
@@ -1852,6 +1876,7 @@ export class LeadsService {
             email: existing.email,
             phone: existing.phone,
             notes: existing.notes,
+            budget: existing.budget,
           },
           after: {
             name: updated.name,
@@ -1860,6 +1885,7 @@ export class LeadsService {
             // The note is the only field here that staff write in free text,
             // so the audit row keeps both sides of it (T-NOTES).
             notes: updated.notes,
+            budget: updated.budget,
           },
           reason: `lead.update by ${actor.email} (${actor.role})`,
         },
@@ -1870,6 +1896,7 @@ export class LeadsService {
         name: updated.name,
         phone: updated.phone,
         notes: updated.notes,
+        budget: updated.budget,
         status: updated.state,
         source: updated.source,
         ownerId: updated.ownerId,
@@ -2038,6 +2065,7 @@ export class LeadsService {
         name: true,
         phone: true,
         notes: true,
+        budget: true,
         state: true,
         source: true,
         ownerId: true,
@@ -2100,6 +2128,7 @@ export class LeadsService {
       name: updated.name,
       phone: updated.phone,
       notes: updated.notes,
+      budget: updated.budget,
       status: updated.state,
       source: updated.source,
       ownerId: updated.ownerId,

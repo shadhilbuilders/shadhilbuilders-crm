@@ -34,6 +34,7 @@ function lead(overrides: Partial<LeadDetail> = {}): LeadDetail {
     phone: '919876543210',
     email: 'ramesh@example.com',
     notes: null,
+    budget: null,
     source: 'WEBSITE',
     status: 'NEW',
     ownerId: 'user-1',
