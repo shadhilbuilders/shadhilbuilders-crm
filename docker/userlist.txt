@@ -10,4 +10,4 @@
 ; mount a generated userlist via Coolify volumes instead of this file.
 ;
 "shadhil" "shadhil"
-"shadhil_app" "shadhil"
+"shadhil_app" "shadhil_app_local"

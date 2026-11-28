@@ -11,6 +11,12 @@ services:
       POSTGRES_USER: shadhil
       POSTGRES_PASSWORD: ${PG_PASSWORD}
       POSTGRES_DB: shadhil_crm
+      # The app role's own password. Deliberately allowed to be empty here: this
+      # volume is already initialised, so nothing reads it at runtime, and a `:?`
+      # guard would fail compose interpolation and block the next deploy. On a
+      # fresh volume 00-init.sh fails closed if it is unset, which is where the
+      # check belongs.
+      SHADHIL_APP_PASSWORD: ${SHADHIL_APP_PASSWORD:-}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - /data/coolify/shadhil/postgres-init:/docker-entrypoint-initdb.d:ro

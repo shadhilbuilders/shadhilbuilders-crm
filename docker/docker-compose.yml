@@ -70,8 +70,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: shadhil
-      POSTGRES_PASSWORD: shadhil
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-shadhil}
       POSTGRES_DB: shadhil_crm
+      # 2026-11-28: the app role's password is its own secret. The dev default
+      # exists so a throwaway local stack comes up unattended; production must
+      # set it in Coolify. 00-init.sh refuses to run if the two are equal.
+      SHADHIL_APP_PASSWORD: ${SHADHIL_APP_PASSWORD:-shadhil_app_local}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:

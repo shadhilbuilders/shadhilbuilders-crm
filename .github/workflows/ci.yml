@@ -139,14 +139,14 @@ jobs:
     # "the fixtures never executed". It now gets postgres + a dedicated
     # `shadhil_crm_test` database, matching local, and the suites really run.
     env:
-      SHADHIL_APP_PASSWORD: shadhil
-      SHADHIL_OWNER_PASSWORD: shadhil
+      SHADHIL_APP_PASSWORD: shadhil_app_ci
+      SHADHIL_OWNER_PASSWORD: shadhil_owner_ci
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: shadhil
-          POSTGRES_PASSWORD: shadhil
+          POSTGRES_PASSWORD: shadhil_owner_ci
           POSTGRES_DB: shadhil_crm
         ports:
           - 5432:5432
@@ -167,8 +167,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Same role bootstrap as rls-matrix: migration 1 GRANTs to shadhil_app.
       - run: |
-          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 <<'SQL'
-          CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 -v app_password="$SHADHIL_APP_PASSWORD" <<'SQL'
+          CREATE ROLE shadhil_app LOGIN PASSWORD :'app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
           SQL
       - run: pnpm --filter @shadhil/database generate
       # Create + migrate + seed the TEST database. Tests refuse to run against a
@@ -253,16 +253,16 @@ jobs:
     env:
       # shadhil_app password matches the PASSWORD literal in the
       # CREATE ROLE heredoc below; both must change together.
-      SHADHIL_APP_PASSWORD: shadhil
+      SHADHIL_APP_PASSWORD: shadhil_app_ci
       # shadhil (owner) password matches DIRECT_DATABASE_URL below
       # and the postgres service POSTGRES_PASSWORD env above.
-      SHADHIL_OWNER_PASSWORD: shadhil
+      SHADHIL_OWNER_PASSWORD: shadhil_owner_ci
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: shadhil
-          POSTGRES_PASSWORD: shadhil
+          POSTGRES_PASSWORD: shadhil_owner_ci
           POSTGRES_DB: shadhil_crm
         ports:
           - 5432:5432
@@ -290,8 +290,8 @@ jobs:
       # 'unterminated dollar-quoted string'). Fresh container per run,
       # so no IF NOT EXISTS needed.
       - run: |
-          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 <<'SQL'
-          CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 -v app_password="$SHADHIL_APP_PASSWORD" <<'SQL'
+          CREATE ROLE shadhil_app LOGIN PASSWORD :'app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
           SQL
       - run: pnpm --filter @shadhil/database generate
       # T-TEST-DB-ISOLATION (2026-09-16): the matrix runs against
@@ -345,8 +345,8 @@ jobs:
     env:
       # shadhil_app password matches the CREATE ROLE heredoc; shadhil (owner)
       # matches the postgres service and DIRECT_DATABASE_URL below.
-      SHADHIL_APP_PASSWORD: shadhil
-      SHADHIL_OWNER_PASSWORD: shadhil
+      SHADHIL_APP_PASSWORD: shadhil_app_ci
+      SHADHIL_OWNER_PASSWORD: shadhil_owner_ci
       # MUST be production, not development: a production `next build` only
       # succeeds with NODE_ENV=production. With `development` it fails
       # prerendering "/" (NextTopLoader/global-error read a null React context),
@@ -450,7 +450,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: shadhil
-          POSTGRES_PASSWORD: shadhil
+          POSTGRES_PASSWORD: shadhil_owner_ci
           POSTGRES_DB: shadhil_crm
         ports:
           - 5432:5432
@@ -495,8 +495,8 @@ jobs:
       # CI's bare postgres container has no docker-entrypoint hook, so create the
       # non-owner app role BEFORE migrations (migration 1 GRANTs to it).
       - run: |
-          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 <<'SQL'
-          CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 -v app_password="$SHADHIL_APP_PASSWORD" <<'SQL'
+          CREATE ROLE shadhil_app LOGIN PASSWORD :'app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
           SQL
       - run: pnpm --filter @shadhil/database generate
       # Env for every subsequent step. No PgBouncer here, so the pooler vars point
