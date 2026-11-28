@@ -1192,14 +1192,19 @@ model Activity {
   leadId         String
   // T-ORG: denormalized from parent Lead (RLS compares a column, no join).
   organizationId String
-  userId         String
+  // T-WA-VISIT-REPLY (2026-11-28): NULL when the row was written by the SYSTEM,
+  // not a person - the customer confirmed a visit from WhatsApp, so no staff
+  // member did it and none is credited. Attributing it to the visit's assignee
+  // would put a false actor on the timeline a telecaller reads. The timeline's
+  // renderer already hides "by <name>" when the reader cannot resolve one.
+  userId         String?
   type           ActivityType
   body           String       @db.Text
   createdAt      DateTime     @default(now())
 
   lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
   @@index([organizationId])
@@ -1224,6 +1229,16 @@ model SiteVisit {
   notes          String?     @db.Text
   // T-VISIT-REMINDER: set once the pre-visit reminder has been sent.
   reminderSentAt DateTime?
+  // T-WA-VISIT-REPLY (2026-11-28): set when the CUSTOMER acknowledged the visit
+  // from WhatsApp ("Reply YES"). Nullable because most visits are never
+  // confirmed by the customer, and absence means "not acknowledged", never "no".
+  // A column rather than a sixth VisitStatus: a confirmed visit still has to
+  // complete, no-show or be rescheduled, so confirmation is orthogonal to the
+  // lifecycle and must not overwrite it.
+  confirmedAt     DateTime?
+  // How the acknowledgement arrived. Free text for now ('WHATSAPP'), same shape
+  // as AuditLog.reason - no enum until a second channel exists.
+  confirmedVia    String?
   // Quiet hours (2026-11-24): when the completed-visit check-in may go out. NULL
   // means nothing is owed - every visit completed before this column existed.
   checkinDueAt   DateTime?

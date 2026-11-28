@@ -8,6 +8,7 @@
 import { Module } from '@nestjs/common';
 
 import { ChatModule } from '../chat/chat.module';
+import { LeadsModule } from '../leads/leads.module';
 import { WhatsAppClient } from '../whatsapp/whatsapp.client';
 
 import { WebhooksController } from './webhooks.controller';
@@ -15,7 +16,11 @@ import { WebhooksController } from './webhooks.controller';
 @Module({
   // An inbound customer message notifies the lead's owner and co-owner, and
   // this controller is where that message is created (2026-11-23).
-  imports: [ChatModule],
+  //
+  // LeadsModule (2026-11-28): a customer's RESCHEDULE reply moves the lead
+  // through the real state machine. NotificationsService is @Global, so the
+  // confirm arm needs no import here.
+  imports: [ChatModule, LeadsModule],
   controllers: [WebhooksController],
   providers: [
     // Construct once from env (same factory the WhatsappModule uses) so the

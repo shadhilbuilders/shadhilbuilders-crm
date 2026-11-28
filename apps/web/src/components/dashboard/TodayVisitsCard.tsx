@@ -27,7 +27,7 @@
 // LABELLED, owner first (matching the lead page's field order and its
 // prominence), so the two surfaces agree instead of appearing to disagree.
 
-import { Button } from '@paalstack/react-ui';
+import { Badge, Button } from '@paalstack/react-ui';
 import Link from 'next/link';
 
 import { SectionCard } from '@/components/dashboard/dashboard-shared';
@@ -47,6 +47,12 @@ type VisitListRow = {
   leadOwnerName?: string | null;
   scheduledFor?: string;
   userName?: string;
+  /**
+   * T-WA-VISIT-REPLY (2026-11-28): when the CUSTOMER confirmed the visit on
+   * WhatsApp. Null or absent means "not acknowledged" - most visits are
+   * confirmed on a phone call, so only the positive case is marked.
+   */
+  confirmedAt?: string | null;
 };
 
 export function TodayVisitsCard({
@@ -112,6 +118,16 @@ export function TodayVisitsCard({
                   </span>
                 </div>
                 <span className="text-muted-foreground flex shrink-0 flex-col items-start gap-2 text-xs sm:flex-row sm:items-center">
+                  {/* T-WA-VISIT-REPLY (2026-11-28): the customer answered the
+                      reminder with YES. This is the one row of the morning list
+                      that says the appointment is safe, so it leads the cluster.
+                      `confirmedAt` absent (older payloads) or null (never
+                      acknowledged) renders nothing - absence is not "no". */}
+                  {typeof visit.confirmedAt === 'string' && visit.confirmedAt.length > 0 ? (
+                    <Badge variant="success" data-qa={`visit-confirmed-${visit.id}`}>
+                      Confirmed
+                    </Badge>
+                  ) : null}
                   {/* T-VISIT-OWNER-LABEL (2026-09-28): both names labelled.
                       `leadOwnerName` is the SAME field the lead page renders as
                       "Owner", so this row and that page can never appear to

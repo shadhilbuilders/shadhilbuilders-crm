@@ -706,6 +706,31 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
     expect(row?.leadOwnerName).toBe('VOC Test Telecaller');
   });
 
+  /**
+   * T-WA-VISIT-REPLY (2026-11-28). The dashboard's Today's visits card marks a
+   * visit the customer confirmed from WhatsApp, so the list has to carry the
+   * stamp. Null (not undefined) when nobody has acknowledged: the UI treats
+   * absence as "not confirmed", and the two have to be one value so a cached
+   * payload cannot be mistaken for a silent one.
+   */
+  it('carries the customer confirmation stamp, and null when unconfirmed', async () => {
+    const { visitId } = await seedLeadWithVisit();
+
+    const before = await service.list(actorFor(SE_ID, 'SALES_EXEC'), { limit: 200, offset: 0 });
+    expect(before.rows.find((r) => r.id === visitId)?.confirmedAt).toBeNull();
+
+    const stamp = new Date('2026-11-28T04:15:00.000Z');
+    await adminSeed((db) =>
+      db.siteVisit.update({
+        where: { id: visitId },
+        data: { confirmedAt: stamp, confirmedVia: 'WHATSAPP' },
+      }),
+    );
+
+    const after = await service.list(actorFor(SE_ID, 'SALES_EXEC'), { limit: 200, offset: 0 });
+    expect(after.rows.find((r) => r.id === visitId)?.confirmedAt).toBe(stamp.toISOString());
+  });
+
   // ──────────────────────────────────────────────────────────────────────────
   // T-VISIT-EXEC-LEAD-VISIBILITY (2026-09-28)
   // ──────────────────────────────────────────────────────────────────────────

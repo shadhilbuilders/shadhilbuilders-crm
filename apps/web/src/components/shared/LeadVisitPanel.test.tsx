@@ -126,6 +126,7 @@ vi.mock('@paalstack/react-ui', async (importOriginal) => {
 });
 
 import { LeadVisitPanel } from './LeadVisitPanel';
+import { useVisits } from '@/hooks/queries/crm';
 import { toast } from '@paalstack/react-ui';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -399,5 +400,36 @@ describe('LeadVisitPanel - repeat visit + back step (2026-10-09)', () => {
       expect.objectContaining({ leadId: 'lead-1', toState: 'VISIT_REQUESTED' }),
       expect.anything(),
     );
+  });
+});
+
+// T-WA-VISIT-REPLY (2026-11-28): the customer can confirm the visit from the
+// reminder's "Reply YES". On the lead page that answer has to be visible next to
+// the outcome buttons, or the exec drives out without knowing the customer
+// already said they would be there.
+describe('LeadVisitPanel confirmation marker (T-WA-VISIT-REPLY)', () => {
+  const marker = () => container?.querySelector('[data-qa="visit-confirmed"]') ?? null;
+
+  it('marks a visit the customer confirmed on WhatsApp', async () => {
+    vi.mocked(useVisits).mockReturnValueOnce({
+      data: [
+        {
+          id: 'visit-1',
+          leadId: 'lead-1',
+          status: 'SCHEDULED',
+          confirmedAt: '2026-11-28T04:15:00.000Z',
+        },
+      ],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    await mountLead({ id: 'lead-1', status: 'VISIT_SCHEDULED' });
+    expect(marker()).not.toBeNull();
+  });
+
+  it('says nothing when the customer has not answered', async () => {
+    await mountLead({ id: 'lead-1', status: 'VISIT_SCHEDULED' });
+    expect(marker()).toBeNull();
   });
 });

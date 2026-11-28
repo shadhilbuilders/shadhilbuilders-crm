@@ -44,12 +44,18 @@ import { ApiTags } from '@nestjs/swagger';
 import { tryParsePhone } from '@shadhil/api-types';
 
 import { Public } from '../auth/public.decorator';
-import { prisma as barePrisma, withRlsContext } from '@shadhil/database';
+import { prisma as barePrisma, withRlsContext, type PrismaClient } from '@shadhil/database';
 import { cronContextFor, listOrganizationIds } from '../common/cron-orgs';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import type { StorageProvider } from '../storage/storage.provider';
 import { InboundChatNotifierService } from '../chat/inbound-chat-notifier.service';
 import { WhatsAppClient } from '../whatsapp/whatsapp.client';
+import { parseVisitReply, type VisitReplyIntent } from '../whatsapp/visit-reply';
+import { NotificationsService } from '../notifications/notifications.service';
+import { LeadsService } from '../leads/leads.service';
+import { formatVisitWhen, recordSystemActivity } from '../leads/lead-activity';
+import { resolveVisitStakeholders } from '../visits/visit-recipients';
+import { type JwtPayload } from '@shadhil/auth';
 
 import { WhatsappSignatureGuard } from './whatsapp-signature.guard';
 
@@ -154,6 +160,17 @@ export class WebhooksController {
     @Optional()
     @Inject(InboundChatNotifierService)
     private readonly chatNotifier?: InboundChatNotifierService,
+    // T-WA-VISIT-REPLY (2026-11-28): a customer's "YES" / "RESCHEDULE" is an
+    // answer to the visit reminder, so the people accountable for the visit have
+    // to hear about it. Both are @Optional() for the same reason as the rest:
+    // most of what this controller does (dedupe, status receipts, media) needs
+    // neither, and every older test constructs it with no arguments.
+    @Optional()
+    @Inject(NotificationsService)
+    private readonly notifications?: NotificationsService,
+    @Optional()
+    @Inject(LeadsService)
+    private readonly leads?: LeadsService,
   ) {}
 
   // ── GET handshake ─────────────────────────────────────────────────
@@ -533,6 +550,11 @@ export class WebhooksController {
     // notification must describe a row that actually exists, and an emit for a
     // rolled-back insert would be a lie the recipient cannot check.
     let stored: { body: string; mediaType: string | null; filename: string | null } | null = null;
+    // T-WA-VISIT-REPLY (2026-11-28): the customer may be answering the visit
+    // reminder. Text only, known leads only: a photo caption is a photo, and an
+    // unknown number was never asked the question.
+    const replyIntent: VisitReplyIntent | null =
+      lead !== null && isText ? parseVisitReply(message.text!.body!) : null;
     const outcome = await withRlsContext(
       barePrisma,
       {
@@ -712,7 +734,225 @@ export class WebhooksController {
         .catch(() => undefined);
     }
 
+    // 5) The customer answered the reminder. Their answer is acted on AFTER the
+    //    message transaction, because both arms notify: `emit` opens its own RLS
+    //    transaction, and Prisma refuses a nested one on the same client. A
+    //    failure here must not fail the webhook either - Meta would retry the
+    //    message for days over a notification problem.
+    if (outcome === 'message' && lead !== null && replyIntent !== null) {
+      const target = lead;
+      await this.handleVisitReply({
+        organizationId: owningOrgId,
+        leadId: target.id,
+        leadName: target.name,
+        intent: replyIntent,
+      }).catch((error: unknown) => {
+        this.logger.error(
+          `[whatsapp] visit reply (${replyIntent}) failed for lead ${target.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+    }
+
     return outcome;
+  }
+
+  /**
+   * T-WA-VISIT-REPLY (2026-11-28): act on a customer's one-word answer.
+   *
+   * WHICH VISIT: the lead's single open future visit. `SiteVisit_one_open_per_lead`
+   * is a partial unique index (`WHERE status = 'SCHEDULED'`), so the database
+   * already guarantees at most one - the plan's "two open visits, do not guess"
+   * branch cannot occur and is not written here. If the index is ever dropped,
+   * this still acts on exactly one row rather than inventing an ambiguity.
+   *
+   * CONFIRM is a stamp, not a lifecycle move: the visit still has to complete,
+   * no-show or be rescheduled, so `status` is untouched. RESCHEDULE goes through
+   * the lead state machine, which owns the visit status change - writing the
+   * visit directly here would be a second copy of the rule.
+   */
+  private async handleVisitReply(input: {
+    organizationId: string;
+    leadId: string;
+    leadName: string | null;
+    intent: VisitReplyIntent;
+  }): Promise<void> {
+    const now = new Date();
+    const visit = await withRlsContext(barePrisma, cronContextFor(input.organizationId), (tx) =>
+      tx.siteVisit.findFirst({
+        where: { leadId: input.leadId, status: 'SCHEDULED', scheduledFor: { gte: now } },
+        orderBy: { scheduledFor: 'asc' },
+        // The assignee's email is what the state machine writes into its audit
+        // reason; the webhook has no JWT of its own.
+        select: { id: true, userId: true, scheduledFor: true, user: { select: { email: true } } },
+      }),
+    );
+    // No open future visit: the reply is still a stored Message (visible in the
+    // thread), which is the ordinary "customer writes mid-conversation" case.
+    if (visit === null) return;
+
+    const when = formatVisitWhen(visit.scheduledFor);
+
+    if (input.intent === 'CONFIRM') {
+      const confirmedAt = new Date();
+      const confirmed = await withRlsContext(
+        barePrisma,
+        cronContextFor(input.organizationId),
+        async (tx) => {
+          // Conditional so a concurrent writer (staff marking it confirmed by
+          // hand) wins exactly once, and a second YES changes nothing.
+          const updated = await tx.siteVisit.updateMany({
+            where: { id: visit.id, confirmedAt: null, status: 'SCHEDULED' },
+            data: { confirmedAt, confirmedVia: 'WHATSAPP' },
+          });
+          if (updated.count !== 1) return false;
+          await tx.auditLog.create({
+            data: {
+              // No staff member did this, so none is credited with it.
+              userId: null,
+              organizationId: input.organizationId,
+              action: 'visit.confirm',
+              entityType: 'SiteVisit',
+              entityId: visit.id,
+              before: { confirmedAt: null },
+              after: { confirmedAt: confirmedAt.toISOString(), confirmedVia: 'WHATSAPP' },
+              reason: 'customer replied YES on WhatsApp',
+            },
+          });
+          // The timeline row, in the SAME transaction as the stamp and the audit
+          // row, so the three cannot come apart. `userId` null: the customer did
+          // this, not a staff member.
+          await recordSystemActivity(tx, {
+            organizationId: input.organizationId,
+            leadId: input.leadId,
+            type: 'VISIT',
+            body: `Customer confirmed the visit on WhatsApp (visit on ${when}).`,
+          });
+          return true;
+        },
+      );
+      if (!confirmed) return;
+
+      await this.tellVisitStakeholders(input.organizationId, input, visit.userId, {
+        type: 'visit.confirmed',
+        title: `${input.leadName ?? 'A customer'} confirmed the visit`,
+        body: `The customer replied YES on WhatsApp. Visit on ${when}.`,
+      });
+      return;
+    }
+
+    // RESCHEDULE: the CRM cannot offer new slots over WhatsApp, so this routes
+    // the lead to RESCHEDULED and tells the team. The cascade moves the visit.
+    const actor: JwtPayload = {
+      sub: visit.userId,
+      role: 'TELECALLER',
+      organizationId: input.organizationId,
+      email: visit.user.email,
+      // Not a real token: the webhook signs nothing. Fields the state machine
+      // never reads are set to a fixed value rather than a plausible-looking one.
+      iat: 0,
+      exp: 0,
+      iss: 'webhook:whatsapp',
+    };
+    let moved = false;
+    if (this.leads === undefined) {
+      this.logger.error(
+        `[whatsapp] RESCHEDULE from lead ${input.leadId} cannot move the lead: LeadsService is not wired into WebhooksModule`,
+      );
+    } else {
+      try {
+        const leads = this.leads;
+        await withRlsContext(barePrisma, cronContextFor(input.organizationId), async (tx) => {
+          await leads.transitionInTransaction(
+            actor,
+            {
+              leadId: input.leadId,
+              toState: 'RESCHEDULED',
+              reason: 'Customer replied RESCHEDULE on WhatsApp',
+            },
+            tx as unknown as PrismaClient,
+            // 'skip' is about ATTRIBUTION, not permissions: the transition's own
+            // timeline row would name this actor (the visit's assignee) as the
+            // person who moved the lead, and the customer did that. The system row
+            // written below says what actually happened.
+            'skip',
+          );
+        });
+        moved = true;
+      } catch (error) {
+        // A terminal lead (WON/LOST/RNR) refuses the move, and that is correct.
+        // The customer still asked for a new time, so the team is told either
+        // way - never throw back at Meta.
+        this.logger.warn(
+          `[whatsapp] RESCHEDULE could not move lead ${input.leadId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    // The request itself goes on the timeline whatever the state machine
+    // decided: the customer asked for a new time, and that is the fact a human
+    // acts on. Best-effort - a timeline write must never stop the team being
+    // told, and never throw back at Meta.
+    try {
+      await withRlsContext(barePrisma, cronContextFor(input.organizationId), (tx) =>
+        recordSystemActivity(tx, {
+          organizationId: input.organizationId,
+          leadId: input.leadId,
+          type: 'VISIT',
+          body: moved
+            ? `Customer asked to reschedule the visit on ${when} (WhatsApp).`
+            : `Customer asked to reschedule the visit on ${when} (WhatsApp). The lead could not be moved automatically - check its state.`,
+        }),
+      );
+    } catch (error) {
+      this.logger.error(
+        `[whatsapp] reschedule timeline row failed for lead ${input.leadId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    await this.tellVisitStakeholders(input.organizationId, input, visit.userId, {
+      type: 'visit.reschedule_requested',
+      title: `${input.leadName ?? 'A customer'} asked to reschedule the visit`,
+      body: `The customer replied RESCHEDULE on WhatsApp for the visit on ${when}. No one has called them yet.`,
+    });
+  }
+
+  /** Tell the same people "visit scheduled" reaches; one failure never stops the rest. */
+  private async tellVisitStakeholders(
+    organizationId: string,
+    input: { leadId: string; leadName: string | null },
+    assigneeId: string,
+    payload: { type: string; title: string; body: string },
+  ): Promise<void> {
+    if (this.notifications === undefined) return;
+    const audience = await resolveVisitStakeholders(barePrisma, {
+      organizationId,
+      leadId: input.leadId,
+      assigneeId,
+    });
+    const emit = (sub: string) =>
+      this.notifications!.emit(sub, {
+        ...payload,
+        leadId: input.leadId,
+        organizationId,
+      });
+    // Bounded concurrency, same as the reminder cron: an org with many owners
+    // must not open one connection per recipient at once.
+    for (let i = 0; i < audience.length; i += 4) {
+      const results = await Promise.allSettled(audience.slice(i, i + 4).map(emit));
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          this.logger.error(
+            `[whatsapp] visit reply notification failed for lead ${input.leadId}: ${String(result.reason)}`,
+          );
+        }
+      }
+    }
   }
 
   /** Download an inbound media message from Meta + persist via storage.

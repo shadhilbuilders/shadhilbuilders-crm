@@ -149,6 +149,17 @@ export interface VisitRow {
    */
   checkinDueAt?: string | null; // ISO, when the cron may send
   checkinQueuedAt?: string | null; // ISO, set once the cron has claimed it
+  /**
+   * T-WA-VISIT-REPLY (2026-11-28): when the CUSTOMER acknowledged the visit
+   * from WhatsApp, or null when nobody has. Distinct from the staff-side
+   * lifecycle: a confirmed visit is still SCHEDULED and still has to be
+   * conducted, so this rides beside `status` rather than replacing it.
+   *
+   * Absent on write responses (create/outcome/reschedule) - those describe an
+   * action, not the list view. Present-and-null on the list, so the dashboard
+   * has one value to test.
+   */
+  confirmedAt?: string | null; // ISO
 }
 
 export interface VisitListResult {
@@ -258,6 +269,9 @@ export class VisitsService {
             status: true,
             outcome: true,
             notes: true,
+            // T-WA-VISIT-REPLY: the customer's WhatsApp confirmation, so the
+            // dashboard can mark the visit. NULL is "not acknowledged".
+            confirmedAt: true,
             updatedAt: true,
             lead: {
               select: {
@@ -293,6 +307,11 @@ export class VisitsService {
           status: r.status,
           outcome: r.outcome,
           notes: r.notes,
+          // Present-and-null on the list (see VisitRow.confirmedAt): one value
+          // for the UI to test, never undefined.
+          confirmedAt: r.confirmedAt === null ? null : r.confirmedAt.toISOString(),
+          // Present-and-null on the list (see VisitRow.confirmedAt): one value
+          // for the UI to test, never undefined.
           updatedAt: r.updatedAt.toISOString(),
         })),
       };

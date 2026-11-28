@@ -36,6 +36,34 @@ export async function recordLeadActivity(
   });
 }
 
+/**
+ * T-WA-VISIT-REPLY (2026-11-28): a timeline row for something the SYSTEM did on
+ * the customer's behalf - today, a WhatsApp reply confirming or moving a visit.
+ *
+ * `userId` is null on purpose: no staff member performed it, and naming the
+ * visit's assignee would put a false actor on the page a telecaller reads to
+ * find out who did what. The timeline's renderer already omits the "by <name>"
+ * line when there is no name to show, so the row reads as the fact it is.
+ *
+ * Must run inside the caller's transaction (same rule as `recordLeadActivity`),
+ * and only from a CRON_SERVICE context, which `activity_insert_cron_service`
+ * admits.
+ */
+export async function recordSystemActivity(
+  tx: ActivityWriter,
+  input: { organizationId: string; leadId: string; type: ActivityType; body: string },
+): Promise<void> {
+  await tx.activity.create({
+    data: {
+      leadId: input.leadId,
+      organizationId: input.organizationId,
+      userId: null,
+      type: input.type,
+      body: input.body,
+    },
+  });
+}
+
 /** Joins the optional detail parts of a timeline sentence, skipping blanks. */
 export function withDetail(
   sentence: string,

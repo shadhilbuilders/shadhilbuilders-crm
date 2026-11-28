@@ -1,8 +1,9 @@
 # T-WA-VISIT-REPLY — make "Reply YES / RESCHEDULE" actually do something
 
-Status: planned, not started. Blocks nothing technically, but the two visit
-templates should not go live with copy that promises behavior this ticket has
-not shipped. Copy fix (§8) can ship alone, today.
+Status: BUILT 2026-11-28 (Round 68). The two visit templates can carry their
+"Reply YES / RESCHEDULE" copy honestly now - the reply does something. Three
+corrections to this plan, all recorded at the end of the file; the biggest is
+that §4's "two or more open visits" case cannot occur.
 
 Date: 2026-11-11
 
@@ -232,3 +233,73 @@ untouched (no new table).
   third approval; the reply that matters is the staff call, not a robot "ok".
 - Wiring `shadhil_site_visit_followup` / `shadhil_visit_reminder` to an actual sender
   (separate gap: nothing enqueues either today, so neither is sent by this app).
+
+---
+
+## Built 2026-11-28, and the three things this plan got wrong
+
+**1. §4's ambiguity case is unreachable.** `SiteVisit_one_open_per_lead` is a
+partial unique index on `"leadId" WHERE "status" = 'SCHEDULED'`
+(migration `20261009040000_visit_lead_state_backfill`), so a lead can never have
+two open visits and "customer replied YES but has N open visits" cannot happen.
+The handler reads the single open future visit, or nothing. Not writing the
+branch was the honest choice: a defensive path no fixture can reach is a path no
+test can hold.
+
+**2. §7's "record it in STATE-MATRIX.md" pointed at the wrong file.**
+`docs/planning/STATE-MATRIX.md` is the page x load-state matrix (loading / empty /
+error / partial); it has never carried lead-state rules. The decision it was
+meant to capture - a CONFIRM leaves the lead at `VISIT_SCHEDULED`, a RESCHEDULE
+moves it to `RESCHEDULED` - is recorded in DECISION-CHANGELOG.md (Round 68) and
+in the handler's own comment.
+
+**3. A CRON_SERVICE context could not write an audit row at all.** The INSERT
+policy allowed it, but any insert that asked for the row back failed 42501:
+`RETURNING` is checked against the SELECT policy, and `auditlog_select_admin_or_owner`
+admits only ADMIN or the row's own `userId`. Prisma's typed `create()` always
+returns the row, so the failure was universal for system actors and had never been
+seen because nothing in a cron context had written an audit row before. Fixed by
+migration `20261128074500_auditlog_cron_service_read`, mirroring
+`lead_select_cron_service`.
+
+**What shipped, file by file**
+
+    packages/database/prisma/schema.prisma                                confirmedAt, confirmedVia
+    prisma/migrations/20261128071000_t_wa_visit_reply                     ALTER TABLE, no RLS work
+    prisma/migrations/20261128074500_auditlog_cron_service_read           the policy above
+    apps/backend/src/whatsapp/visit-reply.ts                              pure parser, 27 cases
+    apps/backend/src/webhooks/webhooks.controller.ts                      handleVisitReply + notify
+    prisma/migrations/20261128081500_activity_system_actor                nullable actor + insert arm
+    prisma/migrations/20261128082000_activity_cron_service_read           SELECT arm (RETURNING)
+    apps/backend/src/leads/lead-activity.ts                               recordSystemActivity
+    apps/backend/src/webhooks/visit-reply.webhook.test.ts                 8 DB-backed cases
+    apps/backend/src/visits/visits.service.ts                             confirmedAt on the list row
+    apps/web/src/components/dashboard/TodayVisitsCard.tsx                 Confirmed badge
+    apps/web/src/components/shared/LeadVisitPanel.tsx                     Confirmed badge
+
+**The timeline row, and a second RETURNING discovery.** The confirmation and the
+reschedule request both write an `Activity` row now, with `userId` NULL to mean
+"the system did this, not a person" - the column became nullable in migration
+`20261128081500_activity_system_actor`, because the only way to satisfy the
+existing insert policies would have been to name a staff member who did not do it.
+The insert still failed 42501 after the arm was added, because RETURNING is
+checked against the SELECT policy and `activity_select_team` resolves visibility
+from a role and a lead relationship a cron actor does not have. Fixed with
+`activity_select_cron_service` (`20261128082000`). The same trap as AuditLog
+above - a cron-context INSERT that asks for its row back needs a SELECT arm.
+
+**One deliberate omission.** No `NO`/cancel keyword, as §10 says.
+
+**What is verified.** Parser: 27 cases. Webhook: 8 DB-backed cases covering
+confirm (stamp, audit row, timeline row, three notifications), the second YES,
+no open visit, a sentence, a photo, RESCHEDULE (lead moved, visit cascaded,
+timeline row), a terminal lead, and a notification failure. Visits list carries
+the stamp. Both badges have their own UI tests. Backend type-check and lint
+clean; the full backend suite (126 files, 2293 tests), the database package
+(15 files, 311 tests, RLS matrix included) and the web suite (196 files, 2085
+tests) are green, and a Nest bootstrap probe resolves `WebhooksController` with
+its new dependencies.
+
+**What is not verified.** Nothing has been sent through a real Meta webhook in
+production: the reply path is exercised against the database, not against Meta.
+`§8`'s copy fix is operator work in WhatsApp Manager and was not done here.

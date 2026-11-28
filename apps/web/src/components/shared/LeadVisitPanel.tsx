@@ -27,7 +27,15 @@
 // round-trips.
 import { useState } from 'react';
 
-import { Button, Card, CardContent, CardHeader, CardTitle, toast } from '@paalstack/react-ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  toast,
+} from '@paalstack/react-ui';
 import { LEAD_STATES_AWAITING_A_VISIT } from '@shadhil/api-types';
 
 import { ScheduleVisitDialog } from '@/components/shared/ScheduleVisitDialog';
@@ -81,9 +89,15 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
   // fell off the page and the outcome buttons vanished.
   const visitsQuery = useVisits({ leadId: lead.id });
   const openVisit = Array.isArray(visitsQuery.data)
-    ? (visitsQuery.data as { id: string; leadId: string; status: string }[]).find(
-        (v) => v.leadId === lead.id && (v.status === 'SCHEDULED' || v.status === 'NO_SHOW'),
-      )
+    ? (
+        visitsQuery.data as {
+          id: string;
+          leadId: string;
+          status: string;
+          /** T-WA-VISIT-REPLY: the customer's WhatsApp confirmation, if any. */
+          confirmedAt?: string | null;
+        }[]
+      ).find((v) => v.leadId === lead.id && (v.status === 'SCHEDULED' || v.status === 'NO_SHOW'))
     : undefined;
   const updateOutcome = useUpdateVisitOutcome(openVisit?.id ?? null);
   const transitionLead = useTransitionLead(lead.id);
@@ -193,6 +207,16 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
 
         {showOutcome ? (
           <>
+            {/* T-WA-VISIT-REPLY (2026-11-28): the customer answered the reminder
+                with YES. Shown above the outcome controls because it changes how
+                the visit is read: this one is expected to happen. Only the
+                positive case is marked - most visits are confirmed on a call,
+                and an absent stamp is "not acknowledged", never "no". */}
+            {typeof openVisit?.confirmedAt === 'string' && openVisit.confirmedAt.length > 0 ? (
+              <Badge variant="success" data-qa="visit-confirmed">
+                Confirmed by the customer on WhatsApp
+              </Badge>
+            ) : null}
             <p className="text-muted-foreground text-sm">
               Visit is scheduled. Record what happened on site.
             </p>

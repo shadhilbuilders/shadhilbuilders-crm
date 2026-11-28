@@ -1933,3 +1933,67 @@ genuine constraint violations), and the full backend suite. No behaviour change 
 
 **Not claimed.** No review of the moved code's logic, and no re-dating of its comments: the
 comments that explain past bugs are where they were, saying what they said.
+
+## Round 68 - 2026-11-28 - the customer's WhatsApp reply does something
+
+`T-WA-VISIT-REPLY` is built. The visit reminder asks the customer to reply YES or
+RESCHEDULE, and until today the inbound webhook stored that reply as a message and
+moved on: the visit stayed SCHEDULED, nobody was told, and the answer waited in a
+thread for whoever happened to open it. The two visit templates now describe
+behaviour that exists.
+
+**Confirmation is a column, not a sixth `VisitStatus`.** `SiteVisit.confirmedAt` and
+`confirmedVia` (nullable, no new table, so no GRANT or RLS work: the webhook's write
+goes through the existing `site_visit_update_cron_service`). A confirmed visit still
+has to complete, no-show or be rescheduled, so confirmation is orthogonal to the
+lifecycle and must not overwrite it - an enum value would have forced one to
+overwrite the other, and `OPEN_VISIT_STATUSES` would have quietly stopped treating
+it as live work.
+
+**One parser, whole-message only.** `whatsapp/visit-reply.ts` accepts YES, Y,
+CONFIRM, RESCHEDULE, RESCHED; trims punctuation and emoji from the ends; and
+matches the whole message, never `includes()`. "yes I will come by 5" is a customer
+with a question, and the same rule means a stray "no" inside a sentence can never
+cancel a visit. There is no NO/CANCEL on purpose: cancelling from a one-word reply
+is a product decision this ticket does not make.
+
+**Nobody has to guess whose visit it is.** `SiteVisit_one_open_per_lead` is a
+partial unique index (`WHERE status = 'SCHEDULED'`), so a lead has at most one open
+visit. The plan carried a "two or more open visits, notify and do not guess" branch;
+it cannot fire, and writing it would have been an untestable path defending an
+invariant the database already enforces. The handler reads the one open future
+visit or nothing.
+
+**RESCHEDULE goes through the state machine, not around it.** The transition runs as
+the visit's assignee in the TELECALLER lane, inside a cron RLS context, with
+`activity: 'skip'`; `syncVisitsToLeadState` then marks the visit RESCHEDULED. A lead
+the machine refuses to move (WON, LOST, RNR) is logged and the team is still told:
+the customer asked for a new time, and that is the fact a human must act on. The
+webhook answers 200 either way - Meta retries non-2xx for days.
+
+**The defect this found, and it was not in the feature.** Every audit insert from a
+CRON_SERVICE context was being refused. `auditlog_insert_any_authenticated` passed,
+but the INSERT still failed with 42501 whenever the writer asked for the row back -
+and RETURNING is evaluated against the SELECT policy, which admits only ADMIN or
+the row's own `userId`. Prisma's typed `create()` always returns the row, so every
+system-actor audit write died while a plain INSERT without RETURNING succeeded. It
+had never shown up because nothing in a cron context had written an audit row
+before. Fixed with `auditlog_select_cron_service` (migration
+`20261128074500`, org-scoped, gated on BOTH `app.user_role='CRON_SERVICE'` and
+`app.user_id='cron-service'`), mirroring `lead_select_cron_service`.
+
+**The timeline, and a second copy of the RETURNING trap.** The confirmation also
+writes a lead-timeline row now, so a telecaller scrolling the lead sees what the
+"YES" did. `Activity.userId` is nullable: NULL means the system wrote the row and
+no staff member did, because naming the visit's assignee would put a false actor
+on the page people read to find out who did what. The read path already handled a
+missing name (`userName: a.user?.name ?? null`, and the timeline hides the "by ..."
+line), so the honest option was also the smaller one. Two RLS arms were needed:
+`activity_insert_cron_service` to admit the write and `activity_select_cron_service`
+because RETURNING is checked against SELECT - the same trap as AuditLog above, now
+recorded twice on purpose: a cron-context INSERT that asks for its row back needs
+a SELECT arm too.
+
+**What is not here.** No auto-reply to the customer: an acknowledgement template
+would be a third submission and a third approval, and the reply that matters is the
+staff call. No NO/cancel.

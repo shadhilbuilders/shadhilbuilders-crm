@@ -309,6 +309,32 @@ CREATE POLICY activity_insert_admin ON "Activity"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- T-WA-VISIT-REPLY (2026-11-28): the SYSTEM writes a timeline row.
+-- `Activity.userId` is nullable now (NULL = no staff member did it - the
+-- customer replied YES on WhatsApp), and the webhook's cron context needs an
+-- INSERT arm of its own: both arms above require a staff actor. Org-scoped, and
+-- gated on BOTH GUCs like every other cron bypass. Shipped in migration
+-- 20261128081500_activity_system_actor; this catalog mirrors it.
+CREATE POLICY activity_insert_cron_service ON "Activity"
+  FOR INSERT
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+-- T-WA-VISIT-REPLY (2026-11-28): the same account reads back what it wrote.
+-- RETURNING is evaluated against the SELECT policy, so without this arm the
+-- INSERT above passes and the statement still fails 42501. Shipped in migration
+-- 20261128082000_activity_cron_service_read.
+CREATE POLICY activity_select_cron_service ON "Activity"
+  FOR SELECT
+  USING (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
 -- ── SiteVisit (team-scoped via lead + denormalized org) ────────────────────
 ALTER TABLE "SiteVisit" ENABLE ROW LEVEL SECURITY;
 
@@ -2513,6 +2539,19 @@ CREATE POLICY auditlog_insert_invite_accept ON "AuditLog"
   WITH CHECK (
     current_setting('app.user_role', true) = 'INVITE_ACCEPT'
     AND current_setting('app.user_id', true) IS NOT NULL
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+-- T-WA-VISIT-REPLY (2026-11-28): the cron service account reads the audit rows
+-- it writes. Without this, a system-actor audit insert fails with 42501 the
+-- moment the writer asks for the row back (RETURNING is checked against SELECT),
+-- which is every Prisma typed `create()`. Shipped in migration
+-- 20261128074500_auditlog_cron_service_read; this catalog mirrors it.
+CREATE POLICY auditlog_select_cron_service ON "AuditLog"
+  FOR SELECT
+  USING (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 

@@ -239,6 +239,32 @@ the four gated call sites have been read, but only if a fifth wants the same beh
 
 ## Completed
 
+### A system action now leaves a row on the lead timeline - DONE 2026-11-28
+
+The confirmation used to write a `SiteVisit.confirmedAt` stamp, an audit row and
+notifications, and nothing on the lead timeline - so a telecaller scrolling the
+lead saw the customer's "YES" message and then no record of what it did.
+
+`Activity.userId` is nullable now, and a NULL means what it says: the system wrote
+this row and no staff member did. Attribution was the whole decision: naming the
+visit's assignee would have put a false actor on the page a telecaller reads to
+find out who did what, and the read path already coped with no name -
+`leads.service` maps `userName: a.user?.name ?? null` and the timeline hides the
+"by ..." line when it is null. So the honest option turned out to be the smaller
+one.
+
+Two RLS arms were needed, not one: `activity_insert_cron_service` to admit the
+write, and `activity_select_cron_service` because RETURNING is checked against
+SELECT - the same trap as AuditLog (migration `20261128074500`), which is worth
+remembering: **a cron-context INSERT that asks for its row back needs a SELECT
+arm too.** Migrations `20261128081500_activity_system_actor` and
+`20261128082000_activity_cron_service_read`.
+
+Both arms write through `recordSystemActivity` in `leads/lead-activity.ts`. The
+confirm row is written inside the same transaction as the stamp and the audit row,
+so the three cannot come apart; the reschedule row is best-effort, because a
+timeline write must never stop the team being told.
+
 ### users.service.ts split into its six concerns - DONE 2026-11-26 (Round 67)
 
 2,658 lines in one class, against an 800-line ceiling, and the reporting-line rule had to be

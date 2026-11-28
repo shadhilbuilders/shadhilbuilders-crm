@@ -78,6 +78,26 @@ describe('TodayVisitsCard', () => {
     expect(html).toContain('-');
   });
 
+  // T-WA-VISIT-REPLY (2026-11-28): the customer can confirm a visit from the
+  // reminder's "Reply YES". That answer used to be invisible here, so an exec
+  // reading the morning list could not tell "customer said yes" from "nobody
+  // has heard from them".
+  it('marks the visit the customer confirmed, and only that one', () => {
+    const html = render([
+      visit({ id: 'v-confirmed', confirmedAt: '2026-11-28T04:15:00.000Z' }),
+      visit({ id: 'v-silent', leadName: 'Demo Ravi', confirmedAt: null }),
+    ]);
+    expect(html.match(/data-qa="visit-confirmed[^"]*"/g)).toHaveLength(1);
+    expect(html).toContain('Confirmed');
+  });
+
+  it('shows no confirmation marker when the column is absent', () => {
+    // Older cached payloads have no `confirmedAt` at all; absence must read as
+    // "not confirmed", never as a crash or an empty badge.
+    const html = render([visit()]);
+    expect(html).not.toContain('data-qa="visit-confirmed');
+  });
+
   it('renders the plain name when a visit has no lead to link to', () => {
     const html = render([visit({ leadId: undefined })]);
     expect(html).toContain('Demo Priya');
