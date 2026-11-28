@@ -22,17 +22,20 @@ import { PrismaPg } from '@prisma/adapter-pg';
 // Placeholder fallbacks per plan §17 Input #5 - rotate on first login (T-S).
 // ────────────────────────────────────────────────────────────────────────────
 
-// The seed needs the OWNER database role (migration privileges,
-// bypass-RLS) - `shadhil` via DIRECT_DATABASE_URL - not the
-// non-owner `shadhil_app` role used at runtime via DATABASE_URL
-// + PgBouncer. Construct a local PrismaClient here rather than
-// importing the shared `prisma` from `./index` (which is bound
-// to DATABASE_URL so the API runtime keeps RLS enforced).
-// Without this, the seed hits `42501 permission denied for
-// schema public` on the very first upsert.
+// The seed runs as `shadhil_seed` (SEED_DATABASE_URL): a login that BYPASSRLS but owns
+// nothing. Since the owner split of 2026-11-28 that separation matters, because the
+// migration owner deliberately does NOT bypass RLS, and a non-bypass role is refused when
+// it asks for row_security = off ("query would be affected by row-level security policy").
+// A bypass role is the supported way to write across every tenant in a bootstrap script
+// (H2 in docs/planning/OWNER-ROLE-MIGRATION.md), so the seed stops pretending it disabled
+// RLS and uses a role that actually may.
+//
+// Construct a local PrismaClient here rather than importing the shared `prisma` from
+// `./index`, which is bound to DATABASE_URL so the API runtime keeps RLS enforced.
 const prisma: PrismaClient = new PrismaClient({
   adapter: new PrismaPg({
-    connectionString: process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL,
+    connectionString:
+      process.env.SEED_DATABASE_URL ?? process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL,
   }),
 });
 
@@ -243,14 +246,6 @@ async function upsertUser(
 }
 
 async function main() {
-  // Disable RLS for seed - the bootstrap admin needs to bypass policies until
-  // the database is fully populated. In production, run migrations with the
-  // DIRECT_DATABASE_URL (owner role), which bypasses RLS by default.
-  await prisma.$executeRawUnsafe(`SET LOCAL row_security = off`).catch(() => {
-    // session-level fallback if SET LOCAL is not allowed (no active tx)
-    return prisma.$executeRawUnsafe(`SET row_security = off`);
-  });
-
   const owner = readSeedUser('OWNER');
   const admin = readSeedUser('ADMIN');
   const manager = readSeedUser('MANAGER');

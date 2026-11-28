@@ -4,8 +4,9 @@
 
 # Owner-role migration: making FORCE RLS mean something
 
-Status: PARKED 2026-11-28. A review refuted the premise (see "Revision 3 measured"),
-so the role split is not scheduled; W19's test is the live artifact. Rev 3.
+Status: EXECUTED ON DEV 2026-11-28 (W1 to W8, W12 partial). Production is untouched and
+still needs W10 in a maintenance window. Two items moved after measurement: W7 (the test
+harness stays on the bootstrap superuser, see revision 4) and the fresh-install order. Rev 4.
 Related: AR-1 (the FORCE audit), migration `20261128091000_force_rls_remaining`,
 `packages/database/test/rls-force.test.ts`, the Access control section of TODOS.md.
 
@@ -136,6 +137,46 @@ break-glass), `shadhil_owner` (owns the tables, so it can drop a policy or run
 ownership is policy control, not a lesser privilege than BYPASSRLS. The gain is
 that each one now has a name, a purpose and a test, where today a single credential
 does every job and nothing enumerates them.
+
+## Revision 4 measured: what executing it on dev changed
+
+Ran W1 to W8 against `shadhil_crm` and `shadhil_crm_test` on 2026-11-28. The scripts are
+`scripts/owner-role-bootstrap.sql` (W1 to W3) and `scripts/rls-post-migrate.sql` (W4b).
+Result on both databases: zero objects in `public` owned by `shadhil`, 19 of 19 helpers
+owned by `shadhil_rls`, `public` owned by `shadhil_owner`.
+
+Five things the plan got wrong or left implicit, each found by running it:
+
+1. **Revoking PUBLIC EXECUTE on the helpers breaks every policy.** A role that queries a
+   FORCEd table evaluates its policies, and a policy calls those helpers AS THE CALLER. With
+   `REVOKE ALL ... FROM PUBLIC` and a grant only to `shadhil_app`, the backend suite failed
+   with `42501 permission denied for function customer_self_phone` on a test that queries as
+   the harness role. The grant goes to `shadhil_app`, `shadhil_owner` and `shadhil_seed`.
+2. **BYPASSRLS is not privileges.** `shadhil_seed` could not run the seed at all until it
+   had `USAGE` on `public` and CRUD on the tables: `42501 permission denied for schema
+public` on the first upsert. Same for `shadhil_rls`, which needs table privileges for the
+   helper bodies.
+3. **A non-bypass owner cannot INSERT into a FORCEd table at all.** Measured with a
+   throwaway table: ENABLE, FORCE, a `FOR SELECT USING (false)` policy, then INSERT gives
+   `new row violates row-level security policy`. UPDATE on the same table succeeds and
+   touches zero rows, which is the silent case W8 predicted. Nine historical migrations
+   contain INSERT and seventeen contain UPDATE, and applied migrations cannot be edited
+   while production exists.
+4. **Therefore the fresh-install order is: migrate as the bootstrap superuser, then hand
+   over.** Otherwise migration one cannot replay. Ongoing migrations run as `shadhil_owner`,
+   and one that must touch rows borrows the bypass with `SET LOCAL ROLE shadhil_seed;`
+   (`GRANT shadhil_seed TO shadhil_owner` is what makes the line legal).
+5. **W7 does not work as written.** The harness needs BOTH bypass (cross-tenant purges) and
+   ownership (`ALTER TABLE ... DISABLE TRIGGER` in the consent repair test). No non-superuser
+   role has both, so `TEST_DIRECT_DATABASE_URL` points at `shadhil` for now, which is exactly
+   what the harness used before this change. Closing W7 needs a fourth role that is
+   `BYPASSRLS` and a member of `shadhil_owner`, and a decision that a fourth cross-tenant
+   credential is acceptable. W14(c) would then expect four names, not three.
+
+Two tests now guard the invariants: `packages/database/test/owner-roles.test.ts` (attributes,
+helper ownership, the cross-tenant role set) and `migration-dml-guard.test.ts` (a
+post-cutover migration that touches rows must borrow the bypass; proved red with a probe
+migration, then green once `SET LOCAL ROLE shadhil_seed;` was added).
 
 ## Work items
 

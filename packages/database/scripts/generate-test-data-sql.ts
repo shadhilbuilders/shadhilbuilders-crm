@@ -448,7 +448,9 @@ parts.push(`-- =================================================================
 --              psql -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 -f seed-test-user.sql
 -- ============================================================================
 BEGIN;
-SET LOCAL row_security = off;
+-- The owner role does not bypass RLS (docs/planning/OWNER-ROLE-MIGRATION.md), so a
+-- backfill borrows the seed role for its writes.
+SET LOCAL ROLE shadhil_seed;
 
 -- ── Organization (already exists in prod; upsert keeps the file standalone) ─
 ${insert(

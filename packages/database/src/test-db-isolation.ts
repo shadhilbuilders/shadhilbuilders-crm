@@ -160,7 +160,12 @@ export function shouldRedirect(url: string | undefined): url is string {
  * barrel - see the NOTE above on why importing `./index` here is not an option.
  */
 export function createDirectPrismaClient(): PrismaClient {
-  const directUrl = process.env['DIRECT_DATABASE_URL'] ?? '';
+  // TEST_DIRECT_DATABASE_URL first, on purpose. Since the owner split, DIRECT_DATABASE_URL
+  // is the migration owner, which does NOT bypass RLS, so a cross-tenant fixture purge run
+  // through it deletes zero rows and reports success. That is the quiet failure W7 exists
+  // to avoid, and it would have spread across about nineteen suites.
+  const directUrl =
+    process.env['TEST_DIRECT_DATABASE_URL'] ?? process.env['DIRECT_DATABASE_URL'] ?? '';
   const url = directUrl !== '' ? directUrl : (process.env['DATABASE_URL'] ?? '');
   return new PrismaClient({
     adapter: new PrismaPg({ connectionString: url }),

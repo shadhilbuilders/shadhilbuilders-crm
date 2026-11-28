@@ -31,7 +31,15 @@ const ids = {
 const T0 = new Date('2026-09-01T10:00:00.000Z');
 
 function runMigration(): void {
-  const url = (process.env.DIRECT_DATABASE_URL ?? '').split('?')[0];
+  // TEST_DIRECT_DATABASE_URL first, and not DIRECT_DATABASE_URL. Since the owner split
+  // (2026-11-28) the migration role is `shadhil_owner`, which owns the tables and does NOT
+  // bypass RLS, so this file's INSERT ... SELECT silently inserts zero rows while psql
+  // exits 0. Measured here: `expected [] to deeply equal [four rows]`. The harness URL is
+  // the one documented as "may step outside RLS", which is exactly what replaying a
+  // historical backfill requires.
+  const url = (process.env.TEST_DIRECT_DATABASE_URL ?? process.env.DIRECT_DATABASE_URL ?? '').split(
+    '?',
+  )[0];
   execFileSync('psql', [url, '-v', 'ON_ERROR_STOP=1', '-q', '-f', MIGRATION], {
     stdio: 'pipe',
   });
