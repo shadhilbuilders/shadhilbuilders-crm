@@ -144,17 +144,34 @@ not just the seven. The runtime never connects as it: both apps use the pooled
 migrations, the seed, the tests, and psql through the SSH tunnel, so the exposure is
 whoever holds `DIRECT_DATABASE_URL`.
 
-Two ways to close it, preferred first:
+**The obvious fix is not available.** `ALTER ROLE shadhil NOSUPERUSER` is refused:
+`shadhil` is the cluster's bootstrap role (OID 10, `POSTGRES_USER` at initdb) and
+Postgres answers "The bootstrap user must have the SUPERUSER attribute". Tried on
+dev 2026-11-28; prod runs the same image with the same bootstrap user, so it will
+answer the same.
 
-- `ALTER ROLE shadhil NOSUPERUSER`. Then FORCE bites and the owner is constrained
-  like any other role. Prove it on a restored copy before prod: the container
-  entrypoint expects a superuser for init, and pgcrypto is trusted on PG13+ so
-  migrations should survive, but "should" is not a reason to try it live.
-- Or accept it and treat `DIRECT_DATABASE_URL` as privileged: never in a BI tool,
-  an ad-hoc script, or a laptop session that is not a migration.
+**The workable equivalent, verified on dev with a stand-in role:** a non-superuser
+role that OWNS the tables, with `shadhil` kept only as the bootstrap superuser
+nobody connects as. With FORCE in place such an owner reads 0 rows with no GUCs and
+4 rows under ADMIN GUCs on the same table, which is exactly the behaviour the
+policy is supposed to have. What it costs:
 
-If the role stops being superuser, the seed has to set the RLS GUCs or run as an
-admin actor, because it writes ProjectOption and ProjectStaffRole through the owner.
+- `REASSIGN OWNED BY shadhil TO <owner>` across every object, and the database
+  itself.
+- `GRANT USAGE ON SCHEMA public TO <owner>`: PG16 does not hand that out to a new
+  role, and without it the owner cannot even see the tables ("permission denied for
+  schema public", which reads like a missing table if you are not expecting it).
+- Migrations must run as the new owner, so `DIRECT_DATABASE_URL` and the shadow
+  database follow it. The app role's grants survive, because grants belong to the
+  object, not to the owner.
+- **The seed breaks.** It bypasses with `SET LOCAL row_security = off`, and a
+  non-superuser owner is refused: "query would be affected by row-level security
+  policy for table Feedback". The seed would need the GUCs per write, or its own
+  role granted BYPASSRLS (unconstrained by design, so give it nothing but the
+  seed).
+
+Or accept the superuser and treat `DIRECT_DATABASE_URL` as privileged: never in a
+BI tool, an ad-hoc script, or a laptop session that is not a migration.
 
 ### A materialised access key for engineer scope: considered, rejected (2026-11-28)
 
