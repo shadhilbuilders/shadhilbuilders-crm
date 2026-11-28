@@ -173,6 +173,38 @@ policy is supposed to have. What it costs:
 Or accept the superuser and treat `DIRECT_DATABASE_URL` as privileged: never in a
 BI tool, an ad-hoc script, or a laptop session that is not a migration.
 
+The owner-role work is planned in `docs/planning/OWNER-ROLE-MIGRATION.md`: four
+roles, the order to move them in, and the measured trap that decides the design
+(a SECURITY DEFINER helper owned by a non-bypass role silently starts answering with
+the caller's own visibility, which is exactly what `project_unit_ids` exists to
+avoid).
+
+### Tenant identity is forgeable by any credential that can run SQL (measured 2026-11-28)
+
+Every RLS policy keys off session GUCs (`app.user_org_id`, `app.user_role`,
+`app.user_id`). Zero policies reference `current_user`. Postgres cannot tell an
+honest application from a hostile one: whoever holds the credential sets the GUCs.
+
+Measured on dev, connected as `shadhil_app`, which is the non-superuser,
+RLS-enforced role the API uses:
+
+| Caller                                  | Leads visible |
+| --------------------------------------- | ------------- |
+| `shadhil_app`, no GUCs                  | 0             |
+| `shadhil_app`, GUCs forged for Builders | 31            |
+| `shadhil_app`, GUCs forged for Test     | 158           |
+| `shadhil_app`, GUCs forged for Demo     | 66            |
+
+So RLS stops accidental cross-tenant queries and a bad JOIN. It does not stop a
+leaked `DATABASE_URL`, and it never did. The owner-role migration removes
+cluster-level superuser exposure, which is worth doing, but it does not change this.
+
+Making the tenant unforgeable needs one of: a per-tenant database login, a signed
+tenant token verified inside a SECURITY DEFINER function, or a database per tenant.
+All are larger than anything currently planned. Decide which before spending more
+time on role taxonomy, and keep the forged-GUC test from
+`docs/planning/OWNER-ROLE-MIGRATION.md` (W19) as the red test that proves the fix.
+
 ### A materialised access key for engineer scope: considered, rejected (2026-11-28)
 
 Twenty-style scope tables were considered for engineer visibility and are not

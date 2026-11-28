@@ -137,7 +137,6 @@ services:
       HOSTNAME: 0.0.0.0
       SSE_BACKEND_URL: http://shadhil-realtime-sse:8090
       DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
-      DIRECT_DATABASE_URL: postgresql://shadhil:${PG_PASSWORD}@shadhil-postgres:5432/shadhil_crm?schema=public
       BACKEND_API_URL: http://shadhil-api:8080
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: https://crm.shadhilbuilders.in

@@ -9,9 +9,6 @@ export const env = createEnv({
     BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be >= 32 chars'),
     BETTER_AUTH_URL: z.url(),
 
-    // ── Database (NestJS writes via PgBouncer; web reads User only) ──────
-    DIRECT_DATABASE_URL: z.url(),
-
     // ── JWT (shared secret with NestJS JwtStrategy) ──────────────────────
     JWT_SECRET: z.string().min(32),
     JWT_ISSUER: z.string().default('shadhil-crm'),
@@ -59,7 +56,6 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
-    DIRECT_DATABASE_URL: process.env.DIRECT_DATABASE_URL,
     JWT_SECRET: process.env.JWT_SECRET,
     JWT_ISSUER: process.env.JWT_ISSUER,
     BACKEND_API_URL: process.env.BACKEND_API_URL,
