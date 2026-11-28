@@ -124,6 +124,30 @@ chat attachment read does a scan). If that shows up in a trace, add
 URL surface, and the BFF already carries the session; (b) a `MediaObject` table - a
 migration plus a backfill for a problem two indexed lookups solve.
 
+## Site video
+
+### The capture flag is off until four handset checks pass (2026-11-28)
+
+`SITE_VIDEO_CAPTURE` was `true` on every production container while the device gate
+was still open. It is off now: Coolify's env holds `false`, the generated `.env` and
+the running stack agree, and the value reads `false` in api, web and realtime-sse.
+The backend treats the flag as an exact string, so `false` is OFF and every video
+route answers 404; the web surface reads it server-side (`env.SITE_VIDEO_CAPTURE ===
+'true'`), so no recorder renders.
+
+Four handset-only checks remain owed. The known failure: a low-end Android misses the
+3 second playback bar, measured at 9.50 s in the emulator. Everything else stays
+wired and needs no rebuild when the flag flips back - the caps
+(`SITE_VIDEO_ORG_CAP_BYTES` 8 GiB, `SITE_VIDEO_PROJECT_CAP_BYTES` 1 GiB), the
+upload-grant rate limits, the delivery and consent paths, and any video already
+stored.
+
+To reopen: set `SITE_VIDEO_CAPTURE=true` in Coolify's env for the service, then
+recreate the containers (a push, or `docker compose -p 0bjahklz8gtdtr4do4r7ae6m up -d`
+in `/data/coolify/services/0bjahklz8gtdtr4do4r7ae6m` once the generated `.env`
+carries the value). The backend refuses to boot with the flag on and a cap missing,
+so the caps have to be in place before the flag moves.
+
 ## Access control
 
 ### RLS is FORCEd on every table now, and the owner still bypasses it

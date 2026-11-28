@@ -2007,3 +2007,26 @@ copy to the customer is the worse outcome.
 **What is not here.** No auto-reply to the customer: an acknowledgement template
 would be a third submission and a third approval, and the reply that matters is the
 staff call. No NO/cancel.
+
+## Round 69 - 2026-11-28, 11:25 UTC - The video gate closes in production
+
+`SITE_VIDEO_CAPTURE` was on in production for all three containers, and the device
+gate behind it was still open: four handset-only checks owed, with a known failure
+where a low-end Android misses the 3 second playback bar (9.50 s measured in the
+emulator). Buyers and engineers could film on hardware nobody had signed off.
+
+Turned off at the source rather than in the UI. Coolify's env holds `false`, the
+generated `.env` carries it, and the stack was recreated so api, web and realtime-sse
+all read `false`. The backend compares the flag as an exact string, so only `true`
+enables it, and the web reads it server-side, so no recorder renders and every video
+route answers 404.
+
+Nothing was removed. The caps (8 GiB per org, 1 GiB per project), the upload-grant
+rate limits, the consent and delivery paths and the stored video are untouched, and
+the backend's boot check still refuses to start with the flag on and a cap missing.
+That is deliberate: reopening is one env change and a container recreate, and it
+should fail loudly if someone flips the flag without the caps in place.
+
+The lesson is about where a gate lives. The flag was correct in the code and honoured
+by every surface; it was simply set to `true` in an env table that no repository
+audit reads. A feature gate that exists only in Coolify is invisible to `grep`.
