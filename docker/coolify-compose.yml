@@ -89,7 +89,7 @@ services:
       # SSE pool (2026-11-27). Postgres allows 300 backends; measured load is a
       # dozen.
       DB_POOL_MAX: "16"
-      DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
+      DATABASE_URL: postgresql://shadhil_app:${SHADHIL_APP_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
       DIRECT_DATABASE_URL: postgresql://shadhil:${PG_PASSWORD}@shadhil-postgres:5432/shadhil_crm?schema=public
       REDIS_URL: redis://shadhil-redis:6379
       JWT_SECRET: ${JWT_SECRET}
@@ -142,7 +142,7 @@ services:
       PORT: "3000"
       HOSTNAME: 0.0.0.0
       SSE_BACKEND_URL: http://shadhil-realtime-sse:8090
-      DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
+      DATABASE_URL: postgresql://shadhil_app:${SHADHIL_APP_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
       BACKEND_API_URL: http://shadhil-api:8080
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: https://crm.shadhilbuilders.in
@@ -186,7 +186,7 @@ services:
       # cut transaction load 3x without losing anything the web polls do not
       # already guarantee. See apps/realtime-sse/src/config.ts.
       SSE_DB_TICK_MS: "5000"
-      DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
+      DATABASE_URL: postgresql://shadhil_app:${SHADHIL_APP_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
       POOL_MODE: session
       # 12, not the API's 16: the SSE poller is one short query per client per
       # 5s tick, so it queues far less. Explicit here so a Coolify-wide

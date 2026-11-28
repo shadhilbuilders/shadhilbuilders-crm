@@ -179,28 +179,32 @@ roles, the order to move them in, and the measured trap that decides the design
 the caller's own visibility, which is exactly what `project_unit_ids` exists to
 avoid).
 
-### The app role and the superuser still share a password in production (2026-11-28)
+### Database credentials: rotated in production, and one earlier claim corrected (2026-11-28)
 
-Fixed locally, not yet in prod. The cause: `00-init.sql` could not read env vars, so
-it carried `PASSWORD 'shadhil'`, which was also `POSTGRES_PASSWORD`. A container
-holding `DATABASE_URL` could therefore log in as the bootstrap superuser.
+Done. `shadhil_app` has its own secret, 24 characters, living only in Coolify's env,
+Coolify's generated `.env`, and the host PgBouncer userlist. The database role, the
+pooler and the running containers were all changed in one sequence and verified over
+the network: the new password is accepted, the old one is refused both by the pooler
+and by Postgres directly, and eight live app sessions prove the API reconnected.
 
-Now: `00-init.sh` reads `SHADHIL_APP_PASSWORD`, refuses to run if it equals
-`POSTGRES_PASSWORD`, and CI uses two distinct values. Locally the role was rotated
-and the old shared password is rejected.
+Two corrections to what was written here earlier, because being wrong in a TODO is
+worse than being slow:
 
-Production rotation, in this order (each step after the previous, or connections drop):
+1. The two roles did **not** share a live password. The repository's
+   `docker/coolify-compose.yml` had the same 14-character literal in both the app URL
+   and the owner URL, but that owner URL was stale: production's owner credential is
+   the 32-character `PG_PASSWORD` from Coolify, and the 14-character value only ever
+   authenticated as `shadhil_app`. The finding was "the app's password is committed in
+   plaintext and reused in a credential the owner URL also claimed", not "one secret
+   opens both roles".
+2. `pg_hba` inside the production Postgres trusts `local`, `127.0.0.1` and `::1`, so
+   every `docker exec ... psql` check silently ignored the password. Any test of a
+   credential has to come over TCP from another container. The first round of checks
+   here proved nothing and had to be redone.
 
-1. Coolify: add `SHADHIL_APP_PASSWORD` and rewrite `DATABASE_URL` for api, web and
-   sse with it. Leave `PG_PASSWORD` alone unless it is also being rotated.
-2. VPS: append the new value to `/data/coolify/shadhil/userlist.txt` for
-   `"shadhil_app"`, since PgBouncer authenticates from that host file.
-3. VPS: `ALTER ROLE shadhil_app PASSWORD '<new>'` inside `shadhil_crm`.
-4. `docker restart shadhil-pgbouncer-0bjahklz8gtdtr4do4r7ae6m`.
-5. Redeploy so the containers pick up the new `DATABASE_URL`.
-6. Verify: the pooler accepts the new password, the old one fails, `/health` is 200.
-
-Doing 3 before 1 or 2 takes the app down for as long as it takes to finish the rest.
+Both compose files now interpolate every credential (`${SHADHIL_APP_PASSWORD}`,
+`${PG_PASSWORD}`), so no database password is in the repository. Git history still
+carries the old 14-character value, which is now worthless.
 
 ### Tenant identity is forgeable by any credential that can run SQL (measured 2026-11-28)
 
