@@ -181,22 +181,44 @@ iat, exp, iss }` (`packages/auth-client/src/jwt.ts:36`), not the four-field
 
 ## 8. Copy fix (independent, do this first)
 
-Editing a template's body in WhatsApp Manager does not change its approval
-category or its parameter count, so the following ships with **zero** code
-change and removes the false promise immediately:
+**Corrected 2026-11-28: this section was wrong about the mechanism.** Meta
+refuses to edit an approved template at all. `POST /{template_id}` with new
+components returns 400, code 100, subcode **2388039**: "The status for this
+message template can't be changed. You can only delete or add templates." So a
+copy fix is a NEW name (`shadhil_visit_reminder_v2`), a resubmission, and a
+deletion of the old template - not an in-place edit. The category is unaffected
+by the change; the send path just has to name the new template.
+
+The rest of this section is kept for the record:
 
 - `shadhil_site_visit_followup`: "Hi {{1}}, just following up on your site visit for
   {{2}}. Are you still interested? Reply YES and our team will call you."
 - `shadhil_visit_reminder`: "Your site visit for {{1}} is on {{2}}. Reply YES and
   our team will confirm, or RESCHEDULE if you need another time."
 
-Still 2 parameters each and still starts and ends on static text, so neither
-edit needs a code change. Category is Meta's to advise on, and the operator
-accepted Marketing for both (`shadhil_site_visit_followup` and `shadhil_chat_reply`
-are Marketing as of 2026-11-11); the consequence is delivery, not approval —
-from a Meta test sender a Marketing template is accepted and then dropped, so
-expect nothing to arrive until a real sender is registered.
-Both are honest whether or not this ticket ships.
+Still 2 parameters each and still starts and ends on static text.
+
+**Done 2026-11-28, in the account (WABA 1575406993159, verified live):**
+
+    created   shadhil_visit_reminder_v2  UTILITY, en, PENDING review
+              "Your site visit for *{{1}}* is on {{2}}. / Just reply YES to
+              confirm, or RESCHEDULE if you need a different time."
+    deleted   shadhil_visit_reminder      superseded by _v2 (its copy promised
+                                          "our team will confirm")
+    deleted   shadhil_chat_reply           retired 2026-11-24, no sender
+    deleted   shadhil_site_visit_followup  retired, no sender, and its copy
+                                          ("are you still interested") is a
+                                          sales nudge
+    deleted   shadhil_site_update_image    retired, superseded by villa_update_image
+    deleted   shadhil_site_update_video    retired, superseded by villa_update_video
+
+Left alone on purpose: 3p_direct_integration_test_template (Meta's own
+onboarding test), the landing page's internal_enquiry_notification and
+customer_enquiry_confirmation (a different repo sends those), and
+shadhil_site_visit_checkin, which is the only visit template actually sent.
+
+The `shadhil_visit_reminder` name is now in RETIRED_TEMPLATE_NAMES, so a queued
+row that still names it resolves to _v2 instead of failing 132001.
 
 ## 9. Tests (acceptance)
 

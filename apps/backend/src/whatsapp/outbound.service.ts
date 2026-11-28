@@ -84,7 +84,11 @@ export class OutboundService {
     // rows that still carry the old names.
     chatReply: process.env.WA_TEMPLATE_CHAT_REPLY || 'shadhil_enquiry_reply',
     visitFollowup: VISIT_CHECKIN_TEMPLATE,
-    visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER || 'shadhil_visit_reminder',
+    // T-WA-VISIT-REPLY (2026-11-28): _v2 because Meta refuses to edit an
+    // approved template (2388039), so the corrected copy is a new name and the
+    // old `shadhil_visit_reminder` is deleted. A row still naming the old one
+    // resolves through RETIRED_TEMPLATE_NAMES below.
+    visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER || 'shadhil_visit_reminder_v2',
   };
 
   private get client(): PrismaClient {
@@ -304,9 +308,8 @@ export class OutboundService {
         // ordered Meta `parameters` array. The order of values
         // MUST match the {{1}}, {{2}}, ... placeholder order in the
         // template body - Meta rejects out-of-order parameters.
-        // See apps/backend/src/whatsapp/whatsapp.client.ts for
-        // the full template specs (3 templates: shadhil_chat_reply,
-        // shadhil_site_visit_followup, shadhil_visit_reminder).
+        // See apps/backend/src/whatsapp/whatsapp.client.ts for the full
+        // template specs (the current names live in `templateNames` above).
         //
         // We sort the values alphabetically by key for a stable
         // order. The chat service writes the keys in a specific
@@ -597,12 +600,15 @@ export const SITE_UPDATE_TEMPLATE_IMAGE =
  */
 const RETIRED_TEMPLATE_NAMES: Record<
   string,
-  'chatReply' | 'visitFollowup' | 'siteImage' | 'siteVideo'
+  'chatReply' | 'visitFollowup' | 'siteImage' | 'siteVideo' | 'visitReminder'
 > = {
   shadhil_chat_reply: 'chatReply',
   shadhil_site_visit_followup: 'visitFollowup',
   shadhil_site_update_image: 'siteImage',
   shadhil_site_update_video: 'siteVideo',
+  // Renamed, not recategorised: Meta would not accept a body edit on the approved
+  // template, so `shadhil_visit_reminder` is deleted and its replacement is _v2.
+  shadhil_visit_reminder: 'visitReminder',
 };
 
 /** The three slots a row may name other than the site-update pair. */

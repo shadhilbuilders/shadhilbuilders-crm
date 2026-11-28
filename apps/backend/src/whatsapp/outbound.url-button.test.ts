@@ -23,7 +23,7 @@ describe('site-update URL button', () => {
     for (const other of [
       'shadhil_enquiry_reply',
       'shadhil_site_visit_checkin',
-      'shadhil_visit_reminder',
+      'shadhil_visit_reminder_v2',
       'shadhil_welcome_enquiry',
     ]) {
       expect(hasUrlButton(other)).toBe(false);
@@ -67,7 +67,7 @@ describe('resolveTemplateName', () => {
   const names = {
     chatReply: 'shadhil_enquiry_reply',
     visitFollowup: 'shadhil_site_visit_checkin',
-    visitReminder: 'shadhil_visit_reminder',
+    visitReminder: 'shadhil_visit_reminder_v2',
   };
 
   it('sends a retired chat reply row through the template that replaced it', () => {
@@ -75,6 +75,12 @@ describe('resolveTemplateName', () => {
     expect(resolveTemplateName('shadhil_site_visit_followup', names)).toBe(
       'shadhil_site_visit_checkin',
     );
+  });
+
+  it('sends a row naming the renamed reminder through its replacement', () => {
+    // Meta refuses to edit an approved body (2388039), so the copy fix became a
+    // new name. A reminder row queued under the old one must not 132001.
+    expect(resolveTemplateName('shadhil_visit_reminder', names)).toBe('shadhil_visit_reminder_v2');
   });
 
   it('does the same for a retired site update row, image and clip', () => {

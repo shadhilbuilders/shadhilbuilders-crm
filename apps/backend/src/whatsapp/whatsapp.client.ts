@@ -60,22 +60,31 @@
 //    When sent: nothing yet. The outbox whitelists the name; no caller enqueues
 //               it, so approving it added no behaviour.
 //
-// 3. shadhil_visit_reminder  (UTILITY, en)  ← env: WA_TEMPLATE_VISIT_REMINDER
+// 3. shadhil_visit_reminder_v2  (UTILITY, en)  ← env: WA_TEMPLATE_VISIT_REMINDER
 //    Category:  Utility (proactive reminder for an upcoming visit)
 //    Header:    none
-//    Body:      "Your site visit for {{1}} is on {{2}}. Reply YES
-//                to confirm or RESCHEDULE."
-//    Buttons:   none
+//    Footer:    "Shadhil Builders & Constructions"
+//    Body:      "Your site visit for *{{1}}* is on {{2}}.\n\n
+//                Just reply YES to confirm, or RESCHEDULE if you need a
+//                different time."
+//    Buttons:   none - and do not add any. A quick-reply button arrives as a
+//               `button` message, not text, and the reply parser only reads
+//               text bodies, so buttons would silently break the confirmation.
 //    Sample:
 //                Your site visit for Shadhil Meadows is on
-//                Friday, 12 Sept at 10:00 AM. Reply YES to confirm
-//                or RESCHEDULE.
+//                Friday, 12 September at 10:00 AM. Just reply YES to confirm,
+//                or RESCHEDULE if you need a different time.
 //    Variables: {{1}} = project name (max 60 chars)
 //                {{2}} = datetime (formatted, max 60 chars - e.g.
-//                         "Friday, 12 Sept at 10:00 AM")
-//    When sent: reminder cron (T-E2b follow-up) → outbound.send() with
-//               templateName: 'shadhil_visit_reminder', sendType: TEMPLATE
-//               (scheduled 1-2h before the visit)
+//                         "Friday, 12 September at 10:00 AM")
+//    When sent: nothing yet (2026-11-28). The reminder cron notifies STAFF only;
+//               no caller enqueues this template, so a customer never receives
+//               it. Wire the sender before treating this copy as live.
+//    Why _v2: the approved `shadhil_visit_reminder` said "Reply YES and our team
+//               will confirm". The webhook now confirms on the customer's word,
+//               and Meta refuses to edit an approved template (2388039 - "you
+//               can only delete or add templates"), so the corrected copy is a
+//               new name and the old one was deleted.
 //
 // 4. shadhil_villa_update_video  (UTILITY, en)  ← env: WA_TEMPLATE_SITE_UPDATE_VIDEO
 // 5. shadhil_villa_update_image  (UTILITY, en)  ← env: WA_TEMPLATE_SITE_UPDATE_IMAGE
@@ -113,7 +122,7 @@
 // Env-var name mapping (defaults to the template name itself):
 //   WA_TEMPLATE_CHAT_REPLY            default 'shadhil_enquiry_reply'
 //   WA_TEMPLATE_VISIT_FOLLOWUP        default 'shadhil_site_visit_checkin'
-//   WA_TEMPLATE_VISIT_REMINDER        default 'shadhil_visit_reminder'
+//   WA_TEMPLATE_VISIT_REMINDER        default 'shadhil_visit_reminder_v2'
 //   WA_TEMPLATE_SITE_UPDATE_VIDEO     default 'shadhil_villa_update_video'
 //   WA_TEMPLATE_SITE_UPDATE_IMAGE     default 'shadhil_villa_update_image'
 //   WA_TEMPLATE_LANGUAGE              default 'en'
@@ -171,6 +180,9 @@ export interface TemplateButtonComponent {
   parameters: Array<{ type: 'text'; text: string }>;
 }
 
+/** Outcome of one send. `accepted=false` is a soft failure: the
+ *  HTTP request succeeded but Meta refused the message. Throw at
+ *  the call site to mark the OutboundMessage as FAILED. */
 export interface WhatsAppDelivery {
   /** Meta message ID (wamid.*) - used by the webhook to correlate
    *  status callbacks back to our outbox row. */
@@ -184,9 +196,27 @@ export interface WhatsAppDelivery {
   errorTitle: string | null;
 }
 
-/** Outcome of one send. `accepted=false` is a soft failure: the
- *  HTTP request succeeded but Meta refused the message. Throw at
- *  the call site to mark the OutboundMessage as FAILED. */
+/** One approved (or submitted) template, as Meta returns it.
+ *
+ *  Read live from the WABA that owns the sending number: Meta resolves a
+ *  template inside that WABA, so a body read from anywhere else (a code
+ *  comment, a plan doc, another business account) is not evidence of what
+ *  customers receive. */
+export interface WhatsAppTemplateSummary {
+  /** Meta's template id. Editing and deleting address the template by this. */
+  id: string;
+  name: string;
+  /** APPROVED | PENDING | REJECTED | PAUSED | DISABLED ... */
+  status: string;
+  /** UTILITY | MARKETING | AUTHENTICATION */
+  category: string;
+  language: string;
+  header: { format: string; text: string | null } | null;
+  body: string | null;
+  footer: string | null;
+  buttonLabels: string[];
+}
+
 export class WhatsAppSendError extends Error {
   constructor(
     message: string,
@@ -329,6 +359,166 @@ export class WhatsAppClient {
       errorCode: null,
       errorTitle: null,
     };
+  }
+
+  /**
+   * Read every template on a WhatsApp Business Account.
+   *
+   * T-WA-VISIT-REPLY (2026-11-28): copy advice was being given from the comment
+   * block above, which describes what someone submitted months ago. Meta is the
+   * only authority on what is approved today, and a template resolves inside the
+   * WABA that owns the SENDING number - so the WABA comes from config
+   * (`WA_BUSINESS_ACCOUNT_ID`), never from memory.
+   *
+   * Read-only, and it lives here rather than in a script because this class is
+   * the only thing in the repo that holds the access token.
+   */
+  async listTemplates(wabaId: string): Promise<WhatsAppTemplateSummary[]> {
+    const url =
+      `https://graph.facebook.com/${GRAPH_API_VERSION}/${wabaId}/message_templates` +
+      '?fields=id,name,status,category,language,components&limit=100';
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`WhatsApp template list failed ${res.status}: ${text}`);
+    }
+    const data = (await res.json()) as {
+      data?: Array<{
+        id?: string;
+        name?: string;
+        status?: string;
+        category?: string;
+        language?: string;
+        components?: Array<{
+          type?: string;
+          format?: string;
+          text?: string;
+          buttons?: Array<{ text?: string }>;
+        }>;
+      }>;
+    };
+    return (data.data ?? []).map((row) => {
+      const components = row.components ?? [];
+      const find = (type: string) => components.find((c) => c.type === type) ?? null;
+      const header = find('HEADER');
+      const body = find('BODY');
+      const footer = find('FOOTER');
+      const buttons = find('BUTTONS');
+      return {
+        id: row.id ?? '',
+        name: row.name ?? '',
+        status: row.status ?? 'UNKNOWN',
+        category: row.category ?? 'UNKNOWN',
+        language: row.language ?? '',
+        header: header === null ? null : { format: header.format ?? '', text: header.text ?? null },
+        body: body?.text ?? null,
+        footer: footer?.text ?? null,
+        buttonLabels: (buttons?.buttons ?? []).map((b) => b.text ?? '').filter((t) => t !== ''),
+      };
+    });
+  }
+
+  /**
+   * Replace an approved template's BODY and send it back to Meta's review.
+   *
+   * T-WA-VISIT-REPLY (2026-11-28): the visit reminder's copy promised "our team
+   * will confirm" for a reply that the webhook now acts on itself, so the copy
+   * had to follow the behaviour. Editing an approved template moves its status
+   * to PENDING until review finishes, and a PENDING template cannot be sent.
+   *
+   * Operator tool, not a send-path call: nothing in the request flow edits
+   * templates.
+   */
+  async updateTemplateBody(templateId: string, body: string): Promise<void> {
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${templateId}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ components: [{ type: 'BODY', text: body }] }),
+    });
+    if (!res.ok) {
+      throw new Error(`WhatsApp template update failed ${res.status}: ${await res.text()}`);
+    }
+  }
+
+  /**
+   * Create a template on the business account.
+   *
+   * Meta refuses to edit an approved template ("Message template status can't be
+   * changed. You can only delete or add templates." - 2388039), so a copy fix is
+   * a new name plus a deletion of the old one. That is why this exists next to
+   * `updateTemplateBody`, which only works on templates still under review.
+   *
+   * The status comes back PENDING and review takes minutes to a day; a PENDING
+   * template cannot be sent.
+   */
+  async createTemplate(
+    wabaId: string,
+    input: {
+      name: string;
+      category: 'UTILITY' | 'MARKETING' | 'AUTHENTICATION';
+      body: string;
+      /** One example value per {{N}}, in order. Required when the body has vars. */
+      exampleParams: string[];
+      footer?: string;
+      language?: string;
+    },
+  ): Promise<{ id: string; status: string }> {
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${wabaId}/message_templates`;
+    const components: Array<Record<string, unknown>> = [
+      {
+        type: 'BODY',
+        text: input.body,
+        ...(input.exampleParams.length > 0
+          ? { example: { body_text: [input.exampleParams] } }
+          : {}),
+      },
+    ];
+    if (input.footer !== undefined) components.push({ type: 'FOOTER', text: input.footer });
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: input.name,
+        language: input.language ?? this.templateLanguage,
+        category: input.category,
+        parameter_format: 'POSITIONAL',
+        components,
+      }),
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`WhatsApp template create failed ${res.status}: ${text}`);
+    const data = JSON.parse(text) as { id?: string; status?: string };
+    return { id: data.id ?? '', status: data.status ?? 'UNKNOWN' };
+  }
+
+  /**
+   * Delete a template from the business account.
+   *
+   * There is no undo: Meta does not restore a deleted template, and the name
+   * cannot be reused for a while afterwards. Only call it for a template the
+   * repo can prove has no sender - check the code first, not the name.
+   */
+  async deleteTemplate(wabaId: string, name: string): Promise<void> {
+    const url =
+      `https://graph.facebook.com/${GRAPH_API_VERSION}/${wabaId}/message_templates` +
+      `?name=${encodeURIComponent(name)}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+    if (!res.ok) {
+      throw new Error(`WhatsApp template delete failed ${res.status}: ${await res.text()}`);
+    }
   }
 
   /**
